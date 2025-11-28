@@ -3,6 +3,7 @@
 import { EarthquakeData } from '@/types/earthquake';
 import HighchartsReact from 'highcharts-react-official';
 import { ClusteringMetadata } from '@/lib/analysis/clustering';
+import { formatDateForCSV } from '@/utils/dateFormat';
 
 interface ChartExportButtonsProps {
     chartRef: React.RefObject<HighchartsReact.RefObject>;
@@ -78,6 +79,13 @@ export default function ChartExportButtons({
     const exportCSV = () => {
         if (!data || data.length === 0) return;
 
+        // CRITICAL FIX: Validate data and cluster labels alignment
+        if (clusterLabels && data.length !== clusterLabels.length) {
+            console.error(`❌ Data/cluster mismatch: ${data.length} data points vs ${clusterLabels.length} cluster labels`);
+            alert(`Error: Data size mismatch. Cannot export cluster data.\nData points: ${data.length}\nCluster labels: ${clusterLabels.length}`);
+            return;
+        }
+
         // Add cluster labels to data if available
         const enrichedData = data.map((row, index) => {
             const enriched = { ...row };
@@ -116,23 +124,48 @@ export default function ChartExportButtons({
             return;
         }
 
-        const headers = Object.keys(enrichedData[0]);
-        csvContent += [
-            headers.join(','),
-            ...enrichedData.map(row =>
-                headers.map(header => {
-                    const value = (row as any)[header];
-                    // Handle dates and strings with commas
-                    if (value instanceof Date) {
-                        return value.toISOString();
-                    }
-                    if (typeof value === 'string' && value.includes(',')) {
-                        return `"${value}"`;
+        // CRITICAL FIX: Define explicit header order for consistent CSV structure
+        // This ensures proper column ordering and handles all data types correctly
+        const baseHeaders = ['eventID', 'time', 'latitude', 'longitude', 'depth', 'magnitude', 'locality'];
+        const clusterHeaders = clusterLabels ? ['cluster_id', 'cluster_label'] : [];
+        const headers = [...baseHeaders, ...clusterHeaders];
+
+        // Build CSV header row
+        csvContent += headers.join(',') + '\n';
+
+        // Build CSV data rows
+        csvContent += enrichedData.map(row => {
+            return headers.map(header => {
+                const value = (row as any)[header];
+
+                // Handle undefined/null values
+                if (value === undefined || value === null) {
+                    return '';
+                }
+
+                // Handle dates - format as dd/mm/yyyy HH:mm:ss
+                if (value instanceof Date) {
+                    return formatDateForCSV(value);
+                }
+
+                // Handle date strings (ISO format)
+                if (header === 'time' && typeof value === 'string') {
+                    return formatDateForCSV(value);
+                }
+
+                // Handle strings with commas or quotes
+                if (typeof value === 'string') {
+                    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                        // Escape quotes and wrap in quotes
+                        return `"${value.replace(/"/g, '""')}"`;
                     }
                     return value;
-                }).join(',')
-            )
-        ].join('\n');
+                }
+
+                // Handle numbers and other primitives
+                return String(value);
+            }).join(',');
+        }).join('\n');
 
         // Download CSV
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -146,9 +179,22 @@ export default function ChartExportButtons({
     const exportJSON = () => {
         if (!data || data.length === 0) return;
 
-        // Add cluster labels to data if available
+        // CRITICAL FIX: Validate data and cluster labels alignment
+        if (clusterLabels && data.length !== clusterLabels.length) {
+            console.error(`❌ Data/cluster mismatch: ${data.length} data points vs ${clusterLabels.length} cluster labels`);
+            alert(`Error: Data size mismatch. Cannot export cluster data.\nData points: ${data.length}\nCluster labels: ${clusterLabels.length}`);
+            return;
+        }
+
+        // Add cluster labels to data if available and format dates
         const enrichedData = data.map((row, index) => {
             const enriched = { ...row };
+
+            // Format date fields to dd/mm/yyyy HH:mm:ss
+            if ((enriched as any).time) {
+                (enriched as any).time = formatDateForCSV((enriched as any).time);
+            }
+
             if (clusterLabels && index < clusterLabels.length) {
                 (enriched as any).cluster_id = clusterLabels[index];
                 (enriched as any).cluster_label = clusterLabels[index] === -1 ? 'noise' : `cluster_${clusterLabels[index]}`;

@@ -5,6 +5,7 @@ import { useMemo, useRef, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
+import { formatDateForTooltip } from '@/utils/dateFormat';
 
 interface TemporalStatisticsProps {
     earthquakes: EarthquakeData[];
@@ -80,9 +81,8 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                 formatter: function(this: any) {
                     const point = this.point;
                     const custom = point.custom;
-                    const timeStr = custom.time instanceof Date
-                        ? custom.time.toLocaleString()
-                        : new Date(custom.time).toLocaleString();
+                    // Format date as dd/mm/yyyy HH:mm:ss
+                    const timeStr = formatDateForTooltip(custom.time);
 
                     return `
                         <div style="padding: 4px;">

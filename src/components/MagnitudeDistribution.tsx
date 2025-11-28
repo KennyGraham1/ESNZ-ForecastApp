@@ -27,8 +27,10 @@ const MagnitudeDistribution = memo(function MagnitudeDistribution({ earthquakes 
         const magnitudes = earthquakes.map(eq => eq.magnitude).filter(m => typeof m === 'number' && !isNaN(m));
 
         // Calculate histogram bins manually
-        const min = Math.min(...magnitudes);
-        const max = Math.max(...magnitudes);
+        // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
+        // Use reduce with first element as initial value to avoid Infinity
+        const min = magnitudes.length > 0 ? magnitudes.reduce((min, m) => Math.min(min, m), magnitudes[0]) : 0;
+        const max = magnitudes.length > 0 ? magnitudes.reduce((max, m) => Math.max(max, m), magnitudes[0]) : 10;
         const binCount = 30;
         const binWidth = (max - min) / binCount;
 
@@ -116,8 +118,10 @@ const MagnitudeDistribution = memo(function MagnitudeDistribution({ earthquakes 
     const mean = magnitudes.reduce((sum, m) => sum + m, 0) / magnitudes.length;
     const sorted = [...magnitudes].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
-    const min = Math.min(...magnitudes);
-    const max = Math.max(...magnitudes);
+    // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
+    // Use reduce with first element as initial value to avoid Infinity
+    const min = magnitudes.length > 0 ? magnitudes.reduce((min, m) => Math.min(min, m), magnitudes[0]) : 0;
+    const max = magnitudes.length > 0 ? magnitudes.reduce((max, m) => Math.max(max, m), magnitudes[0]) : 10;
 
     return (
         <div className="bg-white p-6 rounded-lg shadow border border-gray-200">

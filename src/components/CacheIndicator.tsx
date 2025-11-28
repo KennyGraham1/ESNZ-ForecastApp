@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { formatDateTime } from '@/utils/dateFormat';
 
 interface CacheIndicatorProps {
     lastUpdated: string;
@@ -60,15 +61,8 @@ export default function CacheIndicator({
 
     const formatTimestamp = (ts: string) => {
         try {
-            const date = new Date(ts);
-            return date.toLocaleString('en-NZ', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZoneName: 'short'
-            });
+            // Format as dd/mm/yyyy HH:mm:ss
+            return formatDateTime(ts);
         } catch {
             return ts;
         }

@@ -1,5 +1,6 @@
 import { EarthquakeData } from '@/types/earthquake';
 import JSZip from 'jszip';
+import { formatDateForCSV } from '@/utils/dateFormat';
 
 export function exportToCSV(data: EarthquakeData[], filename: string) {
     if (!data || data.length === 0) return;
@@ -8,7 +9,8 @@ export function exportToCSV(data: EarthquakeData[], filename: string) {
     const csvContent = [
         headers.join(','),
         ...data.map(eq => {
-            const timeStr = eq.time instanceof Date ? eq.time.toISOString() : eq.time;
+            // Format date as dd/mm/yyyy HH:mm:ss
+            const timeStr = formatDateForCSV(eq.time);
             return [
                 timeStr,
                 eq.latitude,
@@ -97,7 +99,8 @@ export async function exportToZip(data: EarthquakeData[], filename: string) {
     const csvContent = [
         headers.join(','),
         ...data.map(eq => {
-            const timeStr = eq.time instanceof Date ? eq.time.toISOString() : eq.time;
+            // Format date as dd/mm/yyyy HH:mm:ss
+            const timeStr = formatDateForCSV(eq.time);
             return [
                 timeStr,
                 eq.latitude,
@@ -111,8 +114,12 @@ export async function exportToZip(data: EarthquakeData[], filename: string) {
     ].join('\n');
     zip.file(`${filename.replace('.zip', '')}.csv`, csvContent);
 
-    // 2. JSON
-    const jsonContent = JSON.stringify(data, null, 2);
+    // 2. JSON - format dates in the data before stringifying
+    const jsonData = data.map(eq => ({
+        ...eq,
+        time: formatDateForCSV(eq.time)
+    }));
+    const jsonContent = JSON.stringify(jsonData, null, 2);
     zip.file(`${filename.replace('.zip', '')}.json`, jsonContent);
 
     // 3. GeoJSON

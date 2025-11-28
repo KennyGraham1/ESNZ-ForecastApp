@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Filter, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Filter, X, Check } from 'lucide-react';
 
 export interface FilterOptions {
     minMagnitude: number;
@@ -20,14 +20,31 @@ interface FilterControlsProps {
 export default function FilterControls({ filters, onFilterChange, dataDateRange }: FilterControlsProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
+    // Local state for pending filter changes (not yet applied)
+    const [pendingFilters, setPendingFilters] = useState<FilterOptions>(filters);
+
+    // Track if there are unapplied changes
+    const hasUnappliedChanges = JSON.stringify(pendingFilters) !== JSON.stringify(filters);
+
+    // Sync pending filters when applied filters change externally
+    useEffect(() => {
+        setPendingFilters(filters);
+    }, [filters]);
+
+    const handleApply = () => {
+        onFilterChange(pendingFilters);
+    };
+
     const handleReset = () => {
-        onFilterChange({
+        const resetFilters = {
             minMagnitude: 0,
             maxMagnitude: 10,
-            depthCategory: 'all',
+            depthCategory: 'all' as const,
             startDate: dataDateRange.min,
             endDate: dataDateRange.max
-        });
+        };
+        setPendingFilters(resetFilters);
+        onFilterChange(resetFilters);
     };
 
     const depthCategories = [
@@ -66,8 +83,8 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                                     min="0"
                                     max="10"
                                     step="0.1"
-                                    value={filters.minMagnitude}
-                                    onChange={(e) => onFilterChange({ ...filters, minMagnitude: parseFloat(e.target.value) })}
+                                    value={pendingFilters.minMagnitude}
+                                    onChange={(e) => setPendingFilters({ ...pendingFilters, minMagnitude: parseFloat(e.target.value) })}
                                     className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                                 <span className="text-gray-500">to</span>
@@ -76,8 +93,8 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                                     min="0"
                                     max="10"
                                     step="0.1"
-                                    value={filters.maxMagnitude}
-                                    onChange={(e) => onFilterChange({ ...filters, maxMagnitude: parseFloat(e.target.value) })}
+                                    value={pendingFilters.maxMagnitude}
+                                    onChange={(e) => setPendingFilters({ ...pendingFilters, maxMagnitude: parseFloat(e.target.value) })}
                                     className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                             </div>
@@ -89,8 +106,8 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                                 Depth Category
                             </label>
                             <select
-                                value={filters.depthCategory}
-                                onChange={(e) => onFilterChange({ ...filters, depthCategory: e.target.value as any })}
+                                value={pendingFilters.depthCategory}
+                                onChange={(e) => setPendingFilters({ ...pendingFilters, depthCategory: e.target.value as any })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             >
                                 {depthCategories.map(cat => (
@@ -108,10 +125,10 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                             </label>
                             <input
                                 type="date"
-                                value={filters.startDate}
+                                value={pendingFilters.startDate}
                                 min={dataDateRange.min}
                                 max={dataDateRange.max}
-                                onChange={(e) => onFilterChange({ ...filters, startDate: e.target.value })}
+                                onChange={(e) => setPendingFilters({ ...pendingFilters, startDate: e.target.value })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                         </div>
@@ -122,22 +139,40 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                             </label>
                             <input
                                 type="date"
-                                value={filters.endDate}
+                                value={pendingFilters.endDate}
                                 min={dataDateRange.min}
                                 max={dataDateRange.max}
-                                onChange={(e) => onFilterChange({ ...filters, endDate: e.target.value })}
+                                onChange={(e) => setPendingFilters({ ...pendingFilters, endDate: e.target.value })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                         </div>
                     </div>
 
-                    <div className="mt-4 flex justify-end">
+                    <div className="mt-4 flex justify-between items-center">
                         <button
                             onClick={handleReset}
                             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
                         >
                             <X className="w-4 h-4" />
                             Reset Filters
+                        </button>
+
+                        <button
+                            onClick={handleApply}
+                            disabled={!hasUnappliedChanges}
+                            className={`flex items-center gap-2 px-6 py-2 text-sm font-medium rounded transition-colors ${
+                                hasUnappliedChanges
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            }`}
+                        >
+                            <Check className="w-4 h-4" />
+                            Apply Filters
+                            {hasUnappliedChanges && (
+                                <span className="ml-1 px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
+                                    •
+                                </span>
+                            )}
                         </button>
                     </div>
                 </div>

@@ -7,6 +7,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import RBush from 'rbush';
+import { formatDate } from '@/utils/dateFormat';
 
 interface AftershockSequencePlotProps {
     earthquakes: EarthquakeData[];
@@ -194,7 +195,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
         }, 100);
 
         return () => clearTimeout(timer);
-    }, [sequenceData, mainEvent]);
+    }, [mainEvent]); // Removed sequenceData - not used in this effect
 
     // Effect to auto-zoom map when main event changes
     useEffect(() => {
@@ -517,7 +518,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 },
                 custom: {
                     magnitude: eq.magnitude,
-                    date: eq.eqTime.toISOString().split('T')[0],
+                    date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
                     depth: eq.depth,
                     daysSince: eq.daysSince,
                     latitude: eq.latitude,
@@ -824,7 +825,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     magnitude: eq.magnitude,
                     depth: eq.depth,
                     daysSince: eq.daysSince,
-                    date: eq.eqTime.toISOString().split('T')[0],
+                    date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
                     index
                 }
             };
@@ -1039,7 +1040,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     magnitude: eq.magnitude,
                     depth: eq.depth,
                     daysSince: eq.daysSince,
-                    date: eq.eqTime.toISOString().split('T')[0],
+                    date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
                     index,
                     color: isSelected ? '#ff0000' : getColorForDays(eq.daysSince),
                     marker: {

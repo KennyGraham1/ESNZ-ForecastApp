@@ -10,11 +10,18 @@ import { trackError } from '@/lib/monitoring/errors';
 
 const gzipAsync = promisify(gzip);
 
-const CACHE_FILE = path.join(process.cwd(), 'data', 'earthquake-cache.json');
+// Cache configuration
+// On Vercel, use /tmp directory for writable storage (ephemeral but works across function invocations)
+const isVercel = process.env.VERCEL === '1';
+const CACHE_FILE = isVercel
+    ? path.join('/tmp', 'earthquake-cache.json')
+    : path.join(process.cwd(), 'data', 'earthquake-cache.json');
+
 // OPTIMIZATION: Reduce initial fetch to 10 years instead of 125 years
 // This reduces initial load time from minutes to seconds
-// Users can still access older data by adjusting filters
+// Users can request older data by adjusting filters - the API will extend the cache automatically
 const INITIAL_FETCH_DAYS = 3650; // 10 years of historical data (much faster initial load)
+const MAX_FETCH_DAYS = 36500; // Maximum 100 years of data (safety limit)
 
 // In-memory cache to avoid reading the large file on every request
 let memoryCache: CacheData | null = null;
@@ -269,8 +276,120 @@ export async function GET(request: NextRequest) {
         // Load existing cache (from memory or disk)
         const existingCache = await loadCacheFromDisk();
 
-        // If cache exists and no refresh requested, return cached data (with filtering)
+        // If cache exists and no refresh requested, check if we need to extend the cache
         if (existingCache && !shouldRefresh) {
+            // CRITICAL FIX: Check if requested time range exceeds cached data
+            // If user requests data older than what's cached, we need to fetch historical data
+            let needsHistoricalFetch = false;
+            let historicalDaysNeeded = 0;
+
+            if (filters.daysBack !== undefined) {
+                // Calculate how many days back the cache covers
+                const cacheStartDate = new Date(existingCache.initialFetchDate);
+                const now = new Date();
+                const cachedDaysBack = Math.ceil((now.getTime() - cacheStartDate.getTime()) / (1000 * 60 * 60 * 24));
+
+                // If user requests more days than cached, we need to fetch older data
+                if (filters.daysBack > cachedDaysBack) {
+                    needsHistoricalFetch = true;
+                    historicalDaysNeeded = filters.daysBack;
+                    console.log(`📊 User requested ${filters.daysBack} days, but cache only has ${cachedDaysBack} days. Need to fetch historical data.`);
+                }
+            } else if (filters.startDate) {
+                // Check if startDate is before the cache's initial fetch date
+                const requestedStartDate = new Date(filters.startDate);
+                const cacheStartDate = new Date(existingCache.initialFetchDate);
+
+                if (requestedStartDate < cacheStartDate) {
+                    needsHistoricalFetch = true;
+                    const now = new Date();
+                    historicalDaysNeeded = Math.ceil((now.getTime() - requestedStartDate.getTime()) / (1000 * 60 * 60 * 24));
+                    console.log(`📊 User requested data from ${filters.startDate}, but cache starts at ${existingCache.initialFetchDate}. Need to fetch historical data.`);
+                }
+            }
+
+            // If we need historical data, fetch it and extend the cache
+            if (needsHistoricalFetch) {
+                // Safety check: don't fetch more than MAX_FETCH_DAYS
+                if (historicalDaysNeeded > MAX_FETCH_DAYS) {
+                    console.warn(`⚠️ Requested ${historicalDaysNeeded} days exceeds maximum ${MAX_FETCH_DAYS} days. Limiting to ${MAX_FETCH_DAYS}.`);
+                    historicalDaysNeeded = MAX_FETCH_DAYS;
+                }
+
+                console.log(`🌐 Fetching historical data: ${historicalDaysNeeded} days...`);
+
+                try {
+                    const historicalData = await fetchEarthquakeData({
+                        minMagnitude: 2.0,
+                        daysBack: historicalDaysNeeded
+                    });
+
+                    // Filter out duplicates (events already in cache)
+                    const existingEventIds = new Set(existingCache.earthquakes.map(eq => eq.eventID));
+                    const uniqueHistoricalEvents = historicalData.filter(eq => !existingEventIds.has(eq.eventID));
+
+                    console.log(`📥 Fetched ${historicalData.length} historical events, ${uniqueHistoricalEvents.length} are new`);
+
+                    // Pre-compute timestamps for new events
+                    const uniqueHistoricalEventsWithTimestamps = uniqueHistoricalEvents.map(eq => ({
+                        ...eq,
+                        timeMs: eq.time.getTime()
+                    }));
+
+                    // Merge with existing cache and sort by time (newest first)
+                    const mergedEarthquakes = [...uniqueHistoricalEventsWithTimestamps, ...existingCache.earthquakes]
+                        .sort((a, b) => {
+                            const bTime = b.timeMs !== undefined ? b.timeMs : new Date(b.time).getTime();
+                            const aTime = a.timeMs !== undefined ? a.timeMs : new Date(a.time).getTime();
+                            return bTime - aTime;
+                        });
+
+                    // Update the cache with extended historical data
+                    // Keep the original initialFetchDate to track when we first started caching
+                    const nowISO = new Date().toISOString();
+                    const extendedCache: CacheData = {
+                        earthquakes: mergedEarthquakes,
+                        lastUpdated: nowISO,
+                        initialFetchDate: existingCache.initialFetchDate, // Keep original
+                        totalEvents: mergedEarthquakes.length
+                    };
+
+                    await saveCacheToDisk(extendedCache);
+                    console.log(`💾 Cache extended with historical data: ${existingCache.totalEvents} → ${mergedEarthquakes.length} events (+${uniqueHistoricalEvents.length} historical)`);
+
+                    // Now filter and return the extended data
+                    const filteredData = perfMonitor.track(
+                        'server-side-filtering',
+                        mergedEarthquakes.length,
+                        () => filterEarthquakes(mergedEarthquakes, filters),
+                        { filters }
+                    );
+
+                    const metadata = getFilterMetadata(mergedEarthquakes.length, filteredData, filters);
+
+                    console.log(`✅ Serving ${filteredData.length} filtered events from ${mergedEarthquakes.length} total (extended cache)`);
+
+                    return createCompressedResponse({
+                        data: filteredData,
+                        cached: false,
+                        lastUpdated: nowISO,
+                        initialFetchDate: existingCache.initialFetchDate,
+                        isIncremental: false,
+                        filteredCount: metadata.filteredCount,
+                        returnedCount: metadata.returnedCount,
+                        totalEvents: metadata.totalEvents,
+                        hasMore: metadata.hasMore,
+                        offset: metadata.offset,
+                        limit: metadata.limit
+                    }, request);
+
+                } catch (error) {
+                    console.error('❌ Error fetching historical data:', error);
+                    // Fall through to return existing cache data
+                }
+            }
+
+            // No historical fetch needed, or it failed - return cached data with filtering
             // MONITORING: Track filtering performance
             const filteredData = perfMonitor.track(
                 'server-side-filtering',

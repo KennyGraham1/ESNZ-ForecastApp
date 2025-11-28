@@ -67,7 +67,10 @@ export function calculateGutenbergRichter(
 
     if (completenessMethod === 'maximum_curvature') {
         // Mc is the magnitude bin with the maximum count
-        mcIndex = bins.indexOf(Math.max(...bins));
+        // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
+        // Use reduce with first element as initial value to avoid -Infinity
+        const maxBin = bins.length > 0 ? bins.reduce((max, bin) => Math.max(max, bin), bins[0]) : 0;
+        mcIndex = bins.indexOf(maxBin);
         mc = binCenters[mcIndex];
     } else {
         // Goodness of fit method

@@ -7,6 +7,7 @@ import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from '../ChartExportButtons';
 import { calculateSpatialClustering } from '@/lib/analysis/clustering';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
+import { formatDateForTooltip } from '@/utils/dateFormat';
 
 interface TemporalSpatialProps {
     earthquakes: EarthquakeData[];
@@ -596,9 +597,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             return '';
                         }
 
-                        const timeStr = point.time instanceof Date
-                            ? point.time.toLocaleString()
-                            : new Date(point.time).toLocaleString();
+                        // Format date as dd/mm/yyyy HH:mm:ss
+                        const timeStr = formatDateForTooltip(point.time);
                         return `
                             <div style="padding: 8px;">
                                 <strong>${point.locality || 'Unknown location'}</strong><br/>

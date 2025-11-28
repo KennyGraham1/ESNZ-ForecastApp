@@ -9,8 +9,10 @@ interface StatisticsProps {
 const Statistics = memo(function Statistics({ earthquakes }: StatisticsProps) {
     const totalCount = earthquakes.length;
 
+    // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
+    // Use reduce instead for finding max magnitude
     const maxMagnitude = earthquakes.length > 0
-        ? Math.max(...earthquakes.map(eq => eq.magnitude))
+        ? earthquakes.reduce((max, eq) => Math.max(max, eq.magnitude), 0)
         : 0;
 
     const avgDepth = earthquakes.length > 0
