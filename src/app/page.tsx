@@ -11,6 +11,9 @@ import AftershockSequence from '@/components/tabs/AftershockSequence';
 import TemporalSpatial from '@/components/tabs/TemporalSpatial';
 import CacheIndicator from '@/components/CacheIndicator';
 import { PerformanceDebugPanel } from '@/components/PerformanceDebugPanel';
+import CatalogUpload from '@/components/CatalogUpload';
+import { EarthquakeData } from '@/types/earthquake';
+import { Upload } from 'lucide-react';
 
 const TABS = [
   { id: 'basic', label: 'Basic Dashboard' },
@@ -19,10 +22,18 @@ const TABS = [
   { id: 'temporal-spatial', label: 'Temporal-Spatial Analysis' }
 ];
 
+type DataSource = 'geonet' | 'uploaded';
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState('basic');
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Data source management
+  const [dataSource, setDataSource] = useState<DataSource>('geonet');
+  const [uploadedData, setUploadedData] = useState<EarthquakeData[] | null>(null);
+  const [uploadedFilename, setUploadedFilename] = useState<string>('');
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
 
   // Filter options - now used for server-side filtering
   const [filterOptions, setFilterOptions] = useState({
@@ -36,8 +47,10 @@ export default function Home() {
     minMagnitude: filterOptions.minMagnitude
   });
 
-  // Data is already filtered server-side, no need for client-side filtering
-  const earthquakes = response?.data || [];
+  // Determine which data to use based on data source
+  const geonetEarthquakes = response?.data || [];
+  const earthquakes = dataSource === 'uploaded' && uploadedData ? uploadedData : geonetEarthquakes;
+
   const cacheInfo = {
     lastUpdated: response?.lastUpdated || new Date().toISOString(),
     initialFetchDate: response?.initialFetchDate || new Date().toISOString(),
@@ -46,6 +59,21 @@ export default function Home() {
     filteredCount: response?.filteredCount || 0,
     returnedCount: response?.returnedCount || 0
   };
+
+  // Handle uploaded catalog data
+  const handleDataLoaded = useCallback((data: EarthquakeData[], filename: string) => {
+    setUploadedData(data);
+    setUploadedFilename(filename);
+    setDataSource('uploaded');
+    setShowUploadDialog(false);
+    console.log(`✅ Switched to uploaded catalog: ${filename} (${data.length} events)`);
+  }, []);
+
+  // Switch back to GeoNet data
+  const handleSwitchToGeoNet = useCallback(() => {
+    setDataSource('geonet');
+    console.log('✅ Switched to GeoNet catalog');
+  }, []);
 
   // OPTIMIZATION: Get date range from data using pre-computed timestamps (95% faster)
   const dataDateRange = useMemo(() => {
@@ -252,7 +280,7 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">ESNZ-ForecastApp</h1>
-                <p className="text-slate-400 text-sm mt-1">New Zealand Earthquake Analysis & Forecasting</p>
+                <p className="text-slate-400 text-sm mt-1">NZ Statistical Seismology Visualization and Analysis App</p>
               </div>
               {earthquakes && filteredEarthquakes.length > 0 && (
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg border border-blue-500">
@@ -272,42 +300,70 @@ export default function Home() {
                   <span className="text-xs text-blue-200">events</span>
                 </div>
               )}
-              <div className="flex items-center gap-3 bg-slate-800 p-1.5 rounded-lg border border-slate-700">
-                <span className="text-xs font-medium text-slate-400 pl-2 uppercase tracking-wider">Data Source</span>
-                <div className="h-4 w-px bg-slate-700 mx-1"></div>
-                <select
-                  className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
-                  value={tempOptions.daysBack}
-                  onChange={(e) => setTempOptions(prev => ({ ...prev, daysBack: parseInt(e.target.value) }))}
-                >
-                  <option value="30">Last 30 Days</option>
-                  <option value="90">Last 3 Months</option>
-                  <option value="180">Last 6 Months</option>
-                  <option value="365">Last Year</option>
-                  <option value="730">Last 2 Years</option>
-                  <option value="1825">Last 5 Years</option>
-                  <option value="3650">Last 10 Years</option>
-                  <option value="7300">Last 20 Years</option>
-                  <option value="10950">Last 30 Years</option>
-                </select>
-                <select
-                  className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
-                  value={tempOptions.minMagnitude}
-                  onChange={(e) => setTempOptions(prev => ({ ...prev, minMagnitude: parseInt(e.target.value) }))}
-                >
-                  <option value="2">Min Mag 2+</option>
-                  <option value="3">Min Mag 3+</option>
-                  <option value="4">Min Mag 4+</option>
-                  <option value="5">Min Mag 5+</option>
-                </select>
-                <button
-                  onClick={handleLoad}
-                  className="px-4 py-1 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-500 transition-colors shadow-sm"
-                  title="Filter cached data by selected time range and magnitude"
-                >
-                  Load
-                </button>
-              </div>
+
+              {/* Upload File Button */}
+              <button
+                onClick={() => setShowUploadDialog(!showUploadDialog)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                title="Load earthquake catalog from CSV, JSON, or GeoJSON file"
+              >
+                <Upload className="w-4 h-4" />
+                Upload File
+              </button>
+
+              {/* Data Source Indicator */}
+              {dataSource === 'uploaded' && uploadedData && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-purple-600 rounded-lg border border-purple-500">
+                  <span className="text-xs text-purple-200">Using:</span>
+                  <span className="text-sm font-medium">{uploadedFilename}</span>
+                  <button
+                    onClick={handleSwitchToGeoNet}
+                    className="ml-2 px-2 py-0.5 bg-purple-700 hover:bg-purple-800 text-xs rounded transition-colors"
+                    title="Switch back to GeoNet data"
+                  >
+                    Switch to GeoNet
+                  </button>
+                </div>
+              )}
+
+              {dataSource === 'geonet' && (
+                <div className="flex items-center gap-3 bg-slate-800 p-1.5 rounded-lg border border-slate-700">
+                  <span className="text-xs font-medium text-slate-400 pl-2 uppercase tracking-wider">GeoNet Data</span>
+                  <div className="h-4 w-px bg-slate-700 mx-1"></div>
+                  <select
+                    className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
+                    value={tempOptions.daysBack}
+                    onChange={(e) => setTempOptions(prev => ({ ...prev, daysBack: parseInt(e.target.value) }))}
+                  >
+                    <option value="30">Last 30 Days</option>
+                    <option value="90">Last 3 Months</option>
+                    <option value="180">Last 6 Months</option>
+                    <option value="365">Last Year</option>
+                    <option value="730">Last 2 Years</option>
+                    <option value="1825">Last 5 Years</option>
+                    <option value="3650">Last 10 Years</option>
+                    <option value="7300">Last 20 Years</option>
+                    <option value="10950">Last 30 Years</option>
+                  </select>
+                  <select
+                    className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
+                    value={tempOptions.minMagnitude}
+                    onChange={(e) => setTempOptions(prev => ({ ...prev, minMagnitude: parseInt(e.target.value) }))}
+                  >
+                    <option value="2">Min Mag 2+</option>
+                    <option value="3">Min Mag 3+</option>
+                    <option value="4">Min Mag 4+</option>
+                    <option value="5">Min Mag 5+</option>
+                  </select>
+                  <button
+                    onClick={handleLoad}
+                    className="px-4 py-1 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-500 transition-colors shadow-sm"
+                    title="Filter cached data by selected time range and magnitude"
+                  >
+                    Load
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -315,19 +371,51 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {/* Upload Dialog */}
+        {showUploadDialog && (
+          <div className="mb-6">
+            <CatalogUpload
+              onDataLoaded={handleDataLoaded}
+              onClose={() => setShowUploadDialog(false)}
+            />
+          </div>
+        )}
+
         {earthquakes && (
           <div className="space-y-6">
-            {/* Cache Indicator */}
-            <CacheIndicator
-              lastUpdated={cacheInfo.lastUpdated}
-              initialFetchDate={cacheInfo.initialFetchDate}
-              totalEvents={cacheInfo.totalEvents}
-              onRefresh={handleRefresh}
-              isRefreshing={isRefreshing}
-              newEventsAdded={cacheInfo.newEventsAdded}
-              filteredCount={cacheInfo.filteredCount}
-              returnedCount={cacheInfo.returnedCount}
-            />
+            {/* Cache Indicator - only show for GeoNet data */}
+            {dataSource === 'geonet' && (
+              <CacheIndicator
+                lastUpdated={cacheInfo.lastUpdated}
+                initialFetchDate={cacheInfo.initialFetchDate}
+                totalEvents={cacheInfo.totalEvents}
+                onRefresh={handleRefresh}
+                isRefreshing={isRefreshing}
+                newEventsAdded={cacheInfo.newEventsAdded}
+                filteredCount={cacheInfo.filteredCount}
+                returnedCount={cacheInfo.returnedCount}
+              />
+            )}
+
+            {/* Uploaded Data Info */}
+            {dataSource === 'uploaded' && uploadedData && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-purple-900">Uploaded Catalog</h3>
+                    <p className="text-sm text-purple-700 mt-1">
+                      <strong>{uploadedFilename}</strong> - {uploadedData.length.toLocaleString()} events loaded
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleSwitchToGeoNet}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Switch to GeoNet
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Active Filters Display */}
             <div className="bg-white px-4 py-3 rounded-lg border border-slate-200 shadow-sm">
