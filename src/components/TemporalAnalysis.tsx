@@ -23,6 +23,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 chart: { type: 'scatter', zoomType: 'xy', height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -58,6 +59,10 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 text: ''
             },
             credits: {
+                enabled: false
+            },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
                 enabled: false
             },
             // OPTIMIZATION: Performance boost for large datasets
@@ -281,6 +286,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 chart: { type: 'line', height: 350 },
                 title: { text: 'Earthquake Frequency Over Time' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -295,6 +301,10 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 text: 'Earthquake Frequency Over Time'
             },
             credits: {
+                enabled: false
+            },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
                 enabled: false
             },
             // OPTIMIZATION: Performance boost for large datasets

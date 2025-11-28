@@ -373,6 +373,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             credits: {
                 enabled: false
             },
+            // CRITICAL FIX: Disable Highcharts built-in export menu
+            // Reason: The built-in CSV export exports chart series data (x, y, custom)
+            // instead of the original earthquake data. We use custom export buttons below.
+            exporting: {
+                enabled: false
+            },
             // OPTIMIZATION: Boost module disabled for this chart
             // Reason: Boost module conflicts with individual point markers and selection state
             // The chart has interactive features (click to select) and custom markers per point
@@ -572,6 +578,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 style: { fontSize: '16px', fontWeight: 'bold' }
             },
             credits: { enabled: false },
+            // CRITICAL FIX: Disable Highcharts built-in export menu
+            // Reason: The built-in CSV export exports chart series data (map geometry + points)
+            // instead of the original earthquake data. We use custom export buttons below.
+            exporting: {
+                enabled: false
+            },
             mapNavigation: {
                 enabled: true,
                 enableMouseWheelZoom: true,

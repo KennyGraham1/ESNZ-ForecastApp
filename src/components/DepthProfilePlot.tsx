@@ -22,6 +22,7 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                 chart: { type: 'scatter', zoomType: 'xy', height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -56,6 +57,10 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                 text: ''
             },
             credits: {
+                enabled: false
+            },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
                 enabled: false
             },
             // OPTIMIZATION: Performance boost for large datasets

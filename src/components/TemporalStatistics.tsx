@@ -43,6 +43,10 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
             credits: {
                 enabled: false
             },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
+                enabled: false
+            },
             xAxis: {
                 type: 'datetime',
                 title: {
@@ -249,6 +253,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                 chart: { type: 'line', height: 350 },
                 title: { text: 'Earthquake Frequency Over Time' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -263,6 +268,10 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                 text: 'Earthquake Frequency Over Time'
             },
             credits: {
+                enabled: false
+            },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
                 enabled: false
             },
             // Performance boost for large datasets

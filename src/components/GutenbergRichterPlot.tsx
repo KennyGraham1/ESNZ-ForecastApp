@@ -32,6 +32,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 chart: { type: 'scatter', zoomType: 'xy', height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -51,6 +52,10 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 text: ''
             },
             credits: {
+                enabled: false
+            },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
                 enabled: false
             },
             xAxis: {

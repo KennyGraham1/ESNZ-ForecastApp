@@ -174,12 +174,19 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
 
                     // Only set zoom range if it's different from the full range
                     const threshold = 0.1;
-                    if (Math.abs(min - originalMin) > threshold || Math.abs(max - originalMax) > threshold) {
-                        console.log('Timeline zoomed:', { min, max });
-                        setTimelineZoomRange({ min, max });
+                    // Check if originalMin and originalMax are defined before comparison
+                    if (originalMin !== undefined && originalMax !== undefined) {
+                        if (Math.abs(min - originalMin) > threshold || Math.abs(max - originalMax) > threshold) {
+                            console.log('Timeline zoomed:', { min, max });
+                            setTimelineZoomRange({ min, max });
+                        } else {
+                            console.log('Timeline reset to full range');
+                            setTimelineZoomRange(null);
+                        }
                     } else {
-                        console.log('Timeline reset to full range');
-                        setTimelineZoomRange(null);
+                        // If original range is not defined, always set the zoom range
+                        console.log('Timeline zoomed (no original range):', { min, max });
+                        setTimelineZoomRange({ min, max });
                     }
                 } else if (e.trigger === 'reset') {
                     // Reset zoom
@@ -469,6 +476,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 chart: { type: 'scatter', zoomType: 'xy', height: 500 },
                 title: { text: '' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -576,6 +584,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 }
             },
             credits: {
+                enabled: false
+            },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
                 enabled: false
             },
             xAxis: {
@@ -794,6 +806,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 chart: { type: 'scatter', zoomType: 'xy', height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -848,6 +861,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 style: { fontSize: '16px', fontWeight: 'bold' }
             },
             credits: { enabled: false },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
+                enabled: false
+            },
             xAxis: {
                 title: { text: 'Magnitude' },
                 gridLineWidth: 1,
@@ -1198,6 +1215,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 style: { fontSize: '16px', fontWeight: 'bold' }
             },
             credits: { enabled: false },
+            // Disable Highcharts built-in export menu - use custom export buttons
+            exporting: {
+                enabled: false
+            },
             mapNavigation: {
                 enabled: true,
                 buttonOptions: {

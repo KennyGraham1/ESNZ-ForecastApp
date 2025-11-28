@@ -192,6 +192,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                 chart: { type: 'scatter', zoomType: 'xy', height: 500 },
                 title: { text: '' },
                 credits: { enabled: false },
+                exporting: { enabled: false }, // Disable built-in export menu
                 series: []
             };
         }
@@ -255,6 +256,12 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                 text: ''
             },
             credits: {
+                enabled: false
+            },
+            // CRITICAL FIX: Disable Highcharts built-in export menu
+            // Reason: The built-in CSV export exports chart series data (x, y, custom)
+            // instead of the original earthquake data. We use custom export buttons below.
+            exporting: {
                 enabled: false
             },
             // OPTIMIZATION: Boost module disabled for this chart
