@@ -97,13 +97,14 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
 
             // Success!
             const formatInfo = result.format ? ` (${result.format} format)` : '';
-            let successMsg = `Successfully loaded ${result.validCount} earthquakes from ${file.name}${formatInfo}`;
+            const validCount = result.validCount ?? 0;
+            let successMsg = `Successfully loaded ${validCount} earthquakes from ${file.name}${formatInfo}`;
 
             // Add information about skipped rows and commented lines
             const additionalInfo: string[] = [];
 
-            if (result.rowCount && result.rowCount > result.validCount) {
-                const skipped = result.rowCount - result.validCount;
+            if (result.rowCount && result.rowCount > validCount) {
+                const skipped = result.rowCount - validCount;
                 additionalInfo.push(`${skipped} rows skipped due to errors`);
             }
 
