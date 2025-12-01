@@ -7,13 +7,32 @@ import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { stratifiedSample } from '@/utils/dataOptimization';
 import { SAMPLING_CONFIG, getOptimalSamplingThreshold } from '@/config/performance';
+import { formatDateForTooltip } from '@/utils/dateFormat';
 
-interface ThreeDVisualizationProps {
+interface TemporalSpatial3DPlotProps {
     earthquakes: EarthquakeData[];
+    clusterLabels?: number[];
+    selectedIndices: Set<number>;
+    onPointClick?: (index: number) => void;
 }
 
-const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: ThreeDVisualizationProps) {
+const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({ 
+    earthquakes, 
+    clusterLabels,
+    selectedIndices,
+    onPointClick 
+}: TemporalSpatial3DPlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
+
+    // Helper to get consistent cluster colors (same as TemporalSpatial.tsx)
+    const getClusterColor = (clusterLabel: number) => {
+        const colors = [
+            '#440154', '#482878', '#3e4989', '#31688e', '#26828e',
+            '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde724',
+        ];
+        if (clusterLabel < 0) return '#9ca3af'; // noise / unassigned
+        return colors[clusterLabel % colors.length];
+    };
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
@@ -22,77 +41,83 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 chart: { type: 'scatter', height: 500 },
                 title: { text: '' },
                 credits: { enabled: false },
-                exporting: { enabled: false }, // Disable built-in export menu
+                exporting: { enabled: false },
                 series: []
             };
         }
 
-        // OPTIMIZATION: Use stratified sampling to preserve distribution (90% faster rendering)
+        // OPTIMIZATION: Use stratified sampling to preserve distribution
         const maxPoints = getOptimalSamplingThreshold('THREE_D');
         let processedEarthquakes = earthquakes;
+        let processedClusterLabels = clusterLabels;
 
         if (earthquakes.length > SAMPLING_CONFIG.THREE_D.threshold) {
             processedEarthquakes = stratifiedSample(earthquakes, maxPoints);
-            console.log(`📊 3D Visualization: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
+            console.log(`📊 3D Temporal-Spatial: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
+            
+            // Sample cluster labels if they exist
+            if (clusterLabels && clusterLabels.length === earthquakes.length) {
+                processedClusterLabels = processedEarthquakes.map((eq) => {
+                    const originalIndex = earthquakes.indexOf(eq);
+                    return clusterLabels[originalIndex] ?? -1;
+                });
+            }
         }
 
-        // Get magnitude and depth ranges for scaling
-        const magnitudes = processedEarthquakes.map(eq => eq.magnitude);
+        // Get depth range for axis scaling
         const depths = processedEarthquakes.map(eq => eq.depth);
-        const minMag = Math.min(...magnitudes);
-        const maxMag = Math.max(...magnitudes);
-        const minDepth = Math.min(...depths);
         const maxDepth = Math.max(...depths);
 
-        // Viridis color scale
-        const getColor = (mag: number) => {
-            const normalized = (mag - minMag) / (maxMag - minMag);
-            const colors = [
-                '#440154', '#482878', '#3e4989', '#31688e', '#26828e',
-                '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde724'
-            ];
-            const index = Math.floor(normalized * (colors.length - 1));
-            return colors[index];
-        };
-
         // Exponential marker size scaling based on magnitude
-        // Using formula similar to DepthProfilePlot for consistency
         const getMarkerRadius = (mag: number) => {
-            // Scale: M3.0 → radius ~2, M4.0 → radius ~4, M5.0 → radius ~8, M6.0 → radius ~16
             return Math.max(2, Math.pow(2, mag - 2));
         };
 
-        const data = processedEarthquakes.map(eq => ({
-            x: eq.longitude,
-            y: eq.latitude,
-            z: eq.depth, // Positive depth (will be inverted by reversed zAxis)
-            color: getColor(eq.magnitude),
-            marker: {
-                radius: getMarkerRadius(eq.magnitude)
-            },
-            custom: {
-                magnitude: eq.magnitude,
-                depth: eq.depth,
-                latitude: eq.latitude,
-                longitude: eq.longitude
-            }
-        }));
+        const data = processedEarthquakes.map((eq, idx) => {
+            const originalIndex = earthquakes.indexOf(eq);
+            const cluster = processedClusterLabels?.[idx] ?? -1;
+            const isSelected = selectedIndices.has(originalIndex);
+
+            return {
+                x: eq.longitude,
+                y: eq.latitude,
+                z: eq.depth,
+                color: isSelected ? '#ef4444' : getClusterColor(cluster),
+                marker: {
+                    radius: getMarkerRadius(eq.magnitude),
+                    fillOpacity: isSelected ? 0.95 : 0.7,
+                    lineWidth: isSelected ? 2 : 0.5,
+                    lineColor: isSelected ? '#dc2626' : 'rgba(255,255,255,0.3)'
+                },
+                custom: {
+                    magnitude: eq.magnitude,
+                    depth: eq.depth,
+                    latitude: eq.latitude,
+                    longitude: eq.longitude,
+                    locality: eq.locality,
+                    time: eq.time,
+                    cluster,
+                    originalIndex,
+                    isSelected
+                }
+            };
+        });
 
         return {
             chart: {
-                type: 'scatter3d',  // ✅ Changed from 'scatter' to 'scatter3d' for true 3D
+                type: 'scatter3d',
                 height: 500,
                 backgroundColor: 'white',
                 margin: 100,
                 options3d: {
                     enabled: true,
-                    alpha: 10,  // ✅ Vertical rotation angle (tilt) - optimized for depth visibility
-                    beta: 30,   // ✅ Horizontal rotation angle (spin) - optimized for depth visibility
-                    depth: 250, // ✅ Z-axis depth - balanced for proper 3D perspective
-                    viewDistance: 5,  // ✅ Camera distance - closer for better interaction
-                    fitToPlot: false,  // ✅ False to maintain consistent perspective during rotation
+                    alpha: 10,
+                    beta: 30,
+                    depth: 250,
+                    viewDistance: 5,
+                    fitToPlot: false,
                     frame: {
-                        visible: 'default',  // ✅ Make frame visible for spatial reference
+                        visible: 'default',
                         bottom: { size: 1, color: 'rgba(0,0,0,0.02)' },
                         back: { size: 1, color: 'rgba(0,0,0,0.04)' },
                         side: { size: 1, color: 'rgba(0,0,0,0.06)' }
@@ -103,7 +128,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 text: ''
             },
             subtitle: {
-                text: 'Drag to rotate • Scroll to zoom',
+                text: 'Drag to rotate • Scroll to zoom • Click points to select',
                 style: {
                     fontSize: '12px',
                     color: '#666'
@@ -112,7 +137,6 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             credits: {
                 enabled: false
             },
-            // Disable Highcharts built-in export menu - use custom export buttons
             exporting: {
                 enabled: false
             },
@@ -143,81 +167,67 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                     text: 'Depth (km)'
                 },
                 min: 0,
-                max: Math.ceil(maxDepth / 50) * 50, // Round up to nearest 50km for clean axis
-                reversed: true, // Reversed so deeper earthquakes appear lower in the plot
+                max: Math.ceil(maxDepth / 50) * 50,
+                reversed: true,
                 showFirstLabel: false,
                 labels: {
                     skew3d: true,
                     format: '{value} km'
                 }
             },
-            colorAxis: {
-                min: minMag,
-                max: maxMag,
-                stops: [
-                    [0, '#440154'],
-                    [0.1, '#482878'],
-                    [0.2, '#3e4989'],
-                    [0.3, '#31688e'],
-                    [0.4, '#26828e'],
-                    [0.5, '#1f9e89'],
-                    [0.6, '#35b779'],
-                    [0.7, '#6ece58'],
-                    [0.8, '#b5de2b'],
-                    [1, '#fde724']
-                ],
-                labels: {
-                    format: '{value}'
-                },
-                title: {
-                    text: 'Magnitude'
-                }
-            },
-            legend: {
-                enabled: true,
-                align: 'right',
-                verticalAlign: 'middle',
-                layout: 'vertical'
-            },
             tooltip: {
                 useHTML: true,
                 formatter: function(this: any) {
                     const point = this.point;
                     const custom = point.custom;
+                    const timeStr = formatDateForTooltip(custom.time);
+                    const clusterText = custom.cluster >= 0 ? `Cluster ${custom.cluster}` : 'Noise';
                     return `
-                        <div style="padding: 4px;">
+                        <div style="padding: 8px;">
+                            <strong>${custom.locality || 'Unknown location'}</strong><br/>
                             <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
+                            ${timeStr}<br/>
                             Depth: ${custom.depth.toFixed(1)} km<br/>
-                            Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°
+                            Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°<br/>
+                            <em>${clusterText}</em>
                         </div>
                     `;
                 }
             },
             plotOptions: {
-                scatter3d: {  // ✅ Changed to scatter3d
-                    turboThreshold: 20000, // Increase threshold for large datasets (20+ years)
+                scatter3d: {
+                    turboThreshold: 20000,
                     marker: {
-                        fillOpacity: 0.7, // Slight transparency to see overlapping points
+                        fillOpacity: 0.7,
                         lineWidth: 0.5,
                         lineColor: 'rgba(255,255,255,0.3)'
+                    },
+                    point: {
+                        events: {
+                            click: function(this: any) {
+                                if (onPointClick && this.custom?.originalIndex !== undefined) {
+                                    onPointClick(this.custom.originalIndex);
+                                }
+                            }
+                        }
                     }
                 }
             },
             series: [{
-                type: 'scatter3d',  // ✅ Changed to scatter3d for true 3D rendering
+                type: 'scatter3d',
                 name: 'Earthquakes',
-                data: data.map(d => ({
-                    ...d,
-                    colorValue: d.custom.magnitude
-                })),
+                data: data,
                 colorKey: 'colorValue'
             }],
             accessibility: {
                 enabled: true,
-                description: '3D visualization of earthquake distribution showing longitude (X), latitude (Y), and depth (Z, inverted). Marker size represents magnitude. Drag to rotate, scroll to zoom.'
+                description: '3D visualization of earthquake distribution showing longitude (X), latitude (Y), and depth (Z). Points are colored by cluster assignment. Click points to select, drag to rotate, scroll to zoom.',
+                keyboardNavigation: {
+                    enabled: true
+                }
             }
         };
-    }, [earthquakes]);
+    }, [earthquakes, clusterLabels, selectedIndices, onPointClick]);
 
     // Add interactive rotation and zoom functionality
     useEffect(() => {
@@ -257,7 +267,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             const posY = startCoords.y;
             const alpha = chart.options.chart?.options3d?.alpha || 10;
             const beta = chart.options.chart?.options3d?.beta || 30;
-            const sensitivity = 3; // ✅ Lower value = more sensitive rotation for better depth axis exploration
+            const sensitivity = 3;
 
             const handleDragMove = (e: MouseEvent | TouchEvent) => {
                 // Handle pinch-to-zoom
@@ -273,7 +283,6 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                     if (initialPinchDistance > 0) {
                         const scale = currentDistance / initialPinchDistance;
                         const currentViewDistance = chart.options.chart?.options3d?.viewDistance || 5;
-                        // ✅ Wider range (1-30) for better depth exploration on touch devices
                         const newViewDistance = Math.max(1, Math.min(30, currentViewDistance / scale));
 
                         if (chart.options.chart?.options3d) {
@@ -289,14 +298,13 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 e.preventDefault();
                 const moveCoords = getEventCoords(e);
 
-                // Update beta (horizontal rotation) - unlimited rotation for full 360° exploration
+                // Update beta (horizontal rotation)
                 const newBeta = beta + (posX - moveCoords.x) / sensitivity;
                 if (chart.options.chart?.options3d) {
                     chart.options.chart.options3d.beta = newBeta;
                 }
 
-                // Update alpha (vertical rotation) - constrained to prevent disorienting flips
-                // ✅ Limit alpha between -90 and 90 degrees for intuitive depth axis viewing
+                // Update alpha (vertical rotation) - constrained to prevent flips
                 const newAlpha = Math.max(-90, Math.min(90, alpha + (moveCoords.y - posY) / sensitivity));
                 if (chart.options.chart?.options3d) {
                     chart.options.chart.options3d.alpha = newAlpha;
@@ -325,11 +333,9 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             e.preventDefault();
 
             const currentViewDistance = chart.options.chart?.options3d?.viewDistance || 5;
-            const zoomSensitivity = 0.5; // ✅ Increased sensitivity for more responsive zoom
-            const delta = e.deltaY > 0 ? 1 : -1; // Positive = zoom out, negative = zoom in
+            const zoomSensitivity = 0.5;
+            const delta = e.deltaY > 0 ? 1 : -1;
 
-            // Calculate new view distance (lower = closer/zoomed in, higher = further/zoomed out)
-            // ✅ Wider range (1-30) for better depth exploration
             const newViewDistance = Math.max(1, Math.min(30, currentViewDistance + delta * zoomSensitivity));
 
             if (chart.options.chart?.options3d) {
@@ -355,21 +361,20 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
 
     if (earthquakes.length === 0) {
         return (
-            <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-                <h3 className="text-lg font-semibold mb-4">3D Visualization</h3>
+            <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h3 className="text-xl font-bold text-gray-800 mb-1">3D Spatial Distribution</h3>
                 <p className="text-gray-500">No data available</p>
             </div>
         );
     }
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">3D Earthquake Distribution</h3>
-                <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs text-gray-500 italic">🖱️ Drag to rotate</span>
-                    <span className="text-xs text-gray-500 italic">🔍 Scroll to zoom</span>
-                </div>
+        <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+            <div className="mb-4">
+                <h3 className="text-xl font-bold text-gray-800 mb-1">3D Spatial Distribution</h3>
+                <p className="text-sm text-gray-500">
+                    Click on points to select/deselect earthquakes. Drag to rotate, scroll to zoom. Selected events are highlighted in red.
+                </p>
             </div>
             <div className="h-[500px] cursor-grab active:cursor-grabbing">
                 <HighchartsReact
@@ -385,19 +390,21 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 <ul className="text-xs text-gray-600 list-disc list-inside space-y-0.5">
                     <li><strong>Rotate:</strong> Click and drag to rotate the view</li>
                     <li><strong>Zoom:</strong> Mouse wheel to zoom in/out (or pinch on touch devices)</li>
+                    <li><strong>Select:</strong> Click on points to select/deselect individual earthquakes</li>
                     <li><strong>Marker Size:</strong> Larger circles = higher magnitude earthquakes (exponential scaling)</li>
-                    <li><strong>Color:</strong> Viridis color scale represents magnitude (purple = low, yellow = high)</li>
+                    <li><strong>Color:</strong> Points colored by cluster assignment (same as spatial map)</li>
                     <li><strong>Depth:</strong> Z-axis shows depth (deeper earthquakes appear lower in the plot)</li>
                 </ul>
             </div>
             <ChartExportButtons
                 chartRef={chartRef}
                 data={earthquakes}
-                filename="3d-visualization"
+                filename="temporal-spatial-3d"
+                clusterLabels={clusterLabels}
             />
         </div>
     );
 });
 
-// Export memoized version to prevent unnecessary re-renders
-export default ThreeDVisualization;
+export default TemporalSpatial3DPlot;
+

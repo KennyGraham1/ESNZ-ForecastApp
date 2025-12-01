@@ -8,6 +8,7 @@ import ChartExportButtons from '../ChartExportButtons';
 import { calculateSpatialClustering } from '@/lib/analysis/clustering';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
 import { formatDateForTooltip } from '@/utils/dateFormat';
+import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
 
 interface TemporalSpatialProps {
     earthquakes: EarthquakeData[];
@@ -404,13 +405,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 formatter: function(this: any) {
                     const point = this.point;
                     const custom = point.custom;
-                    const dateStr = custom.timeStr.split('T')[0];
+                    // Convert timeStr to Date object for formatDateForTooltip
+                    const time = new Date(custom.timeStr);
+                    const timeStr = formatDateForTooltip(time);
+                    const clusterText = custom.cluster >= 0 ? `Cluster ${custom.cluster}` : 'Noise';
                     return `
                         <div style="padding: 8px;">
                             <strong>${custom.locality || 'Unknown location'}</strong><br/>
                             <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
-                            ${dateStr}<br/>
-                            Depth: ${custom.depth.toFixed(1)} km
+                            ${timeStr}<br/>
+                            Depth: ${custom.depth.toFixed(1)} km<br/>
+                            Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°<br/>
+                            <em>${clusterText}</em>
                         </div>
                     `;
                 }
@@ -458,7 +464,10 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             }],
             accessibility: {
                 enabled: true,
-                description: 'Temporal plot showing earthquake magnitude over time with selection capability'
+                description: 'Temporal plot showing earthquake magnitude over time. Points are colored by cluster assignment. Click points to select.',
+                keyboardNavigation: {
+                    enabled: true
+                }
             }
         };
     }, [processedEarthquakes, selectedIndices, clusteringResult?.labels, toggleSelection]);
@@ -611,12 +620,15 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
                         // Format date as dd/mm/yyyy HH:mm:ss
                         const timeStr = formatDateForTooltip(point.time);
+                        const clusterText = point.cluster >= 0 ? `Cluster ${point.cluster}` : 'Noise';
                         return `
                             <div style="padding: 8px;">
                                 <strong>${point.locality || 'Unknown location'}</strong><br/>
                                 <strong>M${point.magnitude.toFixed(1)}</strong><br/>
+                                ${timeStr}<br/>
                                 Depth: ${point.depth.toFixed(1)} km<br/>
-                                ${timeStr}
+                                Lat: ${point.lat.toFixed(2)}°, Lon: ${point.lon.toFixed(2)}°<br/>
+                                <em>${clusterText}</em>
                             </div>
                         `;
                     } catch (error) {
@@ -667,7 +679,14 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         }
                     }
                 }
-            ]
+            ],
+            accessibility: {
+                enabled: true,
+                description: 'Interactive map showing earthquake locations in New Zealand. Points are colored by cluster assignment. Click points to select, or use polygon tool for area selection.',
+                keyboardNavigation: {
+                    enabled: true
+                }
+            }
         };
     }, [nzMapGeometry, processedEarthquakes, selectedIndices, isDrawingPolygon, clusteringResult?.labels, toggleSelection]);
 
@@ -913,17 +932,26 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 />
             </div>
 
+            {/* Panel 3: 3D Spatial Distribution */}
+            <TemporalSpatial3DPlot
+                earthquakes={processedEarthquakes}
+                clusterLabels={clusteringResult?.labels}
+                selectedIndices={selectedIndices}
+                onPointClick={toggleSelection}
+            />
+
             {/* Info Card */}
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-6">
                 <div className="flex items-start gap-3">
                     <div className="text-3xl">💡</div>
                     <div>
-                        <h4 className="font-bold text-blue-900 mb-2">Bidirectional Interactive Selection</h4>
+                        <h4 className="font-bold text-blue-900 mb-2">Three-Way Interactive Selection</h4>
                         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                            <li><strong>Click points</strong> in either the temporal plot or spatial map to select/deselect individual earthquakes</li>
+                            <li><strong>Click points</strong> in any of the three views (map, temporal plot, or 3D plot) to select/deselect individual earthquakes</li>
                             <li><strong>Draw polygon</strong> on the map to select multiple earthquakes within a custom area</li>
-                            <li><strong>Selections sync</strong> automatically between temporal and spatial views</li>
-                            <li>Selected earthquakes are highlighted in <span className="text-red-600 font-bold">red</span> in both views</li>
+                            <li><strong>Selections sync</strong> automatically across all three visualizations</li>
+                            <li>Selected earthquakes are highlighted in <span className="text-red-600 font-bold">red</span> in all views</li>
+                            <li><strong>3D Plot:</strong> Drag to rotate, scroll to zoom, and explore the spatial distribution with depth</li>
                         </ul>
                     </div>
                 </div>

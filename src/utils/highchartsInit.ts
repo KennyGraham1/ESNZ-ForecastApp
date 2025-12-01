@@ -55,6 +55,12 @@ export function initializeHighcharts() {
             HighchartsBoost(Highcharts);
         }
 
+        // Accessibility module for improved usability
+        const HighchartsAccessibility = require('highcharts/modules/accessibility');
+        if (typeof HighchartsAccessibility === 'function') {
+            HighchartsAccessibility(Highcharts);
+        }
+
         initialized = true;
     } catch (error) {
         console.error('Failed to initialize Highcharts modules:', error);
