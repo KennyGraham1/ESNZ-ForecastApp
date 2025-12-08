@@ -23,12 +23,18 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         minSamples,
         k,
         nnThreshold,
+        stepMinMag,
+        stepT1,
+        stepT2,
         selectedIndices,
         setAlgorithm,
         setEpsilon,
         setMinSamples,
         setK,
         setNnThreshold,
+        setStepMinMag,
+        setStepT1,
+        setStepT2,
         toggleSelection,
     } = useClusteringContext();
 
@@ -69,8 +75,11 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                         minSamples,
                         k,
                         nnThreshold,
+                        stepMinMag,
+                        stepT1,
+                        stepT2,
                     }),
-                    { algorithm, epsilon, minSamples, k, nnThreshold }
+                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2 }
                 );
 
                 setClusteringResult(result);
@@ -81,7 +90,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                 trackError(
                     error instanceof Error ? error : new Error('Unknown clustering error'),
                     { component: 'SpatialClusteringPlot', operation: 'clustering-sync' },
-                    { algorithm, epsilon, minSamples, k, nnThreshold, dataSize: earthquakes.length },
+                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, dataSize: earthquakes.length },
                     'high'
                 );
 
@@ -92,7 +101,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         }
 
         // OPTIMIZATION: Use Web Worker for large datasets (non-blocking)
-        console.log(`🔄 Running spatial clustering (Web Worker): ${earthquakes.length} events`, { algorithm, epsilon, minSamples, k, nnThreshold });
+        console.log(`🔄 Running spatial clustering (Web Worker): ${earthquakes.length} events`, { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2 });
         setIsCalculating(true);
 
         // Increment request ID to handle race conditions
@@ -154,12 +163,12 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         worker.onmessage = messageHandler;
 
         // Start clustering in worker
-        console.log('🔄 Worker: Starting clustering...', { algorithm, epsilon, minSamples, k, nnThreshold, requestId: currentRequestId });
+        console.log('🔄 Worker: Starting clustering...', { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, requestId: currentRequestId });
 
         try {
             worker.postMessage({
                 earthquakes,
-                options: { algorithm, epsilon, minSamples, k, nnThreshold },
+                options: { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2 },
                 requestId: currentRequestId
             });
         } catch (error) {
@@ -173,7 +182,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
             // Don't terminate worker on cleanup, reuse it
             // Only terminate on component unmount
         };
-    }, [earthquakes, algorithm, epsilon, minSamples, k, nnThreshold, useWebWorker]);
+    }, [earthquakes, algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, useWebWorker]);
 
     // Cleanup worker on unmount
     useEffect(() => {
@@ -410,11 +419,17 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                                 <option value="dbscan">DBSCAN - Density clusters</option>
                                 <option value="optics">OPTICS - Variable density</option>
                             </optgroup>
+                            {/* HIERARCHICAL CLUSTERING OPTIONS - COMMENTED OUT FOR FUTURE RESTORATION
                             <optgroup label="Hierarchical">
                                 <option value="hierarchical-single">Single Linkage - Min distance</option>
                                 <option value="hierarchical-complete">Complete Linkage - Max distance</option>
                                 <option value="hierarchical-average">Average Linkage - Avg distance</option>
                                 <option value="hierarchical-ward">Ward Linkage - Min variance</option>
+                            </optgroup>
+                            */}
+                            <optgroup label="STEP Seismology">
+                                <option value="step-mag">STEP Magnitude - Largest first</option>
+                                <option value="step-time">STEP Time - Time-ordered</option>
                             </optgroup>
                             <optgroup label="Other">
                                 <option value="kmeans">K-Means - Partition-based</option>
@@ -478,6 +493,46 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                                     title="Nearest-neighbor distance threshold (space-time-magnitude)"
                                 />
                             </div>
+                        )}
+                        {(algorithm === 'step-mag' || algorithm === 'step-time') && (
+                            <>
+                                <div className="flex flex-col">
+                                    <span>Min Mag: <span className="font-semibold">{stepMinMag.toFixed(1)}</span></span>
+                                    <input
+                                        type="range"
+                                        min={1.0}
+                                        max={5.0}
+                                        step={0.1}
+                                        value={stepMinMag}
+                                        onChange={(e) => setStepMinMag(parseFloat(e.target.value))}
+                                        title="Minimum magnitude for mainshock detection"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>T1 (days): <span className="font-semibold">{stepT1}</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={30}
+                                        step={1}
+                                        value={stepT1}
+                                        onChange={(e) => setStepT1(parseInt(e.target.value))}
+                                        title="Time window before earthquake (days)"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>T2 (days): <span className="font-semibold">{stepT2}</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={365}
+                                        step={1}
+                                        value={stepT2}
+                                        onChange={(e) => setStepT2(parseInt(e.target.value))}
+                                        title="Time window after earthquake (days)"
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>

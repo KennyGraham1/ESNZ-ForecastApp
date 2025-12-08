@@ -10,6 +10,10 @@ export interface ClusteringState {
     minSamples: number;
     k: number;
     nnThreshold: number; // Nearest-neighbor threshold
+    // STEP clustering parameters
+    stepMinMag: number;  // Minimum mainshock magnitude for STEP
+    stepT1: number;      // Time window before (days)
+    stepT2: number;      // Time window after (days)
 
     // Selection state (indices into the processed earthquake array)
     selectedIndices: Set<number>;
@@ -20,6 +24,9 @@ export interface ClusteringState {
     setMinSamples: (minSamples: number) => void;
     setK: (k: number) => void;
     setNnThreshold: (threshold: number) => void;
+    setStepMinMag: (minMag: number) => void;
+    setStepT1: (t1: number) => void;
+    setStepT2: (t2: number) => void;
     setSelectedIndices: (indices: Set<number>) => void;
     toggleSelection: (index: number) => void;
     clearSelection: () => void;
@@ -35,6 +42,10 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     const [minSamples, setMinSamples] = useState(5);
     const [k, setK] = useState(5);
     const [nnThreshold, setNnThreshold] = useState(1.0); // Nearest-neighbor threshold
+    // STEP clustering parameters
+    const [stepMinMag, setStepMinMag] = useState(2.0);  // Minimum mainshock magnitude
+    const [stepT1, setStepT1] = useState(1);            // Time window before (days)
+    const [stepT2, setStepT2] = useState(30);           // Time window after (days)
 
     // Selection state
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
@@ -72,12 +83,18 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         minSamples,
         k,
         nnThreshold,
+        stepMinMag,
+        stepT1,
+        stepT2,
         selectedIndices,
         setAlgorithm,
         setEpsilon,
         setMinSamples,
         setK,
         setNnThreshold,
+        setStepMinMag,
+        setStepT1,
+        setStepT2,
         setSelectedIndices,
         toggleSelection,
         clearSelection,

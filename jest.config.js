@@ -25,5 +25,14 @@ const customJestConfig = {
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
-module.exports = createJestConfig(customJestConfig)
+// We need to modify the transformIgnorePatterns to include rbush and quickselect ESM modules
+module.exports = async () => {
+  const jestConfig = await createJestConfig(customJestConfig)()
+  // Modify transformIgnorePatterns to transform ESM modules
+  jestConfig.transformIgnorePatterns = [
+    '/node_modules/(?!(rbush|quickselect)/)',
+    '^.+\\.module\\.(css|sass|scss)$',
+  ]
+  return jestConfig
+}
 

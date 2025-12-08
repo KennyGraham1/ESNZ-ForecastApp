@@ -76,6 +76,16 @@ export default function ChartExportButtons({
         }
     };
 
+    // Calculate cluster sizes from cluster labels
+    // Returns a Map where key is cluster ID and value is the count of events in that cluster
+    const calculateClusterSizes = (labels: number[]): Map<number, number> => {
+        const sizes = new Map<number, number>();
+        for (const label of labels) {
+            sizes.set(label, (sizes.get(label) || 0) + 1);
+        }
+        return sizes;
+    };
+
     const exportCSV = () => {
         if (!data || data.length === 0) return;
 
@@ -86,12 +96,18 @@ export default function ChartExportButtons({
             return;
         }
 
-        // Add cluster labels to data if available
+        // Calculate cluster sizes for the cluster_size column
+        const clusterSizes = clusterLabels ? calculateClusterSizes(clusterLabels) : null;
+
+        // Add cluster labels and cluster size to data if available
         const enrichedData = data.map((row, index) => {
             const enriched = { ...row };
             if (clusterLabels && index < clusterLabels.length) {
-                (enriched as any).cluster_id = clusterLabels[index];
-                (enriched as any).cluster_label = clusterLabels[index] === -1 ? 'noise' : `cluster_${clusterLabels[index]}`;
+                const clusterId = clusterLabels[index];
+                (enriched as any).cluster_id = clusterId;
+                (enriched as any).cluster_label = clusterId === -1 ? 'noise' : `cluster_${clusterId}`;
+                // Cluster size: 0 for noise points, actual size for clustered points
+                (enriched as any).cluster_size = clusterId === -1 ? 0 : (clusterSizes?.get(clusterId) || 0);
             }
             return enriched;
         });
@@ -100,11 +116,19 @@ export default function ChartExportButtons({
         let csvContent = '';
 
         // Add clustering metadata as comments if available
-        if (clusteringMetadata && clusterLabels) {
+        if (clusteringMetadata && clusterLabels && clusterSizes) {
             const clusteredPoints = clusterLabels.filter(l => l >= 0);
             const nClusters = clusteredPoints.length > 0 ? Math.max(...clusteredPoints) + 1 : 0;
             const noiseCount = clusterLabels.filter(l => l === -1).length;
             const noisePercent = (noiseCount / clusterLabels.length) * 100;
+
+            // Calculate cluster size statistics
+            const sizes = Array.from(clusterSizes.entries())
+                .filter(([id]) => id >= 0)
+                .map(([, size]) => size);
+            const avgClusterSize = sizes.length > 0 ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
+            const minClusterSize = sizes.length > 0 ? Math.min(...sizes) : 0;
+            const maxClusterSize = sizes.length > 0 ? Math.max(...sizes) : 0;
 
             csvContent += `# Clustering Metadata\n`;
             csvContent += `# Algorithm: ${clusteringMetadata.algorithm}\n`;
@@ -113,6 +137,7 @@ export default function ChartExportButtons({
             csvContent += `# Dataset Size: ${clusteringMetadata.datasetSize}\n`;
             csvContent += `# Number of Clusters: ${nClusters}\n`;
             csvContent += `# Noise Points: ${noiseCount} (${noisePercent.toFixed(1)}%)\n`;
+            csvContent += `# Cluster Size Stats: min=${minClusterSize}, max=${maxClusterSize}, avg=${avgClusterSize.toFixed(1)}\n`;
             csvContent += `# Computation Time: ${clusteringMetadata.computationTime?.toFixed(2)}ms\n`;
             csvContent += `# Timestamp: ${clusteringMetadata.timestamp}\n`;
             csvContent += `#\n`;
@@ -127,7 +152,8 @@ export default function ChartExportButtons({
         // CRITICAL FIX: Define explicit header order for consistent CSV structure
         // This ensures proper column ordering and handles all data types correctly
         const baseHeaders = ['eventID', 'time', 'latitude', 'longitude', 'depth', 'magnitude', 'locality'];
-        const clusterHeaders = clusterLabels ? ['cluster_id', 'cluster_label'] : [];
+        // Include cluster_size column to show how many events are in each cluster
+        const clusterHeaders = clusterLabels ? ['cluster_id', 'cluster_label', 'cluster_size'] : [];
         const headers = [...baseHeaders, ...clusterHeaders];
 
         // Build CSV header row
@@ -186,7 +212,10 @@ export default function ChartExportButtons({
             return;
         }
 
-        // Add cluster labels to data if available and format dates
+        // Calculate cluster sizes for the cluster_size field
+        const clusterSizes = clusterLabels ? calculateClusterSizes(clusterLabels) : null;
+
+        // Add cluster labels, cluster size, and format dates
         const enrichedData = data.map((row, index) => {
             const enriched = { ...row };
 
@@ -196,8 +225,11 @@ export default function ChartExportButtons({
             }
 
             if (clusterLabels && index < clusterLabels.length) {
-                (enriched as any).cluster_id = clusterLabels[index];
-                (enriched as any).cluster_label = clusterLabels[index] === -1 ? 'noise' : `cluster_${clusterLabels[index]}`;
+                const clusterId = clusterLabels[index];
+                (enriched as any).cluster_id = clusterId;
+                (enriched as any).cluster_label = clusterId === -1 ? 'noise' : `cluster_${clusterId}`;
+                // Cluster size: 0 for noise points, actual size for clustered points
+                (enriched as any).cluster_size = clusterId === -1 ? 0 : (clusterSizes?.get(clusterId) || 0);
             }
             return enriched;
         });
@@ -208,13 +240,29 @@ export default function ChartExportButtons({
         };
 
         // Add clustering metadata if available
-        if (clusteringMetadata && clusterLabels) {
+        if (clusteringMetadata && clusterLabels && clusterSizes) {
             const clusteredPoints = clusterLabels.filter(l => l >= 0);
             const nClusters = clusteredPoints.length > 0 ? Math.max(...clusteredPoints) + 1 : 0;
             const noiseCount = clusterLabels.filter(l => l === -1).length;
             const clusteredCount = clusterLabels.length - noiseCount;
             const clusterPercent = (clusteredCount / clusterLabels.length) * 100;
             const noisePercent = (noiseCount / clusterLabels.length) * 100;
+
+            // Build cluster size summary (sorted by cluster ID)
+            const clusterSizeSummary: Record<string, number> = {};
+            for (const [clusterId, size] of clusterSizes.entries()) {
+                if (clusterId >= 0) { // Exclude noise from summary
+                    clusterSizeSummary[`cluster_${clusterId}`] = size;
+                }
+            }
+
+            // Calculate cluster size statistics
+            const sizes = Array.from(clusterSizes.entries())
+                .filter(([id]) => id >= 0)
+                .map(([, size]) => size);
+            const avgClusterSize = sizes.length > 0 ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
+            const minClusterSize = sizes.length > 0 ? Math.min(...sizes) : 0;
+            const maxClusterSize = sizes.length > 0 ? Math.max(...sizes) : 0;
 
             exportData.clustering_metadata = {
                 algorithm: clusteringMetadata.algorithm,
@@ -226,8 +274,12 @@ export default function ChartExportButtons({
                     clustered_points: clusteredCount,
                     cluster_percent: parseFloat(clusterPercent.toFixed(2)),
                     noise_points: noiseCount,
-                    noise_percent: parseFloat(noisePercent.toFixed(2))
+                    noise_percent: parseFloat(noisePercent.toFixed(2)),
+                    avg_cluster_size: parseFloat(avgClusterSize.toFixed(2)),
+                    min_cluster_size: minClusterSize,
+                    max_cluster_size: maxClusterSize
                 },
+                cluster_sizes: clusterSizeSummary,
                 computation_time_ms: clusteringMetadata.computationTime,
                 timestamp: clusteringMetadata.timestamp
             };

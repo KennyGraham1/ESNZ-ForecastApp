@@ -22,12 +22,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         minSamples,
         k,
         nnThreshold,
+        stepMinMag,
+        stepT1,
+        stepT2,
         selectedIndices,
         setAlgorithm: setClusteringAlgorithm,
         setEpsilon,
         setMinSamples,
         setK,
         setNnThreshold,
+        setStepMinMag,
+        setStepT1,
+        setStepT2,
         setSelectedIndices,
         toggleSelection,
         clearSelection,
@@ -45,9 +51,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         return earthquakes;
     }, [earthquakes]);
 
-    // Polygon drawing state
+    // POLYGON SELECTION FEATURE - STATE KEPT BUT FEATURE DISABLED
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [polygonPoints, setPolygonPoints] = useState<Array<{lat: number, lon: number}>>([]);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [polygonSeries, setPolygonSeries] = useState<any>(null);
 
     // Map state
@@ -117,6 +126,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         mapChart.redraw();
     }, [selectedIndices]);
 
+    /* POLYGON SELECTION FEATURE - MAP CLICK HANDLER - COMMENTED OUT FOR FUTURE RESTORATION
     // Handle map clicks for polygon drawing
     useEffect(() => {
         const mapChart = mapChartRef.current?.chart;
@@ -222,6 +232,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             (Highcharts as any).removeEvent(mapChart, 'click', handleMapClick);
         };
     }, [isDrawingPolygon, polygonPoints]);
+    END OF POLYGON MAP CLICK HANDLER */
 
     // Point-in-polygon algorithm (ray casting)
     const isPointInPolygon = (point: {lat: number, lon: number}, polygon: Array<{lat: number, lon: number}>) => {
@@ -239,7 +250,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         return inside;
     };
 
+    // POLYGON SELECTION FEATURE - FUNCTIONS KEPT BUT DISABLED
     // Handle polygon completion
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const completePolygon = () => {
         if (polygonPoints.length < 3) {
             alert('Please draw at least 3 points to create a polygon');
@@ -275,6 +288,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     };
 
     // Clear polygon
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const clearPolygon = () => {
         setPolygonPoints([]);
         setIsDrawingPolygon(false);
@@ -311,6 +325,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     minSamples,
                     k,
                     nnThreshold,
+                    stepMinMag,
+                    stepT1,
+                    stepT2,
                 });
                 setClusteringResult(result);
             } catch (error) {
@@ -322,7 +339,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         }, 50); // Small delay to allow loading indicator to render
 
         return () => clearTimeout(timeoutId);
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold]);
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
@@ -773,11 +790,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     <option value="dbscan">DBSCAN - Density clusters</option>
                                     <option value="optics">OPTICS - Variable density</option>
                                 </optgroup>
+                                {/* HIERARCHICAL CLUSTERING OPTIONS - COMMENTED OUT FOR FUTURE RESTORATION
                                 <optgroup label="Hierarchical">
                                     <option value="hierarchical-single">Single Linkage - Min distance</option>
                                     <option value="hierarchical-complete">Complete Linkage - Max distance</option>
                                     <option value="hierarchical-average">Average Linkage - Avg distance</option>
                                     <option value="hierarchical-ward">Ward Linkage - Min variance</option>
+                                </optgroup>
+                                */}
+                                <optgroup label="STEP Seismology">
+                                    <option value="step-mag">STEP Magnitude - Largest first</option>
+                                    <option value="step-time">STEP Time - Time-ordered</option>
                                 </optgroup>
                                 <optgroup label="Other">
                                     <option value="kmeans">K-Means - Partition-based</option>
@@ -842,9 +865,50 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     />
                                 </div>
                             )}
+                            {(clusteringAlgorithm === 'step-mag' || clusteringAlgorithm === 'step-time') && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Min Mag: <span className="font-semibold">{stepMinMag.toFixed(1)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={1.0}
+                                            max={5.0}
+                                            step={0.1}
+                                            value={stepMinMag}
+                                            onChange={(e) => setStepMinMag(parseFloat(e.target.value))}
+                                            title="Minimum magnitude for mainshock detection"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>T1 (days): <span className="font-semibold">{stepT1}</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={30}
+                                            step={1}
+                                            value={stepT1}
+                                            onChange={(e) => setStepT1(parseInt(e.target.value))}
+                                            title="Time window before earthquake (days)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>T2 (days): <span className="font-semibold">{stepT2}</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={365}
+                                            step={1}
+                                            value={stepT2}
+                                            onChange={(e) => setStepT2(parseInt(e.target.value))}
+                                            title="Time window after earthquake (days)"
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                     <div className="flex gap-2 flex-wrap">
+                        {/* POLYGON SELECTION FEATURE - UI BUTTONS - COMMENTED OUT FOR FUTURE RESTORATION
                         {!isDrawingPolygon ? (
                             <button
                                 onClick={() => setIsDrawingPolygon(true)}
@@ -869,6 +933,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 </button>
                             </>
                         )}
+                        END OF POLYGON UI BUTTONS */}
                         {selectedIndices.size > 0 && (
                             <button
                                 onClick={handleClearSelection}
@@ -879,6 +944,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         )}
                     </div>
                 </div>
+                {/* POLYGON SELECTION FEATURE - DRAWING MODE MESSAGE - COMMENTED OUT FOR FUTURE RESTORATION
                 {isDrawingPolygon && (
                     <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                         <p className="text-sm text-yellow-800">
@@ -886,6 +952,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         </p>
                     </div>
                 )}
+                END OF POLYGON DRAWING MODE MESSAGE */}
             </div>
 
             {/* Panel 1: Spatial Map */}
@@ -893,12 +960,10 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 <div className="mb-4">
                     <h3 className="text-xl font-bold text-gray-800 mb-1">Spatial Map</h3>
                     <p className="text-sm text-gray-500">
-                        {isDrawingPolygon
-                            ? 'Click on the map to draw a polygon selection area'
-                            : 'Click on points to select/deselect earthquakes. Use polygon tool for area selection.'}
+                        Click on points to select/deselect earthquakes.
                     </p>
                 </div>
-                <div className={`h-[600px] ${isDrawingPolygon ? 'cursor-crosshair' : ''}`}>
+                <div className="h-[600px]">
                     <HighchartsReact
                         highcharts={Highcharts}
                         constructorType="mapChart"
