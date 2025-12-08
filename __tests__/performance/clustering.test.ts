@@ -130,7 +130,7 @@ function generateSeismicSequence(): EarthquakeData[] {
     }
 
     // Sort by time (important for STEP algorithms)
-    return earthquakes.sort((a, b) => a.timeMs - b.timeMs);
+    return earthquakes.sort((a, b) => (a.timeMs ?? 0) - (b.timeMs ?? 0));
 }
 
 describe('Clustering Performance', () => {
@@ -427,6 +427,121 @@ describe('Clustering Performance', () => {
             // Should complete in under 500ms for ~100 points
             expect(durationMag).toBeLessThan(500);
             expect(durationTime).toBeLessThan(500);
+        });
+    });
+
+    describe('ST-DBSCAN', () => {
+        it('should separate spatially close but temporally distant events', () => {
+            const baseTime = new Date('2024-01-01').getTime();
+            const dayMs = 86400000;
+            const testData: EarthquakeData[] = [];
+
+            // Cluster 1: Location A, Time T1
+            for (let i = 0; i < 10; i++) {
+                testData.push({
+                    eventID: `c1-${i}`,
+                    time: new Date(baseTime + i * dayMs * 0.1), // Within 1 day
+                    timeMs: baseTime + i * dayMs * 0.1,
+                    latitude: -41.0,
+                    longitude: 174.0,
+                    magnitude: 4.0, depth: 10, locality: 'Loc A',
+                });
+            }
+
+            // Cluster 2: Location A (same place), Time T2 (30 days later)
+            // Should be separate cluster in ST-DBSCAN if epsilonTemporal < 30
+            for (let i = 0; i < 10; i++) {
+                testData.push({
+                    eventID: `c2-${i}`,
+                    time: new Date(baseTime + 30 * dayMs + i * dayMs * 0.1),
+                    timeMs: baseTime + 30 * dayMs + i * dayMs * 0.1,
+                    latitude: -41.0, // Same location
+                    longitude: 174.0,
+                    magnitude: 4.0, depth: 10, locality: 'Loc A',
+                });
+            }
+
+            const result = calculateSpatialClustering(testData, {
+                algorithm: 'st-dbscan',
+                epsilon: 25,
+                minSamples: 5,
+                epsilonTemporal: 7, // 7 days window
+            });
+
+            expect(result).not.toBeNull();
+            // Should find 2 clusters because time gap > epsilonTemporal
+            expect(result!.nClusters).toBe(2);
+        });
+
+        it('should identify noise points in space-time', () => {
+            const testData = generateClusteredEarthquakes(); // 3 distinct spatial clusters
+            // st-dbscan checks time too. generated data has time spread over 50 days (frequency 1 day).
+            // Cluster at -41,-174 has 50 points, 1 per day.
+            // With epsilonTemporal=7, minSamples=5, it should link them because dt=1 day < 7.
+
+            const result = calculateSpatialClustering(testData, {
+                algorithm: 'st-dbscan',
+                epsilon: 25,
+                minSamples: 5,
+                epsilonTemporal: 2,
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!.nClusters).toBeGreaterThan(0);
+            expect(result!.noisePercent).toBeGreaterThan(0);
+        });
+    });
+
+    describe('Time Magnitude Clustering (TMC)', () => {
+        it('should cluster characteristic sequences', () => {
+            const testData = generateSeismicSequence(); // M6.0 mainshock + aftershocks
+            const result = calculateSpatialClustering(testData, {
+                algorithm: 'tmc',
+                tmcRfact: 10,
+                tmcTau0: 2,
+                tmcTauMax: 10,
+                tmcP1: 0.99,
+                tmcXk: 0.5,
+                tmcMinMag: 1.5
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!.nClusters).toBeGreaterThan(0);
+
+            // The M6.0 mainshock should be in a large cluster
+            const mainshockIndex = testData.findIndex(e => e.magnitude >= 6.0);
+            const mainshockLabel = result!.labels[mainshockIndex];
+            expect(mainshockLabel).toBeGreaterThan(-1); // Not noise
+
+            // Should have substantial members in that cluster
+            if (mainshockLabel >= 0) {
+                const clusterSize = result!.clusters[mainshockLabel].length;
+                expect(clusterSize).toBeGreaterThan(10);
+            }
+        });
+
+        it('should perform efficiently', () => {
+            const testData = generateSeismicSequence(); // ~50-60 events
+            const start = performance.now();
+            const result = calculateSpatialClustering(testData, { algorithm: 'tmc' });
+            const duration = performance.now() - start;
+
+            expect(result).not.toBeNull();
+            expect(duration).toBeLessThan(500); // ms
+        });
+
+        it('should produce correct metadata', () => {
+            const testData = generateSeismicSequence();
+            const result = calculateSpatialClustering(testData, {
+                algorithm: 'tmc',
+                tmcRfact: 15,
+                tmcTau0: 3
+            });
+
+            expect(result).not.toBeNull();
+            expect(result!.metadata!.algorithm).toBe('tmc');
+            expect(result!.metadata!.parameters.tmcRfact).toBe(15);
+            expect(result!.metadata!.parameters.tmcTau0).toBe(3);
         });
     });
 });

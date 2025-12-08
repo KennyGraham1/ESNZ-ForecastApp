@@ -1,5 +1,5 @@
 import { EarthquakeData } from '@/types/earthquake';
-import { parse } from 'date-fns';
+import * as DateFns from 'date-fns';
 import { DATETIME_FORMAT } from '@/utils/dateFormat';
 
 export interface CSVParseResult {
@@ -75,14 +75,14 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
         // Parse header
         const headerLine = lines[0];
         const headers = parseCSVLine(headerLine);
-        
+
         // Normalize headers (lowercase, trim)
         const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
 
         // Validate required columns
         const requiredColumns = ['time', 'latitude', 'longitude', 'depth', 'magnitude'];
         const missingColumns = requiredColumns.filter(col => !normalizedHeaders.includes(col));
-        
+
         if (missingColumns.length > 0) {
             return {
                 success: false,
@@ -103,12 +103,12 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
         for (let i = 1; i < lines.length; i++) {
             rowNumber++;
             const line = lines[i].trim();
-            
+
             if (!line) continue;
 
             try {
                 const values = parseCSVLine(line);
-                
+
                 if (values.length !== headers.length) {
                     warnings.push(`Row ${rowNumber}: Column count mismatch (expected ${headers.length}, got ${values.length})`);
                     continue;
@@ -122,7 +122,7 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
 
                 // Parse earthquake data
                 const earthquake = parseEarthquakeRow(row, rowNumber, warnings);
-                
+
                 if (earthquake) {
                     earthquakes.push(earthquake);
                 }
@@ -376,35 +376,47 @@ function parseTimeValue(timeValue: any, context: string): Date | null {
         const trimmed = timeValue.trim();
 
         // Try parsing as numeric timestamp (string representation)
+        // Only if purely numeric to avoid confusing with other formats
         if (/^\d+$/.test(trimmed)) {
             const numericValue = parseInt(trimmed, 10);
             return parseTimeValue(numericValue, context);
         }
 
-        // Try ISO 8601 format first (most common for APIs)
+        // IMPROVED: Try each supported format FIRST to handle ambiguous dates (e.g. 08/12/2025)
+        // correctly according to NZ/UK preference over US defaults.
+        for (const format of SUPPORTED_DATE_FORMATS) {
+            try {
+                // Handle potential ESM/CJS interop issues with date-fns in test environment
+                const parseFunc = DateFns.parse || (DateFns as any).default?.parse;
+
+                if (typeof parseFunc === 'function') {
+                    const parsed = parseFunc(trimmed, format, new Date());
+                    if (!isNaN(parsed.getTime())) {
+                        // Additional validation: check if the parsed date is reasonable
+                        const year = parsed.getFullYear();
+                        // Basic sanity check year range
+                        if (year >= 1700 && year <= 2100) {
+                            return parsed;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Continue to next format
+            }
+        }
+
+        // Fallback: Try ISO 8601 / Browser default last
+        // This handles standard ISO strings that might not hit the formats above
         try {
             const isoDate = new Date(trimmed);
             if (!isNaN(isoDate.getTime())) {
-                return isoDate;
+                const year = isoDate.getFullYear();
+                if (year >= 1700 && year <= 2100) {
+                    return isoDate;
+                }
             }
         } catch {
-            // Continue to other formats
-        }
-
-        // Try each supported format
-        for (const format of SUPPORTED_DATE_FORMATS) {
-            try {
-                const parsed = parse(trimmed, format, new Date());
-                if (!isNaN(parsed.getTime())) {
-                    // Additional validation: check if the parsed date is reasonable
-                    const year = parsed.getFullYear();
-                    if (year >= 1900 && year <= 2100) {
-                        return parsed;
-                    }
-                }
-            } catch {
-                // Continue to next format
-            }
+            // Failed
         }
     }
 

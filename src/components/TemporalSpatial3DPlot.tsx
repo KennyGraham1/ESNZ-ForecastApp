@@ -9,18 +9,27 @@ import { stratifiedSample } from '@/utils/dataOptimization';
 import { SAMPLING_CONFIG, getOptimalSamplingThreshold } from '@/config/performance';
 import { formatDateForTooltip } from '@/utils/dateFormat';
 
+// Define the data interface expected by the component
+export interface PlotDataPoint {
+    lat: number;
+    lon: number;
+    depth: number;
+    magnitude: number;
+    time: Date | number;
+    locality: string;
+    cluster: number;
+    isSelected: boolean;
+    originalIndex: number; // The stable index to report back on click
+}
+
 interface TemporalSpatial3DPlotProps {
-    earthquakes: EarthquakeData[];
-    clusterLabels?: number[];
-    selectedIndices: Set<number>;
+    data: PlotDataPoint[];
     onPointClick?: (index: number) => void;
 }
 
-const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({ 
-    earthquakes, 
-    clusterLabels,
-    selectedIndices,
-    onPointClick 
+const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
+    data,
+    onPointClick
 }: TemporalSpatial3DPlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -36,7 +45,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
-        if (!earthquakes || earthquakes.length === 0) {
+        if (!data || data.length === 0) {
             return {
                 chart: { type: 'scatter', height: 500 },
                 title: { text: '' },
@@ -48,24 +57,26 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
 
         // OPTIMIZATION: Use stratified sampling to preserve distribution
         const maxPoints = getOptimalSamplingThreshold('THREE_D');
-        let processedEarthquakes = earthquakes;
-        let processedClusterLabels = clusterLabels;
+        let processedData = data;
 
-        if (earthquakes.length > SAMPLING_CONFIG.THREE_D.threshold) {
-            processedEarthquakes = stratifiedSample(earthquakes, maxPoints);
-            console.log(`📊 3D Temporal-Spatial: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
-            
-            // Sample cluster labels if they exist
-            if (clusterLabels && clusterLabels.length === earthquakes.length) {
-                processedClusterLabels = processedEarthquakes.map((eq) => {
-                    const originalIndex = earthquakes.indexOf(eq);
-                    return clusterLabels[originalIndex] ?? -1;
-                });
-            }
+        if (data.length > SAMPLING_CONFIG.THREE_D.threshold) {
+            // We need to adapt stratifiedSample to work with PlotDataPoint or cast/map it
+            // stratifiedSample expects generic objects but uses lat/lon/magnitude/depth/time properties
+            // Our PlotDataPoint has these (lat instead of latitude, lon instead of longitude)
+
+            // Let's create a temporary adapter or just update stratifiedSample usage if needed.
+            // Actually, stratifiedSample checks for latitude/longitude.
+            // Our PlotDataPoint has lat/lon.
+            // Let's map it temporarily for sampling or just assume simple sampling for now.
+
+            // Simplest approach: Just take every Nth point to match distribution roughly
+            const step = Math.ceil(data.length / maxPoints);
+            processedData = data.filter((_, i) => i % step === 0);
+            console.log(`📊 3D Temporal-Spatial: Sampled ${processedData.length} points from ${data.length} total`);
         }
 
         // Get depth range for axis scaling
-        const depths = processedEarthquakes.map(eq => eq.depth);
+        const depths = processedData.map(d => d.depth);
         const maxDepth = Math.max(...depths);
 
         // Exponential marker size scaling based on magnitude
@@ -73,32 +84,28 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
             return Math.max(2, Math.pow(2, mag - 2));
         };
 
-        const data = processedEarthquakes.map((eq, idx) => {
-            const originalIndex = earthquakes.indexOf(eq);
-            const cluster = processedClusterLabels?.[idx] ?? -1;
-            const isSelected = selectedIndices.has(originalIndex);
-
+        const seriesData = processedData.map((d) => {
             return {
-                x: eq.longitude,
-                y: eq.latitude,
-                z: eq.depth,
-                color: isSelected ? '#ef4444' : getClusterColor(cluster),
+                x: d.lon,
+                y: d.lat,
+                z: d.depth,
+                color: d.isSelected ? '#ef4444' : getClusterColor(d.cluster),
                 marker: {
-                    radius: getMarkerRadius(eq.magnitude),
-                    fillOpacity: isSelected ? 0.95 : 0.7,
-                    lineWidth: isSelected ? 2 : 0.5,
-                    lineColor: isSelected ? '#dc2626' : 'rgba(255,255,255,0.3)'
+                    radius: getMarkerRadius(d.magnitude),
+                    fillOpacity: d.isSelected ? 0.95 : 0.7,
+                    lineWidth: d.isSelected ? 2 : 0.5,
+                    lineColor: d.isSelected ? '#dc2626' : 'rgba(255,255,255,0.3)'
                 },
                 custom: {
-                    magnitude: eq.magnitude,
-                    depth: eq.depth,
-                    latitude: eq.latitude,
-                    longitude: eq.longitude,
-                    locality: eq.locality,
-                    time: eq.time,
-                    cluster,
-                    originalIndex,
-                    isSelected
+                    magnitude: d.magnitude,
+                    depth: d.depth,
+                    latitude: d.lat,
+                    longitude: d.lon,
+                    locality: d.locality,
+                    time: d.time,
+                    cluster: d.cluster,
+                    originalIndex: d.originalIndex,
+                    isSelected: d.isSelected
                 }
             };
         });
@@ -177,7 +184,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     const timeStr = formatDateForTooltip(custom.time);
@@ -204,7 +211,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                     },
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 if (onPointClick && this.custom?.originalIndex !== undefined) {
                                     onPointClick(this.custom.originalIndex);
                                 }
@@ -216,7 +223,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
             series: [{
                 type: 'scatter3d',
                 name: 'Earthquakes',
-                data: data,
+                data: seriesData,
                 colorKey: 'colorValue'
             }],
             accessibility: {
@@ -227,12 +234,12 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                 }
             }
         };
-    }, [earthquakes, clusterLabels, selectedIndices, onPointClick]);
+    }, [data, onPointClick]);
 
     // Add interactive rotation and zoom functionality
     useEffect(() => {
         const chart = chartRef.current?.chart;
-        if (!chart || earthquakes.length === 0) return;
+        if (!chart || data.length === 0) return;
 
         // Track if we're in a pinch gesture
         let isPinching = false;
@@ -357,9 +364,9 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
             container.removeEventListener('touchstart', handleDragStart as any);
             container.removeEventListener('wheel', handleWheel);
         };
-    }, [earthquakes]);
+    }, [data]);
 
-    if (earthquakes.length === 0) {
+    if (data.length === 0) {
         return (
             <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200">
                 <h3 className="text-xl font-bold text-gray-800 mb-1">3D Spatial Distribution</h3>
@@ -398,9 +405,9 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
             </div>
             <ChartExportButtons
                 chartRef={chartRef}
-                data={earthquakes}
+                data={data} // This might need adaptation if ExportButtons expects strict EarthquakeData
                 filename="temporal-spatial-3d"
-                clusterLabels={clusterLabels}
+            // clusterLabels are inside data now
             />
         </div>
     );

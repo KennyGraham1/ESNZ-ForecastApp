@@ -25,6 +25,13 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         stepMinMag,
         stepT1,
         stepT2,
+        epsilonTemporal,
+        tmcRfact,
+        tmcTau0,
+        tmcTauMax,
+        tmcP1,
+        tmcXk,
+        includeNoise,
         selectedIndices,
         setAlgorithm: setClusteringAlgorithm,
         setEpsilon,
@@ -34,9 +41,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setStepMinMag,
         setStepT1,
         setStepT2,
+        setEpsilonTemporal,
+        setTmcRfact,
+        setTmcTau0,
+        setTmcTauMax,
+        setTmcP1,
+        setTmcXk,
+        setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
         clearSelection,
+        addToSelection,
     } = useClusteringContext();
 
     // Performance optimization: Sample data for large datasets
@@ -55,7 +70,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [polygonPoints, setPolygonPoints] = useState<Array<{lat: number, lon: number}>>([]);
+    const [polygonPoints, setPolygonPoints] = useState<Array<{ lat: number, lon: number }>>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [polygonSeries, setPolygonSeries] = useState<any>(null);
 
@@ -86,9 +101,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             if (
                 event.message &&
                 (event.message.includes('coordinates must be finite numbers') ||
-                 event.message.includes('coordinate') ||
-                 event.message.includes('transformToLatLon') ||
-                 event.message.includes('projectedUnitsToLonLat'))
+                    event.message.includes('coordinate') ||
+                    event.message.includes('transformToLatLon') ||
+                    event.message.includes('projectedUnitsToLonLat'))
             ) {
                 console.debug('Suppressed Highcharts coordinate error:', event.message);
                 event.preventDefault();
@@ -235,7 +250,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     END OF POLYGON MAP CLICK HANDLER */
 
     // Point-in-polygon algorithm (ray casting)
-    const isPointInPolygon = (point: {lat: number, lon: number}, polygon: Array<{lat: number, lon: number}>) => {
+    const isPointInPolygon = (point: { lat: number, lon: number }, polygon: Array<{ lat: number, lon: number }>) => {
         if (polygon.length < 3) return false;
 
         let inside = false;
@@ -328,6 +343,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     stepMinMag,
                     stepT1,
                     stepT2,
+                    epsilonTemporal,
+                    tmcRfact,
+                    tmcTau0,
+                    tmcTauMax,
+                    tmcP1,
+                    tmcXk,
                 });
                 setClusteringResult(result);
             } catch (error) {
@@ -339,7 +360,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         }, 50); // Small delay to allow loading indicator to render
 
         return () => clearTimeout(timeoutId);
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2]);
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
@@ -351,28 +372,93 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         return colors[clusterLabel % colors.length];
     };
 
+    // Filter earthquakes for display based on noise setting
+    const filteredEarthquakes = useMemo(() => {
+        if (!clusteringResult || includeNoise) {
+            return processedEarthquakes;
+        }
+
+        // Return only points that are NOT noise (label != -1)
+        // We match by index since labels correspond to processedEarthquakes indices
+        return processedEarthquakes.filter((_, index) => {
+            const label = clusteringResult.labels[index];
+            return label !== -1;
+        });
+    }, [processedEarthquakes, clusteringResult, includeNoise]);
+
+    // Create a map from original indices to filtered indices (if filtering is active)
+    // This is needed because interaction handlers (clicks etc) might give original indices
+    const originalToFilteredIndex = useMemo(() => {
+        if (!clusteringResult || includeNoise) return null;
+
+        const map = new Map<number, number>();
+        let filteredIdx = 0; // Index in the filtered array
+
+        processedEarthquakes.forEach((_, originalIdx) => {
+            const label = clusteringResult.labels[originalIdx];
+            if (label !== -1) {
+                map.set(originalIdx, filteredIdx++);
+            }
+        });
+
+        return map;
+    }, [processedEarthquakes, clusteringResult, includeNoise]);
+
+    // Re-implementing data preparation correctly for all charts
+    const chartData = useMemo(() => {
+        return filteredEarthquakes.map(eq => {
+            // We need to find the correct cluster label for this earthquake
+            let clusterLabel = -1; // Default to noise
+
+            if (clusteringResult) {
+                // Indices in clusteringResult.labels match processedEarthquakes
+                // We need to match filteredEarthquakes items back to processedEarthquakes to get the index
+                // Or, better, just zip the labels with the earthquakes during filtering
+                const originalIndex = processedEarthquakes.findIndex(e => e.eventID === eq.eventID);
+                if (originalIndex !== -1) {
+                    clusterLabel = clusteringResult.labels[originalIndex];
+                }
+            }
+
+            const isSelected = selectedIndices.has(processedEarthquakes.findIndex(e => e.eventID === eq.eventID));
+
+            return {
+                lat: eq.latitude,
+                lon: eq.longitude,
+                z: isSelected ? 1000 : clusterLabel + 2, // High z-index for selected
+                cluster: clusterLabel,
+                magnitude: eq.magnitude,
+                depth: eq.depth,
+                time: eq.time,
+                locality: eq.locality, // Added locality
+                eventID: eq.eventID,
+                isSelected: isSelected,
+                originalIndex: processedEarthquakes.findIndex(e => e.eventID === eq.eventID)
+            };
+        });
+    }, [filteredEarthquakes, clusteringResult, selectedIndices, processedEarthquakes]);
+
     // Create temporal plot options
     const temporalPlotOptions: Highcharts.Options = useMemo(() => {
         // Create arrays with valid data only
-        const validData = processedEarthquakes.map((eq, idx) => {
+        const validData = chartData.map((d) => {
             try {
-                const time = eq.time instanceof Date ? eq.time : new Date(eq.time);
+                const time = d.time instanceof Date ? d.time : new Date(d.time);
                 if (isNaN(time.getTime())) {
                     return null;
                 }
-                const cluster = clusteringResult?.labels[idx] ?? -1;
                 return {
                     time: time.getTime(),
                     timeStr: time.toISOString(),
-                    magnitude: eq.magnitude,
-                    depth: eq.depth,
-                    latitude: eq.latitude,
-                    longitude: eq.longitude,
-                    locality: eq.locality,
-                    size: Math.max(4, eq.magnitude * 1.5),
-                    isSelected: selectedIndices.has(idx),
-                    originalIndex: idx,
-                    cluster,
+                    magnitude: d.magnitude,
+                    depth: d.depth,
+                    latitude: d.lat,
+                    longitude: d.lon,
+                    locality: d.locality,
+                    size: Math.max(4, d.magnitude * 1.5),
+                    isSelected: d.isSelected,
+                    originalIndex: d.originalIndex,
+                    cluster: d.cluster,
                 };
             } catch (e) {
                 return null;
@@ -419,7 +505,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     // Convert timeStr to Date object for formatDateForTooltip
@@ -446,7 +532,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     },
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 const idx = this.custom.originalIndex;
                                 toggleSelection(idx);
                             }
@@ -487,20 +573,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 }
             }
         };
-    }, [processedEarthquakes, selectedIndices, clusteringResult?.labels, toggleSelection]);
+    }, [chartData, toggleSelection]);
 
     // Map configuration
     const mapOptions: any = useMemo(() => {
         if (!nzMapGeometry) return null;
 
         // Prepare earthquake data for map - filter out invalid coordinates
-        const earthquakeData = processedEarthquakes
-            .map((eq, idx) => {
-                const cluster = clusteringResult?.labels[idx] ?? -1;
-
+        const mapPoints = chartData
+            .map((d) => {
                 // Validate coordinates before creating the object
-                const lat = eq.latitude;
-                const lon = eq.longitude;
+                const lat = d.lat;
+                const lon = d.lon;
 
                 if (
                     typeof lat !== 'number' ||
@@ -520,14 +604,14 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 return {
                     lat,
                     lon,
-                    magnitude: eq.magnitude,
-                    depth: eq.depth,
-                    time: eq.time,
-                    locality: eq.locality,
-                    isSelected: selectedIndices.has(idx),
-                    originalIndex: idx,
-                    cluster,
-                    color: getClusterColor(cluster),
+                    magnitude: d.magnitude,
+                    depth: d.depth,
+                    time: d.time,
+                    locality: d.locality,
+                    isSelected: d.isSelected,
+                    originalIndex: d.originalIndex,
+                    cluster: d.cluster,
+                    color: getClusterColor(d.cluster),
                 };
             })
             .filter((eq): eq is NonNullable<typeof eq> => eq !== null);
@@ -538,7 +622,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 backgroundColor: '#ffffff',
                 height: 600,
                 events: {
-                    load: function(this: any) {
+                    load: function (this: any) {
                         const chart = this;
                         (window as any).temporalSpatialMapChart = chart;
 
@@ -547,7 +631,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             // Wrap onContainerMouseLeave
                             const originalMouseLeave = chart.pointer.onContainerMouseLeave;
                             if (originalMouseLeave) {
-                                chart.pointer.onContainerMouseLeave = function(e: any) {
+                                chart.pointer.onContainerMouseLeave = function (e: any) {
                                     try {
                                         originalMouseLeave.call(this, e);
                                     } catch (error) {
@@ -560,7 +644,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             // Wrap setHoverChartIndex
                             const originalSetHover = chart.pointer.setHoverChartIndex;
                             if (originalSetHover) {
-                                chart.pointer.setHoverChartIndex = function(...args: any[]) {
+                                chart.pointer.setHoverChartIndex = function (...args: any[]) {
                                     try {
                                         originalSetHover.apply(this, args);
                                     } catch (error) {
@@ -572,7 +656,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             // Wrap onContainerMouseMove
                             const originalMouseMove = chart.pointer.onContainerMouseMove;
                             if (originalMouseMove) {
-                                chart.pointer.onContainerMouseMove = function(e: any) {
+                                chart.pointer.onContainerMouseMove = function (e: any) {
                                     try {
                                         originalMouseMove.call(this, e);
                                     } catch (error) {
@@ -586,7 +670,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         if (chart.container) {
                             const container = chart.container;
                             const originalOnMouseLeave = container.onmouseleave;
-                            container.onmouseleave = function(e: any) {
+                            container.onmouseleave = function (e: any) {
                                 try {
                                     if (originalOnMouseLeave) {
                                         originalOnMouseLeave.call(this, e);
@@ -620,7 +704,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     try {
                         const point = this.point;
                         if (!point || !point.magnitude) return '';
@@ -666,7 +750,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 {
                     type: 'mappoint',
                     name: 'Earthquakes',
-                    data: earthquakeData,
+                    data: mapPoints,
                     colorKey: 'color',
                     marker: {
                         radius: 4,
@@ -677,7 +761,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     },
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 // Don't select individual points when drawing polygon
                                 if (isDrawingPolygon) {
                                     console.log('Point click ignored - drawing polygon');
@@ -705,7 +789,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 }
             }
         };
-    }, [nzMapGeometry, processedEarthquakes, selectedIndices, isDrawingPolygon, clusteringResult?.labels, toggleSelection]);
+    }, [nzMapGeometry, chartData, isDrawingPolygon, toggleSelection]);
 
     const handleClearSelection = () => {
         clearSelection();
@@ -743,7 +827,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             ) : (
                                 <span className="flex items-center gap-2">
                                     <span className="inline-block w-3 h-3 bg-blue-500 rounded-full"></span>
-                                    Showing <strong className="text-blue-600">{processedEarthquakes.length}</strong> earthquakes
+                                    Showing <strong className="text-blue-600">{filteredEarthquakes.length}</strong> earthquakes
                                     {processedEarthquakes.length < earthquakes.length && (
                                         <span className="text-xs text-gray-500">(sampled from {earthquakes.length})</span>
                                     )}
@@ -787,8 +871,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 title="Select clustering algorithm"
                             >
                                 <optgroup label="Density-Based">
-                                    <option value="dbscan">DBSCAN - Density clusters</option>
-                                    <option value="optics">OPTICS - Variable density</option>
+                                    <option value="dbscan">DBSCAN - Density-Based</option>
+                                    <option value="optics">OPTICS - Hierarchical Density</option>
                                 </optgroup>
                                 {/* HIERARCHICAL CLUSTERING OPTIONS - COMMENTED OUT FOR FUTURE RESTORATION
                                 <optgroup label="Hierarchical">
@@ -805,6 +889,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 <optgroup label="Other">
                                     <option value="kmeans">K-Means - Partition-based</option>
                                     <option value="nearest-neighbor">Nearest-Neighbor - Seismology</option>
+                                    <option value="st-dbscan">ST-DBSCAN - Spatio-Temporal Density</option>
+                                    <option value="tmc">TMC - Reasenberg-Jones Style</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -906,6 +992,110 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 </>
                             )}
                         </div>
+                        {(clusteringAlgorithm === 'st-dbscan') && (
+                            <>
+                                <div className="flex flex-col">
+                                    <span>Spatial Epsilon: <span className="font-semibold">{epsilon} km</span></span>
+                                    <input
+                                        type="range"
+                                        min={5}
+                                        max={100}
+                                        step={5}
+                                        value={epsilon}
+                                        onChange={(e) => setEpsilon(parseInt(e.target.value))}
+                                        title="Spatial search radius"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Temporal Epsilon: <span className="font-semibold">{epsilonTemporal} days</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={30}
+                                        step={1}
+                                        value={epsilonTemporal}
+                                        onChange={(e) => setEpsilonTemporal(parseInt(e.target.value))}
+                                        title="Temporal search window"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Min pts: <span className="font-semibold">{minSamples}</span></span>
+                                    <input
+                                        type="range"
+                                        min={3}
+                                        max={20}
+                                        step={1}
+                                        value={minSamples}
+                                        onChange={(e) => setMinSamples(parseInt(e.target.value))}
+                                        title="Minimum neighbors (space-time)"
+                                    />
+                                </div>
+                            </>
+                        )}
+                        {(clusteringAlgorithm === 'tmc') && (
+                            <>
+                                <div className="flex flex-col">
+                                    <span>Radius Factor (rfact): <span className="font-semibold">{tmcRfact}</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={20}
+                                        step={1}
+                                        value={tmcRfact}
+                                        onChange={(e) => setTmcRfact(parseInt(e.target.value))}
+                                        title="Multiplier for crack radius interaction"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Base Look-ahead (tau0): <span className="font-semibold">{tmcTau0} days</span></span>
+                                    <input
+                                        type="range"
+                                        min={0.5}
+                                        max={10}
+                                        step={0.5}
+                                        value={tmcTau0}
+                                        onChange={(e) => setTmcTau0(parseFloat(e.target.value))}
+                                        title="Minimum look-ahead time"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Max Look-ahead: <span className="font-semibold">{tmcTauMax} days</span></span>
+                                    <input
+                                        type="range"
+                                        min={5}
+                                        max={60}
+                                        step={1}
+                                        value={tmcTauMax}
+                                        onChange={(e) => setTmcTauMax(parseInt(e.target.value))}
+                                        title="Maximum look-ahead time"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Probability (p1): <span className="font-semibold">{tmcP1}</span></span>
+                                    <input
+                                        type="range"
+                                        min={0.5}
+                                        max={0.999}
+                                        step={0.001}
+                                        value={tmcP1}
+                                        onChange={(e) => setTmcP1(parseFloat(e.target.value))}
+                                        title="Probability of observing next event in sequence"
+                                    />
+                                </div>
+                            </>
+                        )}
+                        <div className="flex flex-col border-l pl-4 ml-2 border-gray-300">
+                            <span>Display Options:</span>
+                            <select
+                                className="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                value={includeNoise ? "show" : "hide"}
+                                onChange={(e) => setIncludeNoise(e.target.value === "show")}
+                                title="Control visibility of noise (unclustered) points"
+                            >
+                                <option value="show">Show All Points (Inc. Noise)</option>
+                                <option value="hide">Hide Noise Cluster</option>
+                            </select>
+                        </div>
                     </div>
                     <div className="flex gap-2 flex-wrap">
                         {/* POLYGON SELECTION FEATURE - UI BUTTONS - COMMENTED OUT FOR FUTURE RESTORATION
@@ -999,12 +1189,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
             {/* Panel 3: 3D Spatial Distribution */}
             <TemporalSpatial3DPlot
-                earthquakes={processedEarthquakes}
-                clusterLabels={clusteringResult?.labels}
-                selectedIndices={selectedIndices}
+                data={chartData as any} // Cast to any to avoid temporary type mismatch if interface isn't fully propagated in IDE yet
                 onPointClick={toggleSelection}
             />
-
             {/* Info Card */}
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-6">
                 <div className="flex items-start gap-3">

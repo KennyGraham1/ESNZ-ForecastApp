@@ -13,7 +13,9 @@ export type ClusteringAlgorithm =
     // | 'hierarchical-ward'
     | 'step-mag'    // STEP Magnitude clustering (seismology)
     | 'step-time'   // STEP Time clustering (seismology)
-    | 'nearest-neighbor';
+    | 'nearest-neighbor'
+    | 'st-dbscan'   // Spatio-Temporal DBSCAN
+    | 'tmc';        // Time Magnitude Clustering (Reasenberg-style)
 
 export interface ClusterResult {
     labels: number[]; // Cluster label per event, -1 for noise/unassigned
@@ -44,6 +46,15 @@ export interface SpatialClusteringOptions {
     stepMinMag?: number;     // Minimum mainshock magnitude for STEP (default: 2.0)
     stepT1?: number;         // Time window before an earthquake in days (default: 1)
     stepT2?: number;         // Time window after an earthquake in days (default: 30)
+    // ST-DBSCAN parameters
+    epsilonTemporal?: number; // Temporal epsilon in days (default: 7)
+    // TMC (Time Magnitude Clustering / Reasenberg-style) parameters
+    tmcRfact?: number;       // Spatial radius multiplier (default: 10)
+    tmcTau0?: number;        // Base look-ahead time in days (default: 2)
+    tmcTauMax?: number;      // Maximum look-ahead time in days (default: 10)
+    tmcP1?: number;          // Probability threshold (default: 0.99)
+    tmcXk?: number;          // Magnitude scaling factor (default: 0.5)
+    tmcMinMag?: number;      // Effective minimum magnitude (default: 1.5)
 }
 
 // OPTIMIZATION: R-tree spatial point interface
@@ -706,7 +717,343 @@ function stepTimeClustering(
     return { clusters, noiseIndices };
 }
 
+/**
+ * ST-DBSCAN (Spatio-Temporal DBSCAN)
+ * Extension of DBSCAN that considers both spatial and temporal proximity.
+ * Events must be within both spatial epsilon AND temporal epsilon to be neighbors.
+ * 
+ * Reference: Birant & Kut (2007) - "ST-DBSCAN: An algorithm for clustering spatial-temporal data"
+ * 
+ * @param earthquakes - Array of earthquake data
+ * @param dataset - Pre-computed [x, y] coordinates in km
+ * @param epsilonSpatial - Spatial distance threshold in km (default: 25)
+ * @param epsilonTemporal - Temporal distance threshold in days (default: 7)
+ * @param minSamples - Minimum neighbors to form a core point (default: 5)
+ */
+function stDbscan(
+    earthquakes: EarthquakeData[],
+    dataset: number[][],
+    epsilonSpatial: number = 25,
+    epsilonTemporal: number = 7,
+    minSamples: number = 5
+): { clusters: number[][], noiseIndices: number[] } {
+    const n = earthquakes.length;
+    if (n === 0) return { clusters: [], noiseIndices: [] };
+
+    // Extract timestamps for temporal calculations
+    const timestamps = earthquakes.map(eq => {
+        const t = eq.time instanceof Date ? eq.time.getTime() : new Date(eq.time).getTime();
+        return t / (1000 * 60 * 60 * 24); // Convert to days
+    });
+
+    // Build R-tree spatial index
+    const tree = new RBush<SpatialPoint>();
+    const items: SpatialPoint[] = dataset.map((point, i) => ({
+        minX: point[0],
+        minY: point[1],
+        maxX: point[0],
+        maxY: point[1],
+        index: i
+    }));
+    tree.load(items);
+
+    // DBSCAN labels: -1 = unvisited, -2 = noise, >= 0 = cluster ID
+    const labels = new Array(n).fill(-1);
+    const NOISE = -2;
+    let clusterId = 0;
+
+    // Get spatio-temporal neighbors for a point
+    const getSTNeighbors = (pointIdx: number): number[] => {
+        const point = dataset[pointIdx];
+        const pointTime = timestamps[pointIdx];
+
+        // Spatial candidates from R-tree
+        const candidates = tree.search({
+            minX: point[0] - epsilonSpatial,
+            minY: point[1] - epsilonSpatial,
+            maxX: point[0] + epsilonSpatial,
+            maxY: point[1] + epsilonSpatial
+        });
+
+        // Filter by actual distance (spatial) AND temporal proximity
+        return candidates
+            .map(c => c.index)
+            .filter(idx => {
+                // Spatial distance check
+                const dx = dataset[idx][0] - point[0];
+                const dy = dataset[idx][1] - point[1];
+                const spatialDist = Math.sqrt(dx * dx + dy * dy);
+                if (spatialDist > epsilonSpatial) return false;
+
+                // Temporal distance check
+                const temporalDist = Math.abs(timestamps[idx] - pointTime);
+                return temporalDist <= epsilonTemporal;
+            });
+    };
+
+    // Main ST-DBSCAN loop
+    for (let i = 0; i < n; i++) {
+        if (labels[i] !== -1) continue; // Already processed
+
+        const neighbors = getSTNeighbors(i);
+
+        if (neighbors.length < minSamples) {
+            labels[i] = NOISE;
+            continue;
+        }
+
+        // Start new cluster
+        labels[i] = clusterId;
+        const queue = [...neighbors];
+
+        while (queue.length > 0) {
+            const currentIdx = queue.shift()!;
+
+            if (labels[currentIdx] === NOISE) {
+                labels[currentIdx] = clusterId; // Border point
+            }
+
+            if (labels[currentIdx] !== -1) continue; // Already processed
+
+            labels[currentIdx] = clusterId;
+
+            const currentNeighbors = getSTNeighbors(currentIdx);
+            if (currentNeighbors.length >= minSamples) {
+                queue.push(...currentNeighbors);
+            }
+        }
+
+        clusterId++;
+    }
+
+    // Extract clusters and noise
+    const clusters: number[][] = Array.from({ length: clusterId }, () => []);
+    const noiseIndices: number[] = [];
+
+    for (let i = 0; i < n; i++) {
+        if (labels[i] === NOISE) {
+            noiseIndices.push(i);
+        } else if (labels[i] >= 0) {
+            clusters[labels[i]].push(i);
+        }
+    }
+
+    return { clusters, noiseIndices };
+}
+
+/**
+ * Time Magnitude Clustering (TMC) - Reasenberg-Jones Style
+ * Implements magnitude-dependent spatio-temporal clustering based on the
+ * Reasenberg (1985) declustering algorithm used in cluster2000x.f
+ * 
+ * Features:
+ * - Interaction radius based on Kanamori-Anderson (1975) crack model
+ * - Time-varying look-ahead window based on cluster's largest magnitude
+ * - Cluster merging when events link separate sequences
+ * 
+ * @param earthquakes - Array of earthquake data
+ * @param rfact - Spatial radius multiplier (default: 10)
+ * @param tau0 - Base look-ahead time in days (default: 2)
+ * @param tauMax - Maximum look-ahead time in days (default: 10)
+ * @param p1 - Probability threshold (default: 0.99)
+ * @param xk - Magnitude scaling factor (default: 0.5)
+ * @param minMag - Effective minimum magnitude threshold (default: 1.5)
+ */
+function timeMagnitudeClustering(
+    earthquakes: EarthquakeData[],
+    rfact: number = 10,
+    tau0: number = 2,
+    tauMax: number = 10,
+    p1: number = 0.99,
+    xk: number = 0.5,
+    minMag: number = 1.5
+): { clusters: number[][], noiseIndices: number[] } {
+    const n = earthquakes.length;
+    if (n === 0) return { clusters: [], noiseIndices: [] };
+
+    // Sort by time (preserve original indices)
+    interface WorkingEvent {
+        originalIndex: number;
+        lat: number;
+        lon: number;
+        timeMinutes: number; // Minutes from epoch for calculations
+        magnitude: number;
+        clusterId: number; // 0 = unclustered
+    }
+
+    const sortedEvents: WorkingEvent[] = earthquakes
+        .map((eq, idx) => {
+            const t = eq.time instanceof Date ? eq.time.getTime() : new Date(eq.time).getTime();
+            return {
+                originalIndex: idx,
+                lat: eq.latitude,
+                lon: eq.longitude,
+                timeMinutes: t / (1000 * 60), // Convert to minutes
+                magnitude: eq.magnitude,
+                clusterId: 0
+            };
+        })
+        .sort((a, b) => a.timeMinutes - b.timeMinutes);
+
+    // Cluster tracking
+    interface ClusterInfo {
+        largestMag: number;
+        largestMagTime: number; // Time of largest event
+        members: number[]; // Indices in sortedEvents
+    }
+    const clusterInfos: Map<number, ClusterInfo> = new Map();
+    let nextClusterId = 1;
+
+    // Calculate interaction radius (Kanamori-Anderson crack model)
+    // r = rfact * 0.011 * 10^(0.4*M) km
+    // With stress drop dsigma = 30 bars
+    const interactionRadius = (mag: number): number => {
+        const r = rfact * 0.011 * Math.pow(10, 0.4 * mag);
+        // Cap at 30 km (crustal thickness constraint)
+        return Math.min(r, 30);
+    };
+
+    // Calculate look-ahead time (tau) for an event in a cluster
+    const calculateTau = (clusterId: number, eventTime: number): number => {
+        if (clusterId === 0) {
+            // Unclustered event: use base tau
+            return tau0 * 1440; // Convert days to minutes
+        }
+
+        const info = clusterInfos.get(clusterId);
+        if (!info) return tau0 * 1440;
+
+        // Time since largest event in cluster
+        const t = (eventTime - info.largestMagTime) / 1440; // Convert to days
+        if (t <= 0) return tau0 * 1440;
+
+        // Reasenberg formula: tau = -ln(1-p1) * t / 10^((deltaM-1)*2/3)
+        const deltaM = (1 - xk) * info.largestMag - minMag;
+        const denom = Math.pow(10, (deltaM - 1) * 2 / 3);
+        let tau = (-Math.log(1 - p1) * t) / denom;
+
+        // Clamp to [tau0, tauMax] in days, then convert to minutes
+        tau = Math.max(tau0, Math.min(tau, tauMax));
+        return tau * 1440;
+    };
+
+    // Process events in temporal order
+    for (let i = 0; i < sortedEvents.length; i++) {
+        const event1 = sortedEvents[i];
+
+        // Calculate tau (look-ahead time) for this event
+        const tau = calculateTau(event1.clusterId, event1.timeMinutes);
+
+        // Look for candidate event2 within tau time window
+        for (let j = i + 1; j < sortedEvents.length; j++) {
+            const event2 = sortedEvents[j];
+
+            // Check temporal proximity
+            const timeDiff = event2.timeMinutes - event1.timeMinutes;
+            if (timeDiff > tau) break; // Beyond look-ahead window
+
+            // Skip if already in the same cluster
+            if (event1.clusterId !== 0 && event2.clusterId === event1.clusterId) {
+                continue;
+            }
+
+            // Calculate spatial distance
+            const dist = haversineDistance(event1.lat, event1.lon, event2.lat, event2.lon);
+
+            // Calculate interaction distance:
+            // Sum of event1's radius and cluster's largest event radius (if clustered)
+            const r1 = interactionRadius(event1.magnitude);
+            const rMain = event1.clusterId !== 0
+                ? interactionRadius(clusterInfos.get(event1.clusterId)!.largestMag)
+                : 0;
+            const rTest = r1 + rMain;
+
+            // Cluster test
+            if (dist <= rTest) {
+                // CLUSTER DECLARED
+
+                if (event1.clusterId !== 0 && event2.clusterId !== 0) {
+                    // Both already clustered: merge clusters
+                    const keepId = Math.min(event1.clusterId, event2.clusterId);
+                    const mergeId = Math.max(event1.clusterId, event2.clusterId);
+
+                    // Update all events in mergeId cluster
+                    for (const e of sortedEvents) {
+                        if (e.clusterId === mergeId) {
+                            e.clusterId = keepId;
+                        }
+                    }
+
+                    // Merge cluster info
+                    const keepInfo = clusterInfos.get(keepId)!;
+                    const mergeInfo = clusterInfos.get(mergeId)!;
+
+                    if (mergeInfo.largestMag > keepInfo.largestMag) {
+                        keepInfo.largestMag = mergeInfo.largestMag;
+                        keepInfo.largestMagTime = mergeInfo.largestMagTime;
+                    }
+                    keepInfo.members.push(...mergeInfo.members);
+                    clusterInfos.delete(mergeId);
+
+                } else if (event1.clusterId !== 0) {
+                    // Add event2 to event1's cluster
+                    event2.clusterId = event1.clusterId;
+                    const info = clusterInfos.get(event1.clusterId)!;
+                    info.members.push(j);
+                    if (event2.magnitude > info.largestMag) {
+                        info.largestMag = event2.magnitude;
+                        info.largestMagTime = event2.timeMinutes;
+                    }
+
+                } else if (event2.clusterId !== 0) {
+                    // Add event1 to event2's cluster
+                    event1.clusterId = event2.clusterId;
+                    const info = clusterInfos.get(event2.clusterId)!;
+                    info.members.push(i);
+                    if (event1.magnitude > info.largestMag) {
+                        info.largestMag = event1.magnitude;
+                        info.largestMagTime = event1.timeMinutes;
+                    }
+
+                } else {
+                    // Start new cluster with both events
+                    const newId = nextClusterId++;
+                    event1.clusterId = newId;
+                    event2.clusterId = newId;
+
+                    const largerEvent = event1.magnitude >= event2.magnitude ? event1 : event2;
+                    clusterInfos.set(newId, {
+                        largestMag: largerEvent.magnitude,
+                        largestMagTime: largerEvent.timeMinutes,
+                        members: [i, j]
+                    });
+                }
+            }
+        }
+    }
+
+    // Build output clusters
+    const clusterMap = new Map<number, number[]>();
+    const noiseIndices: number[] = [];
+
+    for (const event of sortedEvents) {
+        if (event.clusterId > 0) {
+            if (!clusterMap.has(event.clusterId)) {
+                clusterMap.set(event.clusterId, []);
+            }
+            clusterMap.get(event.clusterId)!.push(event.originalIndex);
+        } else {
+            noiseIndices.push(event.originalIndex);
+        }
+    }
+
+    const clusters = Array.from(clusterMap.values()).filter(c => c.length > 0);
+
+    return { clusters, noiseIndices };
+}
+
 // Get algorithm description for metadata
+
 function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
     const descriptions: Record<ClusteringAlgorithm, string> = {
         'dbscan': 'DBSCAN (Density-Based Spatial Clustering) - Identifies clusters of arbitrary shape based on density',
@@ -719,7 +1066,9 @@ function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
         // 'hierarchical-ward': 'Hierarchical Clustering (Ward Linkage) - Merges clusters to minimize within-cluster variance',
         'step-mag': 'STEP Magnitude Clustering - Clusters earthquakes starting from largest magnitude, using Wells-Coppersmith spatial radius and sliding time windows',
         'step-time': 'STEP Time Clustering - Clusters earthquakes in temporal order, extending clusters based on magnitude-dependent spatial windows',
-        'nearest-neighbor': 'Nearest-Neighbor Clustering (Zaliapin-Ben-Zion) - Identifies clusters based on space-time-magnitude nearest-neighbor distances'
+        'nearest-neighbor': 'Nearest-Neighbor Clustering (Zaliapin-Ben-Zion) - Identifies clusters based on space-time-magnitude nearest-neighbor distances',
+        'st-dbscan': 'ST-DBSCAN - Density-based clustering with both spatial and temporal thresholds',
+        'tmc': 'Time Magnitude Clustering (TMC) - Reasenberg-Jones style clustering with magnitude-dependent time windows'
     };
     return descriptions[algorithm] || 'Unknown algorithm';
 }
@@ -765,6 +1114,35 @@ export function calculateSpatialClustering(
         stepMinMag = opts.stepMinMag ?? 2.0;
         stepT1 = opts.stepT1 ?? 1;
         stepT2 = opts.stepT2 ?? 30;
+        // ST-DBSCAN
+        const epsilonTemporal = opts.epsilonTemporal ?? 7;
+        // TMC
+        const tmcRfact = opts.tmcRfact ?? 10;
+        const tmcTau0 = opts.tmcTau0 ?? 2;
+        const tmcTauMax = opts.tmcTauMax ?? 10;
+        const tmcP1 = opts.tmcP1 ?? 0.99;
+        const tmcXk = opts.tmcXk ?? 0.5;
+        const tmcMinMag = opts.tmcMinMag ?? 1.5;
+    }
+
+    // Default values if using legacy signature (needed for block scope access later)
+    let epsilonTemporal = 7;
+    let tmcRfact = 10;
+    let tmcTau0 = 2;
+    let tmcTauMax = 10;
+    let tmcP1 = 0.99;
+    let tmcXk = 0.5;
+    let tmcMinMag = 1.5;
+
+    if (typeof optionsOrEpsilon !== 'number') {
+        const opts = optionsOrEpsilon || {};
+        epsilonTemporal = opts.epsilonTemporal ?? 7;
+        tmcRfact = opts.tmcRfact ?? 10;
+        tmcTau0 = opts.tmcTau0 ?? 2;
+        tmcTauMax = opts.tmcTauMax ?? 10;
+        tmcP1 = opts.tmcP1 ?? 0.99;
+        tmcXk = opts.tmcXk ?? 0.5;
+        tmcMinMag = opts.tmcMinMag ?? 1.5;
     }
 
     // Prepare data for clustering (longitude, latitude)
@@ -812,14 +1190,14 @@ export function calculateSpatialClustering(
         clusters = kmeans.run(dataset, k);
         // K-means assigns every point to some cluster; no noise
         noiseIndices = [];
-    /* HIERARCHICAL CLUSTERING BRANCH - COMMENTED OUT FOR FUTURE RESTORATION
-    } else if (algorithm.startsWith('hierarchical-')) {
-        // Hierarchical clustering
-        const linkageType = algorithm.split('-')[1] as 'single' | 'complete' | 'average' | 'ward';
-        const result = hierarchicalClustering(dataset, k, linkageType);
-        clusters = result.clusters;
-        noiseIndices = result.noiseIndices;
-    END OF HIERARCHICAL CLUSTERING BRANCH */
+        /* HIERARCHICAL CLUSTERING BRANCH - COMMENTED OUT FOR FUTURE RESTORATION
+        } else if (algorithm.startsWith('hierarchical-')) {
+            // Hierarchical clustering
+            const linkageType = algorithm.split('-')[1] as 'single' | 'complete' | 'average' | 'ward';
+            const result = hierarchicalClustering(dataset, k, linkageType);
+            clusters = result.clusters;
+            noiseIndices = result.noiseIndices;
+        END OF HIERARCHICAL CLUSTERING BRANCH */
     } else if (algorithm === 'step-mag') {
         // STEP Magnitude clustering (seismology) - Starts with largest earthquake
         const result = stepMagnitudeClustering(earthquakes, stepMinMag, stepT1, stepT2);
@@ -833,6 +1211,14 @@ export function calculateSpatialClustering(
     } else if (algorithm === 'nearest-neighbor') {
         // Nearest-neighbor clustering (Zaliapin-Ben-Zion method)
         const result = nearestNeighborClustering(earthquakes, dataset, nnThreshold);
+        clusters = result.clusters;
+        noiseIndices = result.noiseIndices;
+    } else if (algorithm === 'st-dbscan') {
+        const result = stDbscan(earthquakes, dataset, epsilon, epsilonTemporal, minSamples);
+        clusters = result.clusters;
+        noiseIndices = result.noiseIndices;
+    } else if (algorithm === 'tmc') {
+        const result = timeMagnitudeClustering(earthquakes, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, tmcMinMag);
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
     } else {
@@ -877,18 +1263,30 @@ export function calculateSpatialClustering(
         }
     } else if (algorithm === 'kmeans') {
         parameters.k = k;
-    /* HIERARCHICAL CLUSTERING PARAMETERS - COMMENTED OUT FOR FUTURE RESTORATION
-    } else if (algorithm.startsWith('hierarchical-')) {
-        parameters.k = k;
-        parameters.linkage = algorithm.split('-')[1];
-    END OF HIERARCHICAL CLUSTERING PARAMETERS */
+        /* HIERARCHICAL CLUSTERING PARAMETERS - COMMENTED OUT FOR FUTURE RESTORATION
+        } else if (algorithm.startsWith('hierarchical-')) {
+            parameters.k = k;
+            parameters.linkage = algorithm.split('-')[1];
+        END OF HIERARCHICAL CLUSTERING PARAMETERS */
     } else if (algorithm === 'step-mag' || algorithm === 'step-time') {
         parameters.stepMinMag = stepMinMag;
         parameters.stepT1 = stepT1;
         parameters.stepT2 = stepT2;
     } else if (algorithm === 'nearest-neighbor') {
         parameters.nnThreshold = nnThreshold;
+    } else if (algorithm === 'st-dbscan') {
+        parameters.epsilon = epsilon;
+        parameters.epsilonTemporal = epsilonTemporal;
+        parameters.minSamples = minSamples;
+    } else if (algorithm === 'tmc') {
+        parameters.tmcRfact = tmcRfact;
+        parameters.tmcTau0 = tmcTau0;
+        parameters.tmcTauMax = tmcTauMax;
+        parameters.tmcP1 = tmcP1;
+        parameters.tmcXk = tmcXk;
+        parameters.tmcMinMag = tmcMinMag;
     }
+
 
     const metadata: ClusteringMetadata = {
         algorithm,

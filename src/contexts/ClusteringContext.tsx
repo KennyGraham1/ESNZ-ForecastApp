@@ -14,6 +14,17 @@ export interface ClusteringState {
     stepMinMag: number;  // Minimum mainshock magnitude for STEP
     stepT1: number;      // Time window before (days)
     stepT2: number;      // Time window after (days)
+    // ST-DBSCAN parameters
+    epsilonTemporal: number; // days
+    // TMC parameters
+    tmcRfact: number;
+    tmcTau0: number;
+    tmcTauMax: number;
+    tmcP1: number;
+    tmcXk: number;
+
+    // Visualization Options
+    includeNoise: boolean; // Whether to include noise points (cluster -1) in visualization
 
     // Selection state (indices into the processed earthquake array)
     selectedIndices: Set<number>;
@@ -27,6 +38,13 @@ export interface ClusteringState {
     setStepMinMag: (minMag: number) => void;
     setStepT1: (t1: number) => void;
     setStepT2: (t2: number) => void;
+    setEpsilonTemporal: (val: number) => void;
+    setTmcRfact: (val: number) => void;
+    setTmcTau0: (val: number) => void;
+    setTmcTauMax: (val: number) => void;
+    setTmcP1: (val: number) => void;
+    setTmcXk: (val: number) => void;
+    setIncludeNoise: (include: boolean) => void;
     setSelectedIndices: (indices: Set<number>) => void;
     toggleSelection: (index: number) => void;
     clearSelection: () => void;
@@ -46,10 +64,21 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     const [stepMinMag, setStepMinMag] = useState(2.0);  // Minimum mainshock magnitude
     const [stepT1, setStepT1] = useState(1);            // Time window before (days)
     const [stepT2, setStepT2] = useState(30);           // Time window after (days)
+    // ST-DBSCAN parameters
+    const [epsilonTemporal, setEpsilonTemporal] = useState(7); // days
+    // TMC parameters
+    const [tmcRfact, setTmcRfact] = useState(10);
+    const [tmcTau0, setTmcTau0] = useState(2);
+    const [tmcTauMax, setTmcTauMax] = useState(10);
+    const [tmcP1, setTmcP1] = useState(0.99);
+    const [tmcXk, setTmcXk] = useState(0.5);
+
+    // Visualization Options
+    const [includeNoise, setIncludeNoise] = useState(true);
 
     // Selection state
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
-    
+
     // Toggle a single index in/out of selection
     const toggleSelection = useCallback((index: number) => {
         setSelectedIndices(prev => {
@@ -62,12 +91,12 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
             return newSet;
         });
     }, []);
-    
+
     // Clear all selections
     const clearSelection = useCallback(() => {
         setSelectedIndices(new Set());
     }, []);
-    
+
     // Add multiple indices to selection
     const addToSelection = useCallback((indices: number[]) => {
         setSelectedIndices(prev => {
@@ -76,7 +105,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
             return newSet;
         });
     }, []);
-    
+
     const value: ClusteringState = {
         algorithm,
         epsilon,
@@ -86,6 +115,13 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         stepMinMag,
         stepT1,
         stepT2,
+        epsilonTemporal,
+        tmcRfact,
+        tmcTau0,
+        tmcTauMax,
+        tmcP1,
+        tmcXk,
+        includeNoise, // NEW
         selectedIndices,
         setAlgorithm,
         setEpsilon,
@@ -95,12 +131,19 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         setStepMinMag,
         setStepT1,
         setStepT2,
+        setEpsilonTemporal,
+        setTmcRfact,
+        setTmcTau0,
+        setTmcTauMax,
+        setTmcP1,
+        setTmcXk,
+        setIncludeNoise, // NEW
         setSelectedIndices,
         toggleSelection,
         clearSelection,
         addToSelection,
     };
-    
+
     return (
         <ClusteringContext.Provider value={value}>
             {children}
