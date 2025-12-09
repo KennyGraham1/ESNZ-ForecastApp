@@ -856,7 +856,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col md:flex-row gap-4 flex-1 justify-end">
+                    <div className="flex flex-col md:flex-row gap-4 flex-1 justify-end flex-wrap">
                         <div className="flex items-center gap-2 flex-wrap">
                             <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Algorithm</label>
                             <select
@@ -890,7 +890,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     <option value="kmeans">K-Means - Partition-based</option>
                                     <option value="nearest-neighbor">Nearest-Neighbor - Seismology</option>
                                     <option value="st-dbscan">ST-DBSCAN - Spatio-Temporal Density</option>
-                                    <option value="tmc">TMC - Reasenberg-Jones Style</option>
+                                    <option value="tmc">TMC - Reasenberg Style</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -1084,16 +1084,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 </div>
                             </>
                         )}
-                        <div className="flex flex-col border-l pl-4 ml-2 border-gray-300">
-                            <span>Display Options:</span>
+                    </div>
+                    <div className="flex items-center">
+                        <div className="flex flex-col bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                            <span className="text-xs font-semibold text-gray-500 mb-1">Display Options</span>
                             <select
-                                className="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="px-2 py-1 bg-white border border-gray-300 rounded text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 value={includeNoise ? "show" : "hide"}
                                 onChange={(e) => setIncludeNoise(e.target.value === "show")}
                                 title="Control visibility of noise (unclustered) points"
                             >
-                                <option value="show">Show All Points (Inc. Noise)</option>
-                                <option value="hide">Hide Noise Cluster</option>
+                                <option value="show">Show All Points</option>
+                                <option value="hide">Hide Noise</option>
                             </select>
                         </div>
                     </div>

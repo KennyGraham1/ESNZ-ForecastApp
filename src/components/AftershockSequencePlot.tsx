@@ -24,7 +24,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
 
     // Polygon drawing state
     const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
-    const [polygonPoints, setPolygonPoints] = useState<Array<{lat: number, lon: number}>>([]);
+    const [polygonPoints, setPolygonPoints] = useState<Array<{ lat: number, lon: number }>>([]);
     const [polygonSeries, setPolygonSeries] = useState<any>(null);
 
     // Radius circle visibility and size (hidden by default)
@@ -44,6 +44,16 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
 
         return () => clearTimeout(timer);
     }, [aftershockRadius]);
+
+    // Calculate dynamic radius based on Wells-Coppersmith formula when mainEvent changes
+    useEffect(() => {
+        if (mainEvent?.magnitude) {
+            // Wells-Coppersmith: radius = max(5, 10^(0.59 * M - 2.44))
+            const calculatedRadius = Math.max(50, Math.pow(10, 0.59 * mainEvent.magnitude - 2.44));
+            // Round to nearest integer for cleaner UI
+            setAftershockRadius(Math.round(calculatedRadius));
+        }
+    }, [mainEvent]);
 
     // Load New Zealand map data
     useEffect(() => {
@@ -276,10 +286,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
         const R = 6371; // Earth's radius in km
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     };
 
@@ -397,7 +407,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
     }, [earthquakes, mainEvent, debouncedRadius, spatialIndex]);
 
     // Point-in-polygon algorithm (ray casting)
-    const isPointInPolygon = (point: {lat: number, lon: number}, polygon: Array<{lat: number, lon: number}>) => {
+    const isPointInPolygon = (point: { lat: number, lon: number }, polygon: Array<{ lat: number, lon: number }>) => {
         if (polygon.length < 3) return false;
 
         let inside = false;
@@ -544,7 +554,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 height: 500,
                 backgroundColor: 'white',
                 events: {
-                    load: function(this: any) {
+                    load: function (this: any) {
                         const chart = this;
                         // Store chart reference for synchronization
                         (window as any).aftershockSequenceChart = chart;
@@ -654,7 +664,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point?.custom;
                     if (!custom) return '';
@@ -684,7 +694,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     cursor: 'pointer',
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 const index = this.custom.index;
                                 setSelectedIndices(prev => {
                                     const newSet = new Set(prev);
@@ -696,7 +706,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     return newSet;
                                 });
                             },
-                            mouseOver: function(this: any) {
+                            mouseOver: function (this: any) {
                                 const index = this.custom.index;
                                 setHighlightedIndex(index);
                                 // Highlight in other charts
@@ -716,7 +726,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     }
                                 }
                             },
-                            mouseOut: function(this: any) {
+                            mouseOut: function (this: any) {
                                 setHighlightedIndex(null);
                                 // Remove highlight from other charts
                                 if ((window as any).aftershockDepthChart) {
@@ -851,7 +861,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 height: 500,
                 backgroundColor: 'white',
                 events: {
-                    load: function(this: any) {
+                    load: function (this: any) {
                         (window as any).aftershockDepthChart = this;
                     }
                 }
@@ -874,7 +884,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 title: { text: 'Depth (km)' },
                 reversed: false, // Don't reverse since we're using negative values
                 labels: {
-                    formatter: function(this: any) {
+                    formatter: function (this: any) {
                         return Math.abs(this.value).toString(); // Show positive values
                     }
                 },
@@ -896,7 +906,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const custom = this.point?.custom;
                     if (!custom) return '';
                     return `
@@ -924,7 +934,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     cursor: 'pointer',
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 const index = this.custom.index;
                                 setSelectedIndices(prev => {
                                     const newSet = new Set(prev);
@@ -936,7 +946,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     return newSet;
                                 });
                             },
-                            mouseOver: function(this: any) {
+                            mouseOver: function (this: any) {
                                 const index = this.custom.index;
                                 setHighlightedIndex(index);
                                 if ((window as any).aftershockSequenceChart) {
@@ -955,7 +965,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     }
                                 }
                             },
-                            mouseOut: function(this: any) {
+                            mouseOut: function (this: any) {
                                 setHighlightedIndex(null);
                                 if ((window as any).aftershockSequenceChart) {
                                     const seqChart = (window as any).aftershockSequenceChart;
@@ -1083,7 +1093,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 backgroundColor: '#ffffff',
                 height: 600,
                 events: {
-                    load: function(this: any) {
+                    load: function (this: any) {
                         const chart = this;
                         (window as any).aftershockMapChart = chart;
 
@@ -1138,7 +1148,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                             console.error('Auto-zoom error:', error);
                         }
                     },
-                    click: function(this: any, event: any) {
+                    click: function (this: any, event: any) {
                         if (!isDrawingPolygon) return;
 
                         // Get lat/lon from click event
@@ -1240,7 +1250,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     if (!point || !point.magnitude) return '';
                     return `
@@ -1267,7 +1277,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     },
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 // Don't select individual points when drawing polygon
                                 if (isDrawingPolygon) return;
 
@@ -1282,7 +1292,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     return newSet;
                                 });
                             },
-                            mouseOver: function(this: any) {
+                            mouseOver: function (this: any) {
                                 const index = this.index;
                                 setHighlightedIndex(index);
                                 if ((window as any).aftershockSequenceChart) {
@@ -1298,7 +1308,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     }
                                 }
                             },
-                            mouseOut: function(this: any) {
+                            mouseOut: function (this: any) {
                                 setHighlightedIndex(null);
                                 if ((window as any).aftershockSequenceChart) {
                                     const seqChart = (window as any).aftershockSequenceChart;
@@ -1418,18 +1428,22 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 </p>
             </div>
 
-            {/* Polygon Drawing Controls */}
+            {/* Spatial Filter Controls */}
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
+                        <h3 className="text-md font-semibold text-gray-800">Spatial Filter</h3>
+                        {/* 
                         <h3 className="text-md font-semibold text-gray-800">Polygon Selection Tool</h3>
                         {isDrawingPolygon && (
                             <span className="text-sm text-blue-600 font-medium">
                                 {polygonPoints.length} point{polygonPoints.length !== 1 ? 's' : ''} added
                             </span>
                         )}
+                        */}
                     </div>
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap items-center">
+                        {/* 
                         {!isDrawingPolygon ? (
                             <>
                                 <button
@@ -1441,32 +1455,35 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                     </svg>
                                     Draw Polygon
                                 </button>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-sm font-medium text-gray-700">Radius (km):</label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            min="10"
-                                            max="500"
-                                            step="10"
-                                            value={aftershockRadius}
-                                            onChange={(e) => setAftershockRadius(Number(e.target.value))}
-                                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                        {aftershockRadius !== debouncedRadius && (
-                                            <div className="absolute -right-6 top-1/2 -translate-y-1/2">
-                                                <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" title="Updating..."></div>
-                                            </div>
-                                        )}
+                        */}
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm font-medium text-gray-700" title="Radius calculated using Wells-Coppersmith formula based on mainshock magnitude">
+                                Radius (km):
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type="number"
+                                    min="10"
+                                    max="500"
+                                    step="10"
+                                    value={aftershockRadius}
+                                    onChange={(e) => setAftershockRadius(Number(e.target.value))}
+                                    className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                                {aftershockRadius !== debouncedRadius && (
+                                    <div className="absolute -right-6 top-1/2 -translate-y-1/2">
+                                        <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" title="Updating..."></div>
                                     </div>
-                                </div>
+                                )}
+                            </div>
+                        </div>
+                        {/* 
                                 <button
                                     onClick={() => setShowRadiusCircle(!showRadiusCircle)}
-                                    className={`px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium flex items-center gap-2 ${
-                                        showRadiusCircle
+                                    className={`px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium flex items-center gap-2 ${showRadiusCircle
                                             ? 'bg-purple-500 text-white hover:bg-purple-600'
                                             : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
-                                    }`}
+                                        }`}
                                 >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <circle cx="12" cy="12" r="10" strokeWidth={2} strokeDasharray="4 2" />
@@ -1479,11 +1496,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                 <button
                                     onClick={completePolygon}
                                     disabled={polygonPoints.length < 3}
-                                    className={`px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium ${
-                                        polygonPoints.length >= 3
+                                    className={`px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium ${polygonPoints.length >= 3
                                             ? 'bg-green-500 text-white hover:bg-green-600'
                                             : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    }`}
+                                        }`}
                                 >
                                     Complete Polygon ({polygonPoints.length >= 3 ? 'Ready' : 'Need ' + (3 - polygonPoints.length) + ' more'})
                                 </button>
@@ -1503,8 +1519,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                 Clear Polygon
                             </button>
                         )}
+                        */}
                     </div>
                 </div>
+                {/* 
                 {isDrawingPolygon && (
                     <p className="text-xs text-gray-500 mt-2">
                         🖱️ Click on the map below to add points to your polygon. You need at least 3 points to complete the selection.
@@ -1515,6 +1533,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                         Draw a custom polygon on the map to select multiple earthquake events at once.
                     </p>
                 )}
+                */}
             </div>
 
             {/* Main Aftershock Sequence Plot - Full Width */}
@@ -1578,17 +1597,19 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                                 </button>
                             </div>
                         )}
+                        {/* 
                         {isDrawingPolygon && (
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-300 rounded-lg">
                                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                                 <span className="text-sm font-medium text-red-700">Drawing Mode Active</span>
                             </div>
                         )}
+                        */}
                     </div>
                 </div>
                 {nzMapGeometry ? (
                     <>
-                        <div className={`h-[600px] ${isDrawingPolygon ? 'cursor-crosshair' : ''}`}>
+                        <div className="h-[600px]">
                             <HighchartsReact
                                 highcharts={Highcharts}
                                 options={mapChartOptions}

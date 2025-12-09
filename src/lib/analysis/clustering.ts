@@ -842,7 +842,7 @@ function stDbscan(
 }
 
 /**
- * Time Magnitude Clustering (TMC) - Reasenberg-Jones Style
+ * Time Magnitude Clustering (TMC) - Reasenberg Style
  * Implements magnitude-dependent spatio-temporal clustering based on the
  * Reasenberg (1985) declustering algorithm used in cluster2000x.f
  * 
@@ -1068,7 +1068,7 @@ function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
         'step-time': 'STEP Time Clustering - Clusters earthquakes in temporal order, extending clusters based on magnitude-dependent spatial windows',
         'nearest-neighbor': 'Nearest-Neighbor Clustering (Zaliapin-Ben-Zion) - Identifies clusters based on space-time-magnitude nearest-neighbor distances',
         'st-dbscan': 'ST-DBSCAN - Density-based clustering with both spatial and temporal thresholds',
-        'tmc': 'Time Magnitude Clustering (TMC) - Reasenberg-Jones style clustering with magnitude-dependent time windows'
+        'tmc': 'Time Magnitude Clustering (TMC) - Reasenberg style clustering with magnitude-dependent time windows'
     };
     return descriptions[algorithm] || 'Unknown algorithm';
 }

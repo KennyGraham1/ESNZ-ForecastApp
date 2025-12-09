@@ -26,6 +26,12 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         stepMinMag,
         stepT1,
         stepT2,
+        epsilonTemporal,
+        tmcRfact,
+        tmcTau0,
+        tmcTauMax,
+        tmcP1,
+        tmcXk,
         selectedIndices,
         setAlgorithm,
         setEpsilon,
@@ -35,6 +41,12 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         setStepMinMag,
         setStepT1,
         setStepT2,
+        setEpsilonTemporal,
+        setTmcRfact,
+        setTmcTau0,
+        setTmcTauMax,
+        setTmcP1,
+        setTmcXk,
         toggleSelection,
     } = useClusteringContext();
 
@@ -78,8 +90,14 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                         stepMinMag,
                         stepT1,
                         stepT2,
+                        epsilonTemporal,
+                        tmcRfact,
+                        tmcTau0,
+                        tmcTauMax,
+                        tmcP1,
+                        tmcXk,
                     }),
-                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2 }
+                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk }
                 );
 
                 setClusteringResult(result);
@@ -90,7 +108,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                 trackError(
                     error instanceof Error ? error : new Error('Unknown clustering error'),
                     { component: 'SpatialClusteringPlot', operation: 'clustering-sync' },
-                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, dataSize: earthquakes.length },
+                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, dataSize: earthquakes.length },
                     'high'
                 );
 
@@ -101,7 +119,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         }
 
         // OPTIMIZATION: Use Web Worker for large datasets (non-blocking)
-        console.log(`🔄 Running spatial clustering (Web Worker): ${earthquakes.length} events`, { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2 });
+        console.log(`🔄 Running spatial clustering (Web Worker): ${earthquakes.length} events`, { algorithm, epsilon, minSamples, k });
         setIsCalculating(true);
 
         // Increment request ID to handle race conditions
@@ -164,11 +182,25 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
 
         // Start clustering in worker
         console.log('🔄 Worker: Starting clustering...', { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, requestId: currentRequestId });
-
         try {
             worker.postMessage({
                 earthquakes,
-                options: { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2 },
+                options: {
+                    algorithm,
+                    epsilon,
+                    minSamples,
+                    k,
+                    nnThreshold,
+                    stepMinMag,
+                    stepT1,
+                    stepT2,
+                    epsilonTemporal,
+                    tmcRfact,
+                    tmcTau0,
+                    tmcTauMax,
+                    tmcP1,
+                    tmcXk
+                },
                 requestId: currentRequestId
             });
         } catch (error) {
@@ -182,7 +214,24 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
             // Don't terminate worker on cleanup, reuse it
             // Only terminate on component unmount
         };
-    }, [earthquakes, algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, useWebWorker]);
+    }, [
+        earthquakes,
+        algorithm,
+        epsilon,
+        minSamples,
+        k,
+        nnThreshold,
+        stepMinMag,
+        stepT1,
+        stepT2,
+        epsilonTemporal,
+        tmcRfact,
+        tmcTau0,
+        tmcTauMax,
+        tmcP1,
+        tmcXk,
+        useWebWorker
+    ]);
 
     // Cleanup worker on unmount
     useEffect(() => {
@@ -297,7 +346,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     const clusterInfo = custom.cluster !== undefined
@@ -322,7 +371,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                     },
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 const idx = this.custom.index;
                                 if (idx !== undefined) {
                                     toggleSelection(idx);
@@ -391,201 +440,236 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
 
     return (
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-            <div className="flex justify-between items-start mb-4 gap-4 flex-wrap">
-                <div>
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                        Spatial Clustering
-                        {isCalculating && (
-                            <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-normal">
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                                Computing...
-                            </span>
-                        )}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                        Algorithm: <span className="font-semibold uppercase">{algorithm}</span> · {nClusters} clusters · {clusterPercent.toFixed(1)}% clustered, {noisePercent.toFixed(1)}% noise
-                    </p>
-                </div>
-                <div className="flex flex-col md:flex-row gap-4 text-xs text-gray-600 items-start md:items-center">
+            {/* Header and Controls */}
+            <div className="mb-4">
+                <div className="flex justify-between items-center mb-4">
+                    <div>
+                        <h3 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+                            Spatial Clustering
+                            {isCalculating && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1.5"></div>
+                                    Calculating...
+                                </span>
+                            )}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                            {nClusters} clusters found · {clusterPercent.toFixed(1)}% clustered · {noisePercent.toFixed(1)}% noise
+                        </p>
+                    </div>
+
                     <div className="flex items-center gap-2">
-                        <span className="font-semibold">Algorithm</span>
+                        <label className="text-sm font-medium text-gray-700">Algorithm:</label>
                         <select
                             value={algorithm}
                             onChange={(e) => setAlgorithm(e.target.value as any)}
-                            className="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                            title="Select clustering algorithm"
+                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
                         >
                             <optgroup label="Density-Based">
-                                <option value="dbscan">DBSCAN - Density clusters</option>
-                                <option value="optics">OPTICS - Variable density</option>
+                                <option value="dbscan">DBSCAN</option>
+                                <option value="optics">OPTICS</option>
+                                <option value="st-dbscan">ST-DBSCAN (Spatio-Temporal)</option>
                             </optgroup>
-                            {/* HIERARCHICAL CLUSTERING OPTIONS - COMMENTED OUT FOR FUTURE RESTORATION
-                            <optgroup label="Hierarchical">
-                                <option value="hierarchical-single">Single Linkage - Min distance</option>
-                                <option value="hierarchical-complete">Complete Linkage - Max distance</option>
-                                <option value="hierarchical-average">Average Linkage - Avg distance</option>
-                                <option value="hierarchical-ward">Ward Linkage - Min variance</option>
+                            <optgroup label="Seismology Specific">
+                                <option value="step-mag">STEP (Magnitude Sorted)</option>
+                                <option value="step-time">STEP (Time Sorted)</option>
+                                <option value="tmc">TMC (Reasenberg-like)</option>
+                                <option value="nearest-neighbor">Nearest Neighbor</option>
                             </optgroup>
-                            */}
-                            <optgroup label="STEP Seismology">
-                                <option value="step-mag">STEP Magnitude - Largest first</option>
-                                <option value="step-time">STEP Time - Time-ordered</option>
-                            </optgroup>
-                            <optgroup label="Other">
-                                <option value="kmeans">K-Means - Partition-based</option>
-                                <option value="nearest-neighbor">Nearest-Neighbor - Seismology</option>
+                            <optgroup label="Partitional">
+                                <option value="kmeans">K-Means</option>
                             </optgroup>
                         </select>
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap">
+                </div>
+
+                {/* Dynamic Parameter Controls Panel */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 transaction-all duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                        {/* DBSCAN / OPTICS Parameters */}
                         {(algorithm === 'dbscan' || algorithm === 'optics') && (
                             <>
-                                <div className="flex flex-col">
-                                    <span>Epsilon: <span className="font-semibold">{epsilon} km</span></span>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Epsilon (Search Radius)
+                                        <span className="float-right text-blue-600 font-bold">{epsilon} km</span>
+                                    </label>
                                     <input
-                                        type="range"
-                                        min={5}
-                                        max={100}
-                                        step={5}
+                                        type="range" min="1" max="100" step="1"
                                         value={epsilon}
                                         onChange={(e) => setEpsilon(parseInt(e.target.value))}
-                                        title="Search radius for density-based clustering"
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                     />
+                                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                        <span>1 km</span>
+                                        <span>100 km</span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col">
-                                    <span>Min pts: <span className="font-semibold">{minSamples}</span></span>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Min Points (Density)
+                                        <span className="float-right text-blue-600 font-bold">{minSamples}</span>
+                                    </label>
                                     <input
-                                        type="range"
-                                        min={3}
-                                        max={20}
-                                        step={1}
+                                        type="range" min="2" max="50" step="1"
                                         value={minSamples}
                                         onChange={(e) => setMinSamples(parseInt(e.target.value))}
-                                        title="Minimum points to form a cluster"
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                        <span>2 pts</span>
+                                        <span>50 pts</span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* ST-DBSCAN Parameters */}
+                        {algorithm === 'st-dbscan' && (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Spatial Epsilon
+                                        <span className="float-right text-blue-600 font-bold">{epsilon} km</span>
+                                    </label>
+                                    <input
+                                        type="range" min="1" max="100" step="1"
+                                        value={epsilon}
+                                        onChange={(e) => setEpsilon(parseInt(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Temporal Epsilon
+                                        <span className="float-right text-blue-600 font-bold">{epsilonTemporal} days</span>
+                                    </label>
+                                    <input
+                                        type="range" min="1" max="30" step="1"
+                                        value={epsilonTemporal}
+                                        onChange={(e) => setEpsilonTemporal(parseInt(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Min Points
+                                        <span className="float-right text-blue-600 font-bold">{minSamples}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="2" max="50" step="1"
+                                        value={minSamples}
+                                        onChange={(e) => setMinSamples(parseInt(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                     />
                                 </div>
                             </>
                         )}
-                        {(algorithm === 'kmeans' || algorithm.startsWith('hierarchical-')) && (
-                            <div className="flex flex-col">
-                                <span>Clusters (k): <span className="font-semibold">{k}</span></span>
-                                <input
-                                    type="range"
-                                    min={2}
-                                    max={15}
-                                    step={1}
-                                    value={k}
-                                    onChange={(e) => setK(parseInt(e.target.value))}
-                                    title="Number of clusters to create"
-                                />
-                            </div>
-                        )}
-                        {algorithm === 'nearest-neighbor' && (
-                            <div className="flex flex-col">
-                                <span>NN Threshold: <span className="font-semibold">{nnThreshold.toFixed(2)}</span></span>
-                                <input
-                                    type="range"
-                                    min={0.1}
-                                    max={5.0}
-                                    step={0.1}
-                                    value={nnThreshold}
-                                    onChange={(e) => setNnThreshold(parseFloat(e.target.value))}
-                                    title="Nearest-neighbor distance threshold (space-time-magnitude)"
-                                />
-                            </div>
-                        )}
+
+                        {/* STEP Parameters */}
                         {(algorithm === 'step-mag' || algorithm === 'step-time') && (
                             <>
-                                <div className="flex flex-col">
-                                    <span>Min Mag: <span className="font-semibold">{stepMinMag.toFixed(1)}</span></span>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Min Magnitude (Mainshock)
+                                        <span className="float-right text-blue-600 font-bold">M{stepMinMag.toFixed(1)}</span>
+                                    </label>
                                     <input
-                                        type="range"
-                                        min={1.0}
-                                        max={5.0}
-                                        step={0.1}
+                                        type="range" min="1.0" max="6.0" step="0.1"
                                         value={stepMinMag}
                                         onChange={(e) => setStepMinMag(parseFloat(e.target.value))}
-                                        title="Minimum magnitude for mainshock detection"
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                     />
                                 </div>
-                                <div className="flex flex-col">
-                                    <span>T1 (days): <span className="font-semibold">{stepT1}</span></span>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Look-back (T1)
+                                        <span className="float-right text-blue-600 font-bold">{stepT1} days</span>
+                                    </label>
                                     <input
-                                        type="range"
-                                        min={1}
-                                        max={30}
-                                        step={1}
+                                        type="range" min="1" max="60" step="1"
                                         value={stepT1}
                                         onChange={(e) => setStepT1(parseInt(e.target.value))}
-                                        title="Time window before earthquake (days)"
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                     />
                                 </div>
-                                <div className="flex flex-col">
-                                    <span>T2 (days): <span className="font-semibold">{stepT2}</span></span>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Look-forward (T2)
+                                        <span className="float-right text-blue-600 font-bold">{stepT2} days</span>
+                                    </label>
                                     <input
-                                        type="range"
-                                        min={1}
-                                        max={365}
-                                        step={1}
+                                        type="range" min="1" max="365" step="1"
                                         value={stepT2}
                                         onChange={(e) => setStepT2(parseInt(e.target.value))}
-                                        title="Time window after earthquake (days)"
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                     />
+                                </div>
+                            </>
+                        )}
+
+                        {/* K-Means Parameters */}
+                        {algorithm === 'kmeans' && (
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Number of Clusters (k)
+                                    <span className="float-right text-blue-600 font-bold">{k}</span>
+                                </label>
+                                <input
+                                    type="range" min="2" max="20" step="1"
+                                    value={k}
+                                    onChange={(e) => setK(parseInt(e.target.value))}
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                />
+                            </div>
+                        )}
+
+                        {/* Nearest Neighbor Parameters */}
+                        {algorithm === 'nearest-neighbor' && (
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Threshold
+                                    <span className="float-right text-blue-600 font-bold">{nnThreshold.toFixed(2)}</span>
+                                </label>
+                                <input
+                                    type="range" min="0.1" max="5.0" step="0.1"
+                                    value={nnThreshold}
+                                    onChange={(e) => setNnThreshold(parseFloat(e.target.value))}
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                />
+                            </div>
+                        )}
+
+                        {/* TMC Parameters (Reasenberg) */}
+                        {algorithm === 'tmc' && (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Interaction Factor (rFact)
+                                        <span className="float-right text-blue-600 font-bold">{tmcRfact}</span>
+                                    </label>
+                                    <input type="range" min="1" max="20" step="1" value={tmcRfact} onChange={(e) => setTmcRfact(parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Tau0 (Look-ahead)
+                                        <span className="float-right text-blue-600 font-bold">{tmcTau0} days</span>
+                                    </label>
+                                    <input type="range" min="1" max="10" step="0.5" value={tmcTau0} onChange={(e) => setTmcTau0(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Proba. p1
+                                        <span className="float-right text-blue-600 font-bold">{tmcP1}</span>
+                                    </label>
+                                    <input type="range" min="0.5" max="0.99" step="0.01" value={tmcP1} onChange={(e) => setTmcP1(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                                 </div>
                             </>
                         )}
                     </div>
                 </div>
             </div>
-
-            {(algorithm === 'dbscan' || algorithm === 'optics') && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Search Radius (epsilon): {epsilon} km
-                        </label>
-                        <input
-                            type="range"
-                            min="5"
-                            max="100"
-                            step="5"
-                            value={epsilon}
-                            onChange={(e) => setEpsilon(parseInt(e.target.value))}
-                            className="w-full"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Min Points per Cluster: {minSamples}
-                        </label>
-                        <input
-                            type="range"
-                            min="3"
-                            max="20"
-                            step="1"
-                            value={minSamples}
-                            onChange={(e) => setMinSamples(parseInt(e.target.value))}
-                            className="w-full"
-                        />
-                    </div>
-                </div>
-            )}
-            {algorithm === 'kmeans' && (
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Number of Clusters (k): {k}
-                    </label>
-                    <input
-                        type="range"
-                        min="2"
-                        max="15"
-                        step="1"
-                        value={k}
-                        onChange={(e) => setK(parseInt(e.target.value))}
-                        className="w-full"
-                    />
-                </div>
-            )}
 
             <div className="h-[500px]">
                 <HighchartsReact
