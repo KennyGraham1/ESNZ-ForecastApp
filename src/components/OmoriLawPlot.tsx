@@ -10,17 +10,61 @@ import ChartExportButtons from './ChartExportButtons';
 interface OmoriLawPlotProps {
     earthquakes: EarthquakeData[];
     mainEvent: MainEventInfo;
+    optimizationMethod?: OptimizationMethod;
+    magnitudeCompleteness?: number;
+    onOptimizationMethodChange?: (method: OptimizationMethod) => void;
+    onMagnitudeCompletenessChange?: (mc: number | undefined) => void;
 }
 
-const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: OmoriLawPlotProps) {
+const OmoriLawPlot = memo(function OmoriLawPlot({
+    earthquakes,
+    mainEvent,
+    optimizationMethod: externalOptimizationMethod,
+    magnitudeCompleteness: externalMagnitudeCompleteness,
+    onOptimizationMethodChange,
+    onMagnitudeCompletenessChange
+}: OmoriLawPlotProps) {
     const chartRef1 = useRef<HighchartsReact.RefObject>(null);
     const chartRef2 = useRef<HighchartsReact.RefObject>(null);
-    const [activeTab, setActiveTab] = useState<'fit' | 'residuals' | 'stats' | 'uncertainty'>('fit');
-    const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('hybrid');
+    const chartRef3 = useRef<HighchartsReact.RefObject>(null);
+    const chartRef4 = useRef<HighchartsReact.RefObject>(null);
+    const chartRef5 = useRef<HighchartsReact.RefObject>(null);
+    const [activeTab, setActiveTab] = useState<'fit' | 'residuals' | 'stats'>('fit');
+
+    // Input state (controlled inputs)
+    const [inputOptimizationMethod, setInputOptimizationMethod] = useState<OptimizationMethod>(
+        externalOptimizationMethod || 'hybrid'
+    );
+    const [inputMagnitudeCompleteness, setInputMagnitudeCompleteness] = useState<string>(
+        externalMagnitudeCompleteness?.toString() || ''
+    );
+
+    // Applied state (used for calculations)
+    const [appliedOptimizationMethod, setAppliedOptimizationMethod] = useState<OptimizationMethod>(
+        externalOptimizationMethod || 'hybrid'
+    );
+    const [appliedMagnitudeCompleteness, setAppliedMagnitudeCompleteness] = useState<string>(
+        externalMagnitudeCompleteness?.toString() || ''
+    );
+
+    const handleApply = () => {
+        setAppliedOptimizationMethod(inputOptimizationMethod);
+        setAppliedMagnitudeCompleteness(inputMagnitudeCompleteness);
+
+        // Notify parent component of changes
+        if (onOptimizationMethodChange) {
+            onOptimizationMethodChange(inputOptimizationMethod);
+        }
+        if (onMagnitudeCompletenessChange) {
+            const mc = inputMagnitudeCompleteness ? parseFloat(inputMagnitudeCompleteness) : undefined;
+            onMagnitudeCompletenessChange(mc);
+        }
+    };
 
     const omoriParams = useMemo(() => {
-        return calculateOmoriParameters(earthquakes, mainEvent, 365, optimizationMethod);
-    }, [earthquakes, mainEvent, optimizationMethod]);
+        const mc = appliedMagnitudeCompleteness ? parseFloat(appliedMagnitudeCompleteness) : undefined;
+        return calculateOmoriParameters(earthquakes, mainEvent, 365, appliedOptimizationMethod, mc);
+    }, [earthquakes, mainEvent, appliedOptimizationMethod, appliedMagnitudeCompleteness]);
 
     const dailyRateOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
@@ -38,7 +82,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
         return {
             chart: {
                 type: 'scatter',
-                height: 380,
+                height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
                     fontFamily: '"DejaVu Sans", Arial, sans-serif'
@@ -161,7 +205,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
         return {
             chart: {
                 type: 'line',
-                height: 380,
+                height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
                     fontFamily: '"DejaVu Sans", Arial, sans-serif'
@@ -285,7 +329,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
         return {
             chart: {
                 type: 'column',
-                height: 380,
+                height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
                     fontFamily: '"DejaVu Sans", Arial, sans-serif'
@@ -379,18 +423,20 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
 
         return {
             chart: {
-                height: 450,
+                height: 600,
                 backgroundColor: '#FFFFFF',
                 style: {
                     fontFamily: '"DejaVu Sans", Arial, sans-serif'
-                }
+                },
+                marginBottom: 80,
+                spacingBottom: 15
             },
             title: { text: '' },
             credits: { enabled: false },
             xAxis: [
                 {
                     title: {
-                        text: 'Time since mainshock (days)',
+                        text: '',
                         style: { fontSize: '12px', fontWeight: '500', color: '#333' }
                     },
                     gridLineWidth: 0,
@@ -398,7 +444,8 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
                     lineWidth: 1.5,
                     tickColor: '#000',
                     tickWidth: 1.5,
-                    labels: { style: { fontSize: '11px', color: '#333' } }
+                    labels: { enabled: false },
+                    height: '52%'
                 },
                 {
                     title: {
@@ -410,9 +457,12 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
                     lineWidth: 1.5,
                     tickColor: '#000',
                     tickWidth: 1.5,
-                    labels: { style: { fontSize: '11px', color: '#333' } },
-                    top: '60%',
-                    height: '40%',
+                    labels: {
+                        style: { fontSize: '11px', color: '#333' },
+                        y: 25
+                    },
+                    top: '57%',
+                    height: '43%',
                     offset: 0
                 }
             ],
@@ -422,7 +472,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
                         text: 'Standardized residuals',
                         style: { fontSize: '12px', fontWeight: '500', color: '#333' }
                     },
-                    height: '55%',
+                    height: '52%',
                     gridLineWidth: 1,
                     gridLineColor: '#E0E0E0',
                     lineColor: '#000',
@@ -441,8 +491,8 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
                         text: 'Cumulative residuals',
                         style: { fontSize: '12px', fontWeight: '500', color: '#333' }
                     },
-                    top: '60%',
-                    height: '40%',
+                    top: '57%',
+                    height: '43%',
                     offset: 0,
                     gridLineWidth: 1,
                     gridLineColor: '#E0E0E0',
@@ -522,7 +572,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
         return {
             chart: {
                 type: 'scatter',
-                height: 400,
+                height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
                     fontFamily: '"DejaVu Sans", Arial, sans-serif'
@@ -606,147 +656,6 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
         };
     }, [omoriParams]);
 
-    // -------------------------
-    // Chart 3: Profile log-likelihood contour for (p,c) - Matplotlib-style
-    // -------------------------
-    const likelihoodOptions: Highcharts.Options = useMemo(() => {
-        if (!omoriParams?.profileLikelihood) return {};
-        const { profileLikelihood } = omoriParams;
-
-        // Finding the max log-likelihood for coloring relative to peak
-        const maxLogL = Math.max(...profileLikelihood.map(p => p.logLikelihood));
-
-        // Normalize to peak = 0 (relative log-likelihood)
-        const filteredData = profileLikelihood.map(p => ({
-            ...p,
-            val: p.logLikelihood - maxLogL
-        })).filter(p => p.val > -20);
-
-        // Auto-detect axis ranges based on data
-        const pValues = profileLikelihood.map(d => d.p);
-        const cValues = profileLikelihood.map(d => d.c);
-        const pMin = Math.min(...pValues);
-        const pMax = Math.max(...pValues);
-        const cMin = Math.min(...cValues);
-        const cMax = Math.max(...cValues);
-
-        return {
-            chart: {
-                type: 'scatter',
-                height: 450,
-                backgroundColor: '#FFFFFF',
-                style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
-                }
-            },
-            title: {
-                text: 'Profile log-likelihood surface',
-                style: { fontSize: '13px', fontWeight: '600', color: '#333' }
-            },
-            credits: { enabled: false },
-            xAxis: {
-                title: {
-                    text: 'p (decay exponent)',
-                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
-                },
-                min: pMin,
-                max: pMax,
-                gridLineWidth: 1,
-                gridLineColor: '#E0E0E0',
-                lineColor: '#000',
-                lineWidth: 1.5,
-                tickColor: '#000',
-                tickWidth: 1.5,
-                labels: { style: { fontSize: '11px', color: '#333' } }
-            },
-            yAxis: {
-                title: {
-                    text: 'c (time offset, days)',
-                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
-                },
-                min: cMin,
-                max: cMax,
-                gridLineWidth: 1,
-                gridLineColor: '#E0E0E0',
-                lineColor: '#000',
-                lineWidth: 1.5,
-                tickColor: '#000',
-                tickWidth: 1.5,
-                labels: { style: { fontSize: '11px', color: '#333' } }
-            },
-            colorAxis: {
-                min: -10,
-                max: 0,
-                stops: [
-                    [0, '#0C0887'],    // Viridis: dark blue (lowest)
-                    [0.2, '#5302A3'],  // Viridis: purple
-                    [0.4, '#8B0AA5'],  // Viridis: magenta
-                    [0.6, '#B83289'],  // Viridis: pink
-                    [0.8, '#DB5C68'],  // Viridis: salmon
-                    [1, '#FCA636']     // Viridis: yellow (highest/MLE)
-                ],
-                labels: {
-                    format: '{value:.1f}',
-                    style: { fontSize: '11px', color: '#333' }
-                },
-                gridLineWidth: 0
-            },
-            legend: {
-                enabled: true,
-                align: 'right',
-                verticalAlign: 'middle',
-                layout: 'vertical',
-                backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                borderColor: '#CCC',
-                borderWidth: 1,
-                itemStyle: { fontSize: '11px', fontWeight: 'normal', color: '#333' },
-                title: {
-                    text: 'Δ log L',
-                    style: { fontSize: '11px', fontWeight: '500', color: '#333' }
-                }
-            },
-            tooltip: {
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                borderColor: '#999',
-                borderWidth: 1,
-                style: { fontSize: '11px' },
-                pointFormat: '<b>p:</b> {point.x:.2f}<br/><b>c:</b> {point.y:.3f}<br/><b>Δ log L:</b> {point.v:.2f}'
-            },
-            series: [
-                {
-                    type: 'scatter',
-                    name: 'Log-likelihood Surface',
-                    data: filteredData.map(d => ({ x: d.p, y: d.c, v: d.val, colorValue: d.val })),
-                    // @ts-ignore - ColorAxis is supported but types might be strict
-                    colorKey: 'colorValue',
-                    marker: {
-                        symbol: 'square',
-                        radius: 6,
-                        lineWidth: 0
-                    },
-                    showInLegend: false
-                },
-                {
-                    type: 'scatter',
-                    name: `MLE: p=${omoriParams.p.toFixed(3)}, c=${omoriParams.c.toFixed(4)}`,
-                    data: [{ x: omoriParams.p, y: omoriParams.c }],
-                    color: '#FFFFFF',
-                    marker: {
-                        symbol: 'circle',
-                        radius: 6,
-                        lineWidth: 2.5,
-                        lineColor: '#000000',
-                        fillColor: '#FFFFFF'
-                    },
-                    zIndex: 10,
-                    tooltip: {
-                        pointFormat: '<b>MLE Point</b><br/><b>p:</b> {point.x:.3f}<br/><b>c:</b> {point.y:.4f}'
-                    }
-                }
-            ]
-        };
-    }, [omoriParams]);
-
     // Early return if no data
     if (!omoriParams) {
         return (
@@ -764,19 +673,41 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">Omori&apos;s Law Analysis</h3>
-                <div className="flex items-center gap-2">
-                    <label htmlFor="opt-method" className="text-sm text-gray-600">Optimization:</label>
-                    <select
-                        id="opt-method"
-                        value={optimizationMethod}
-                        onChange={(e) => setOptimizationMethod(e.target.value as OptimizationMethod)}
-                        className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="mc-input" className="text-sm text-gray-600">Mc:</label>
+                        <input
+                            id="mc-input"
+                            type="number"
+                            step="0.1"
+                            placeholder="Optional"
+                            value={inputMagnitudeCompleteness}
+                            onChange={(e) => setInputMagnitudeCompleteness(e.target.value)}
+                            className="text-sm border border-gray-300 rounded px-2 py-1 w-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            title="Magnitude of completeness - only events with M ≥ Mc will be included"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="opt-method" className="text-sm text-gray-600">Optimization:</label>
+                        <select
+                            id="opt-method"
+                            value={inputOptimizationMethod}
+                            onChange={(e) => setInputOptimizationMethod(e.target.value as OptimizationMethod)}
+                            className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="hybrid">Hybrid (Grid + LM)</option>
+                            <option value="mle">MLE (with CI)</option>
+                            <option value="levenberg-marquardt">Levenberg-Marquardt</option>
+                            <option value="nelder-mead">Nelder-Mead</option>
+                            <option value="grid-search">Grid Search</option>
+                        </select>
+                    </div>
+                    <button
+                        onClick={handleApply}
+                        className="px-4 py-1 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                        <option value="hybrid">Hybrid (Grid + LM)</option>
-                        <option value="levenberg-marquardt">Levenberg-Marquardt</option>
-                        <option value="nelder-mead">Nelder-Mead</option>
-                        <option value="grid-search">Grid Search</option>
-                    </select>
+                        Apply
+                    </button>
                 </div>
             </div>
 
@@ -784,18 +715,58 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
                 <div className="bg-blue-50 p-3 rounded">
                     <p className="text-sm text-gray-600">K (Productivity)</p>
                     <p className="text-xl font-bold text-blue-700">{K.toFixed(2)}</p>
+                    {omoriParams.uncertainty?.K_ci && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            95% CI: [{omoriParams.uncertainty.K_ci[0].toFixed(2)}, {omoriParams.uncertainty.K_ci[1].toFixed(2)}]
+                        </p>
+                    )}
+                    {omoriParams.uncertainty?.K_se && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            SE: ±{omoriParams.uncertainty.K_se.toFixed(2)}
+                        </p>
+                    )}
                 </div>
                 <div className="bg-green-50 p-3 rounded">
                     <p className="text-sm text-gray-600">c (Time Offset)</p>
                     <p className="text-xl font-bold text-green-700">{c.toFixed(3)} days</p>
+                    {omoriParams.uncertainty?.c_ci && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            95% CI: [{omoriParams.uncertainty.c_ci[0].toFixed(3)}, {omoriParams.uncertainty.c_ci[1].toFixed(3)}]
+                        </p>
+                    )}
+                    {omoriParams.uncertainty?.c_se && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            SE: ±{omoriParams.uncertainty.c_se.toFixed(3)}
+                        </p>
+                    )}
                 </div>
                 <div className="bg-purple-50 p-3 rounded">
                     <p className="text-sm text-gray-600">p (Decay)</p>
                     <p className="text-xl font-bold text-purple-700">{p.toFixed(2)}</p>
+                    {omoriParams.uncertainty?.p_ci && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            95% CI: [{omoriParams.uncertainty.p_ci[0].toFixed(3)}, {omoriParams.uncertainty.p_ci[1].toFixed(3)}]
+                        </p>
+                    )}
+                    {omoriParams.uncertainty?.p_se && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            SE: ±{omoriParams.uncertainty.p_se.toFixed(3)}
+                        </p>
+                    )}
                 </div>
                 <div className="bg-orange-50 p-3 rounded">
                     <p className="text-sm text-gray-600">R²</p>
                     <p className="text-xl font-bold text-orange-700">{rSquared.toFixed(3)}</p>
+                    {omoriParams.uncertainty?.aic && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            AIC: {omoriParams.uncertainty.aic.toFixed(1)}
+                        </p>
+                    )}
+                    {omoriParams.uncertainty?.bic && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            BIC: {omoriParams.uncertainty.bic.toFixed(1)}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -825,65 +796,74 @@ const OmoriLawPlot = memo(function OmoriLawPlot({ earthquakes, mainEvent }: Omor
                 >
                     Q-Q Plot
                 </button>
-                <button
-                    className={`px-4 py-2 text-sm font-medium ${activeTab === 'uncertainty' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => setActiveTab('uncertainty')}
-                >
-                    Parameters
-                </button>
             </div>
 
             <div className="space-y-6">
                 {activeTab === 'fit' && (
                     <>
-                        <div className="bg-white rounded-lg border border-gray-100">
-                            <div className="h-[350px]">
-                                <HighchartsReact highcharts={Highcharts} options={countsVsExpectedOptions} />
+                        <div className="bg-white rounded-lg border border-gray-100 p-4">
+                            <div className="h-[500px]">
+                                <HighchartsReact highcharts={Highcharts} options={countsVsExpectedOptions} ref={chartRef1} />
                             </div>
+                            <ChartExportButtons
+                                chartRef={chartRef1}
+                                data={earthquakes}
+                                filename="omori-counts-vs-expected"
+                            />
                         </div>
-                        <div className="bg-white rounded-lg border border-gray-100">
-                            <div className="h-[350px]">
+                        <div className="bg-white rounded-lg border border-gray-100 p-4">
+                            <div className="h-[500px]">
                                 <HighchartsReact highcharts={Highcharts} options={cumulativeOptions} ref={chartRef2} />
                             </div>
+                            <ChartExportButtons
+                                chartRef={chartRef2}
+                                data={earthquakes}
+                                filename="omori-cumulative"
+                            />
                         </div>
                         <div className="bg-white rounded-lg border border-gray-100">
                             <h4 className="text-md font-semibold text-gray-700 mb-3 px-4 pt-4">Daily Aftershock Rate (Log-Log)</h4>
-                            <div className="h-[350px]">
-                                <HighchartsReact highcharts={Highcharts} options={dailyRateOptions} ref={chartRef1} />
+                            <div className="h-[500px] px-4">
+                                <HighchartsReact highcharts={Highcharts} options={dailyRateOptions} ref={chartRef3} />
+                            </div>
+                            <div className="px-4 pb-4">
+                                <ChartExportButtons
+                                    chartRef={chartRef3}
+                                    data={earthquakes}
+                                    filename="omori-daily-rate"
+                                />
                             </div>
                         </div>
                     </>
                 )}
 
                 {activeTab === 'residuals' && (
-                    <div className="bg-white rounded-lg border border-gray-100">
-                        <h4 className="text-md font-semibold text-gray-700 mb-3 px-4 pt-4">Residual Analysis</h4>
-                        <p className="text-xs text-gray-500 px-4 mb-2">Top: Standardized residuals (should be within ±2). Bottom: Cumulative residual process.</p>
-                        <div className="h-[400px]">
-                            <HighchartsReact highcharts={Highcharts} options={residualOptions} />
+                    <div className="bg-white rounded-lg border border-gray-100 p-4">
+                        <h4 className="text-md font-semibold text-gray-700 mb-3">Residual Analysis</h4>
+                        <p className="text-xs text-gray-500 mb-2">Top: Standardized residuals (should be within ±2). Bottom: Cumulative residual process.</p>
+                        <div className="h-[600px]">
+                            <HighchartsReact highcharts={Highcharts} options={residualOptions} ref={chartRef4} />
                         </div>
+                        <ChartExportButtons
+                            chartRef={chartRef4}
+                            data={earthquakes}
+                            filename="omori-residual-analysis"
+                        />
                     </div>
                 )}
 
                 {activeTab === 'stats' && (
-                    <div className="bg-white rounded-lg border border-gray-100">
-                        <h4 className="text-md font-semibold text-gray-700 mb-3 px-4 pt-4">Time-Rescaling Q-Q Plot</h4>
-                        <p className="text-xs text-gray-500 px-4 mb-2">Transformed inter-event times vs Exponential(1). Deviations from 1:1 line indicate model misfit.</p>
-                        <div className="h-[400px]">
-                            <HighchartsReact highcharts={Highcharts} options={qqOptions} />
+                    <div className="bg-white rounded-lg border border-gray-100 p-4">
+                        <h4 className="text-md font-semibold text-gray-700 mb-3">Time-Rescaling Q-Q Plot</h4>
+                        <p className="text-xs text-gray-500 mb-2">Transformed inter-event times vs Exponential(1). Deviations from 1:1 line indicate model misfit.</p>
+                        <div className="h-[500px]">
+                            <HighchartsReact highcharts={Highcharts} options={qqOptions} ref={chartRef5} />
                         </div>
-                    </div>
-                )}
-
-                {activeTab === 'uncertainty' && (
-                    <div className="bg-white rounded-lg border border-gray-100">
-                        <div className="h-[400px]">
-                            <HighchartsReact highcharts={Highcharts} options={likelihoodOptions} />
-                        </div>
-                        <p className="text-xs text-gray-500 px-4 py-2">
-                            Contour plot shows the profile log-likelihood surface for parameters p (decay exponent) and c (time offset).
-                            The red point marks the maximum likelihood estimate (MLE). Warmer colors indicate higher likelihood.
-                        </p>
+                        <ChartExportButtons
+                            chartRef={chartRef5}
+                            data={earthquakes}
+                            filename="omori-qq-plot"
+                        />
                     </div>
                 )}
             </div>

@@ -4,7 +4,9 @@ import { EarthquakeData } from '@/types/earthquake';
 import { useState, useMemo } from 'react';
 import OmoriLawPlot from '@/components/OmoriLawPlot';
 import AftershockSequencePlot from '@/components/AftershockSequencePlot';
-import { MainEventInfo } from '@/lib/analysis/omori';
+import GutenbergRichterPlot from '@/components/GutenbergRichterPlot';
+import CumulativeAftershockPlot from '@/components/CumulativeAftershockPlot';
+import { MainEventInfo, OptimizationMethod } from '@/lib/analysis/omori';
 
 const historicalEvents = [
     {
@@ -69,6 +71,10 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
     const [mainEventLon, setMainEventLon] = useState<number | undefined>(undefined);
     const [showHistoricalEvents, setShowHistoricalEvents] = useState(false);
     const [isMainEventSectionExpanded, setIsMainEventSectionExpanded] = useState(true);
+
+    // Shared Omori optimization parameters
+    const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('hybrid');
+    const [magnitudeCompleteness, setMagnitudeCompleteness] = useState<number | undefined>(undefined);
 
     // Gardner-Knopoff declustering algorithm
     // Based on Gardner & Knopoff (1974) space-time window method
@@ -407,7 +413,25 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                             <h3 className="text-xl font-bold text-gray-800 mb-1">Omori&apos;s Law Analysis</h3>
                             <p className="text-sm text-gray-500">Decay rate of aftershock activity</p>
                         </div>
-                        <OmoriLawPlot earthquakes={earthquakes} mainEvent={mainEvent} />
+                        <OmoriLawPlot
+                            earthquakes={earthquakes}
+                            mainEvent={mainEvent}
+                            optimizationMethod={optimizationMethod}
+                            magnitudeCompleteness={magnitudeCompleteness}
+                            onOptimizationMethodChange={setOptimizationMethod}
+                            onMagnitudeCompletenessChange={setMagnitudeCompleteness}
+                        />
+                    </div>
+
+                    {/* Frequency-Magnitude and Cumulative Analysis Section - Side by Side */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <GutenbergRichterPlot earthquakes={earthquakes} />
+                        <CumulativeAftershockPlot
+                            earthquakes={earthquakes}
+                            mainEvent={mainEvent}
+                            optimizationMethod={optimizationMethod}
+                            magnitudeCompleteness={magnitudeCompleteness}
+                        />
                     </div>
                 </div>
             ) : (
