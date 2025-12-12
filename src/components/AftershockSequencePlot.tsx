@@ -12,9 +12,10 @@ import { formatDate } from '@/utils/dateFormat';
 interface AftershockSequencePlotProps {
     earthquakes: EarthquakeData[];
     mainEvent: MainEventInfo;
+    onSequenceDataChange?: (filteredEarthquakes: EarthquakeData[]) => void;
 }
 
-const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquakes, mainEvent }: AftershockSequencePlotProps) {
+const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquakes, mainEvent, onSequenceDataChange }: AftershockSequencePlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
     const depthChartRef = useRef<HighchartsReact.RefObject>(null);
     const mapChartRef = useRef<HighchartsReact.RefObject>(null);
@@ -406,6 +407,13 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
         return filtered;
     }, [earthquakes, mainEvent, debouncedRadius, spatialIndex]);
 
+    // Notify parent component of filtered sequence data changes
+    useEffect(() => {
+        if (onSequenceDataChange) {
+            onSequenceDataChange(sequenceData);
+        }
+    }, [sequenceData, onSequenceDataChange]);
+
     // Point-in-polygon algorithm (ray casting)
     const isPointInPolygon = (point: { lat: number, lon: number }, polygon: Array<{ lat: number, lon: number }>) => {
         if (polygon.length < 3) return false;
@@ -480,8 +488,11 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
     };
 
     const chartOptions: Highcharts.Options = useMemo(() => {
+        console.log('🎨 Creating chart options for', sequenceData.length, 'events');
+
         // Validate data before processing
         if (!sequenceData || sequenceData.length === 0) {
+            console.warn('⚠️ No sequence data available for chart');
             return {
                 chart: { type: 'scatter', zoomType: 'xy', height: 500 },
                 title: { text: '' },
@@ -492,10 +503,17 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
         }
 
         // Calculate dynamic ranges
-        const maxDays = Math.max(...sequenceData.map(eq => eq.daysSince));
-        const minDays = Math.min(...sequenceData.map(eq => eq.daysSince));
-        const maxMag = Math.max(...sequenceData.map(eq => eq.magnitude));
-        const minMag = Math.min(...sequenceData.map(eq => eq.magnitude));
+        // FIXED: Use iterative approach to avoid stack overflow on large datasets
+        let maxDays = -Infinity;
+        let minDays = Infinity;
+        let maxMag = -Infinity;
+        let minMag = Infinity;
+        for (const eq of sequenceData) {
+            if (eq.daysSince > maxDays) maxDays = eq.daysSince;
+            if (eq.daysSince < minDays) minDays = eq.daysSince;
+            if (eq.magnitude > maxMag) maxMag = eq.magnitude;
+            if (eq.magnitude < minMag) minMag = eq.magnitude;
+        }
 
         // Find 6 largest events for labeling
         const sortedByMag = [...sequenceData].sort((a, b) => b.magnitude - a.magnitude);
@@ -513,6 +531,13 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
 
         const data = sequenceData.map((eq, index) => {
             const isSelected = selectedIndices.has(index);
+
+            // Validate data
+            if (!isFinite(eq.daysSince) || !isFinite(eq.magnitude)) {
+                console.error('❌ Invalid data point:', {index, daysSince: eq.daysSince, magnitude: eq.magnitude});
+                return null;
+            }
+
             return {
                 x: eq.daysSince,
                 y: eq.magnitude,
@@ -545,7 +570,21 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     index
                 }
             };
-        });
+        }).filter((point): point is NonNullable<typeof point> => point !== null);
+
+        console.log('📈 Valid data points after filtering:', data.length, 'from', sequenceData.length);
+
+        // Additional safety check - if data array is empty after validation, return empty chart
+        if (data.length === 0) {
+            console.warn('⚠️ No valid data points after filtering');
+            return {
+                chart: { type: 'scatter', zoomType: 'xy', height: 500 },
+                title: { text: 'No valid data' },
+                credits: { enabled: false },
+                exporting: { enabled: false },
+                series: []
+            };
+        }
 
         return {
             chart: {
@@ -678,7 +717,15 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     `;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 scatter: {
                     marker: {
                         radius: 5,
@@ -752,10 +799,24 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             series: [{
                 type: 'scatter',
                 name: 'Earthquakes',
-                data: data.map(d => ({
-                    ...d,
-                    colorValue: d.custom.daysSince
-                })),
+                data: (() => {
+                    if (!Array.isArray(data) || data.length === 0) {
+                        console.warn('⚠️ Timeline chart: data is not an array or is empty');
+                        return [];
+                    }
+                    const seriesData = data.map(d => {
+                        if (!d || typeof d.x !== 'number' || typeof d.y !== 'number') {
+                            console.error('❌ Invalid data point structure:', d);
+                            return null;
+                        }
+                        return {
+                            ...d,
+                            colorValue: d.custom?.daysSince || 0
+                        };
+                    }).filter(point => point !== null);
+                    console.log('📊 Timeline chart series data points:', seriesData.length, 'from', data.length);
+                    return seriesData;
+                })(),
                 colorKey: 'colorValue'
             }],
             annotations: [{
@@ -821,8 +882,13 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             };
         }
 
-        const maxDays = Math.max(...sequenceData.map(eq => eq.daysSince));
-        const minDays = Math.min(...sequenceData.map(eq => eq.daysSince));
+        // FIXED: Use iterative approach to avoid stack overflow on large datasets
+        let maxDays = -Infinity;
+        let minDays = Infinity;
+        for (const eq of sequenceData) {
+            if (eq.daysSince > maxDays) maxDays = eq.daysSince;
+            if (eq.daysSince < minDays) minDays = eq.daysSince;
+        }
 
         const getColorForDays = (days: number) => {
             const normalized = (days - minDays) / (maxDays - minDays);
@@ -919,7 +985,15 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     `;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 scatter: {
                     marker: {
                         states: {
@@ -1013,8 +1087,13 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             featuresCount: nzMapGeometry?.features?.length
         });
 
-        const maxDays = Math.max(...sequenceData.map(eq => eq.daysSince));
-        const minDays = Math.min(...sequenceData.map(eq => eq.daysSince));
+        // FIXED: Use iterative approach to avoid stack overflow on large datasets
+        let maxDays = -Infinity;
+        let minDays = Infinity;
+        for (const eq of sequenceData) {
+            if (eq.daysSince > maxDays) maxDays = eq.daysSince;
+            if (eq.daysSince < minDays) minDays = eq.daysSince;
+        }
 
         const getColorForDays = (days: number) => {
             const normalized = (days - minDays) / (maxDays - minDays);
@@ -1263,9 +1342,18 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     `;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 mappoint: {
-                    turboThreshold: 20000, // Increase threshold for large datasets (20+ years)
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000, // Use boost module for datasets > 5000 points
                     cursor: 'pointer',
                     states: {
                         hover: {

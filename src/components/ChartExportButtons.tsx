@@ -117,8 +117,14 @@ export default function ChartExportButtons({
 
         // Add clustering metadata as comments if available
         if (clusteringMetadata && clusterLabels && clusterSizes) {
-            const clusteredPoints = clusterLabels.filter(l => l >= 0);
-            const nClusters = clusteredPoints.length > 0 ? Math.max(...clusteredPoints) + 1 : 0;
+            // FIXED: Use iterative approach to avoid stack overflow on large datasets
+            let maxClusterLabel = -1;
+            for (const label of clusterLabels) {
+                if (label >= 0 && label > maxClusterLabel) {
+                    maxClusterLabel = label;
+                }
+            }
+            const nClusters = maxClusterLabel >= 0 ? maxClusterLabel + 1 : 0;
             const noiseCount = clusterLabels.filter(l => l === -1).length;
             const noisePercent = (noiseCount / clusterLabels.length) * 100;
 
@@ -127,8 +133,18 @@ export default function ChartExportButtons({
                 .filter(([id]) => id >= 0)
                 .map(([, size]) => size);
             const avgClusterSize = sizes.length > 0 ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
-            const minClusterSize = sizes.length > 0 ? Math.min(...sizes) : 0;
-            const maxClusterSize = sizes.length > 0 ? Math.max(...sizes) : 0;
+
+            // FIXED: Use iterative approach for min/max
+            let minClusterSize = Infinity;
+            let maxClusterSize = -Infinity;
+            for (const size of sizes) {
+                if (size < minClusterSize) minClusterSize = size;
+                if (size > maxClusterSize) maxClusterSize = size;
+            }
+            if (sizes.length === 0) {
+                minClusterSize = 0;
+                maxClusterSize = 0;
+            }
 
             csvContent += `# Clustering Metadata\n`;
             csvContent += `# Algorithm: ${clusteringMetadata.algorithm}\n`;
@@ -261,8 +277,18 @@ export default function ChartExportButtons({
                 .filter(([id]) => id >= 0)
                 .map(([, size]) => size);
             const avgClusterSize = sizes.length > 0 ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
-            const minClusterSize = sizes.length > 0 ? Math.min(...sizes) : 0;
-            const maxClusterSize = sizes.length > 0 ? Math.max(...sizes) : 0;
+
+            // FIXED: Use iterative approach for min/max
+            let minClusterSize = Infinity;
+            let maxClusterSize = -Infinity;
+            for (const size of sizes) {
+                if (size < minClusterSize) minClusterSize = size;
+                if (size > maxClusterSize) maxClusterSize = size;
+            }
+            if (sizes.length === 0) {
+                minClusterSize = 0;
+                maxClusterSize = 0;
+            }
 
             exportData.clustering_metadata = {
                 algorithm: clusteringMetadata.algorithm,

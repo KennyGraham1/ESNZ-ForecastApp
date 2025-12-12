@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
 import { ClusteringAlgorithm } from '@/lib/analysis/clustering';
 
 export interface ClusteringState {
@@ -79,6 +79,13 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     // Selection state
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
+    // Create a stable version of selectedIndices for dependency tracking
+    // Convert Set to sorted array string for stable comparison
+    const selectedIndicesKey = useMemo(() =>
+        Array.from(selectedIndices).sort((a, b) => a - b).join(','),
+        [selectedIndices]
+    );
+
     // Toggle a single index in/out of selection
     const toggleSelection = useCallback((index: number) => {
         setSelectedIndices(prev => {
@@ -106,7 +113,10 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         });
     }, []);
 
-    const value: ClusteringState = {
+    // OPTIMIZATION: Memoize context value to prevent unnecessary re-renders
+    // Only recreate when actual state values change
+    // Use selectedIndicesKey instead of selectedIndices for stable dependency
+    const value: ClusteringState = useMemo(() => ({
         algorithm,
         epsilon,
         minSamples,
@@ -121,7 +131,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         tmcTauMax,
         tmcP1,
         tmcXk,
-        includeNoise, // NEW
+        includeNoise,
         selectedIndices,
         setAlgorithm,
         setEpsilon,
@@ -137,12 +147,32 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         setTmcTauMax,
         setTmcP1,
         setTmcXk,
-        setIncludeNoise, // NEW
+        setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
         clearSelection,
         addToSelection,
-    };
+    }), [
+        algorithm,
+        epsilon,
+        minSamples,
+        k,
+        nnThreshold,
+        stepMinMag,
+        stepT1,
+        stepT2,
+        epsilonTemporal,
+        tmcRfact,
+        tmcTau0,
+        tmcTauMax,
+        tmcP1,
+        tmcXk,
+        includeNoise,
+        selectedIndicesKey,
+        toggleSelection,
+        clearSelection,
+        addToSelection,
+    ]);
 
     return (
         <ClusteringContext.Provider value={value}>

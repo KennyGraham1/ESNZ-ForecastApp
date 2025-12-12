@@ -1,61 +1,21 @@
 import { EarthquakeData } from '@/types/earthquake';
 import { DBSCAN, OPTICS, KMEANS } from 'density-clustering';
 import RBush from 'rbush';
+import { clusteringCache } from './clusteringCache';
+import type {
+    ClusteringAlgorithm,
+    ClusterResult,
+    ClusteringMetadata,
+    SpatialClusteringOptions
+} from './clusteringTypes';
 
-export type ClusteringAlgorithm =
-    | 'dbscan'
-    | 'optics'
-    | 'kmeans'
-    // HIERARCHICAL CLUSTERING TYPES - COMMENTED OUT FOR FUTURE RESTORATION
-    // | 'hierarchical-single'
-    // | 'hierarchical-complete'
-    // | 'hierarchical-average'
-    // | 'hierarchical-ward'
-    | 'step-mag'    // STEP Magnitude clustering (seismology)
-    | 'step-time'   // STEP Time clustering (seismology)
-    | 'nearest-neighbor'
-    | 'st-dbscan'   // Spatio-Temporal DBSCAN
-    | 'tmc';        // Time Magnitude Clustering (Reasenberg-style)
-
-export interface ClusterResult {
-    labels: number[]; // Cluster label per event, -1 for noise/unassigned
-    nClusters: number;
-    clusterPercent: number;
-    noisePercent: number;
-    clusters: number[][]; // Array of arrays of indices
-    metadata?: ClusteringMetadata; // Additional metadata for exports
-}
-
-export interface ClusteringMetadata {
-    algorithm: string;
-    algorithmDescription: string;
-    parameters: Record<string, any>;
-    timestamp: string;
-    datasetSize: number;
-    computationTime?: number;
-}
-
-export interface SpatialClusteringOptions {
-    algorithm: ClusteringAlgorithm;
-    epsilon: number; // km, used by DBSCAN/OPTICS/Hierarchical
-    minSamples: number; // used by DBSCAN/OPTICS
-    k: number; // number of clusters for KMEANS/Hierarchical
-    useRTree?: boolean; // OPTIMIZATION: Use R-tree spatial index for DBSCAN (90-95% faster)
-    nnThreshold?: number; // Nearest-neighbor distance threshold (for nearest-neighbor clustering)
-    // STEP clustering parameters (seismology)
-    stepMinMag?: number;     // Minimum mainshock magnitude for STEP (default: 2.0)
-    stepT1?: number;         // Time window before an earthquake in days (default: 1)
-    stepT2?: number;         // Time window after an earthquake in days (default: 30)
-    // ST-DBSCAN parameters
-    epsilonTemporal?: number; // Temporal epsilon in days (default: 7)
-    // TMC (Time Magnitude Clustering / Reasenberg-style) parameters
-    tmcRfact?: number;       // Spatial radius multiplier (default: 10)
-    tmcTau0?: number;        // Base look-ahead time in days (default: 2)
-    tmcTauMax?: number;      // Maximum look-ahead time in days (default: 10)
-    tmcP1?: number;          // Probability threshold (default: 0.99)
-    tmcXk?: number;          // Magnitude scaling factor (default: 0.5)
-    tmcMinMag?: number;      // Effective minimum magnitude (default: 1.5)
-}
+// Re-export types for backwards compatibility
+export type {
+    ClusteringAlgorithm,
+    ClusterResult,
+    ClusteringMetadata,
+    SpatialClusteringOptions
+};
 
 // OPTIMIZATION: R-tree spatial point interface
 interface SpatialPoint {
@@ -1081,10 +1041,17 @@ export function calculateSpatialClustering(
     optionsOrEpsilon: Partial<SpatialClusteringOptions> | number = {},
     minSamplesLegacy: number = 5
 ): ClusterResult | null {
-    const startTime = performance.now();
-
     if (!earthquakes || earthquakes.length < 10) {
         return null;
+    }
+
+    const datasetSize = earthquakes.length;
+
+    // OPTIMIZATION: Log warning for very large datasets
+    if (datasetSize > 100000) {
+        console.warn(`⚠️  Large dataset detected: ${datasetSize.toLocaleString()} events`);
+        console.warn(`⚠️  This may take a while. Consider filtering to a smaller region/time period.`);
+        console.warn(`⚠️  Recommended algorithms for large datasets: DBSCAN (with R-tree), ST-DBSCAN, or STEP methods`);
     }
 
     let algorithm: ClusteringAlgorithm = 'dbscan';
@@ -1098,10 +1065,14 @@ export function calculateSpatialClustering(
     let stepT1 = 1;          // Time window before (days)
     let stepT2 = 30;         // Time window after (days)
 
+    // Normalize options for cache key generation
+    let options: Partial<SpatialClusteringOptions>;
+
     if (typeof optionsOrEpsilon === 'number') {
         // Legacy signature
         epsilon = optionsOrEpsilon;
         minSamples = minSamplesLegacy;
+        options = { algorithm: 'dbscan', epsilon, minSamples };
     } else {
         const opts = optionsOrEpsilon || {};
         algorithm = opts.algorithm ?? 'dbscan';
@@ -1114,6 +1085,24 @@ export function calculateSpatialClustering(
         stepMinMag = opts.stepMinMag ?? 2.0;
         stepT1 = opts.stepT1 ?? 1;
         stepT2 = opts.stepT2 ?? 30;
+        options = opts;
+    }
+
+    // OPTIMIZATION: Check cache before computing
+    const cachedResult = clusteringCache.get(earthquakes, options);
+    if (cachedResult) {
+        return cachedResult;
+    }
+
+    const startTime = performance.now();
+
+    // OPTIMIZATION: Log start for large datasets
+    if (datasetSize > 100000) {
+        console.log(`🔄 Starting ${algorithm} clustering on ${datasetSize.toLocaleString()} events...`);
+    }
+
+    if (typeof optionsOrEpsilon !== 'number') {
+        const opts = optionsOrEpsilon || {};
         // ST-DBSCAN
         const epsilonTemporal = opts.epsilonTemporal ?? 7;
         // TMC
@@ -1147,8 +1136,15 @@ export function calculateSpatialClustering(
 
     // Prepare data for clustering (longitude, latitude)
     // Project to approximate km relative to the mean center so epsilon has meaning in km.
-    const meanLat = earthquakes.reduce((sum, eq) => sum + eq.latitude, 0) / earthquakes.length;
-    const meanLon = earthquakes.reduce((sum, eq) => sum + eq.longitude, 0) / earthquakes.length;
+    // OPTIMIZATION: Use running sum for O(n) instead of reduce for large datasets
+    let sumLat = 0;
+    let sumLon = 0;
+    for (let i = 0; i < earthquakes.length; i++) {
+        sumLat += earthquakes[i].latitude;
+        sumLon += earthquakes[i].longitude;
+    }
+    const meanLat = sumLat / earthquakes.length;
+    const meanLon = sumLon / earthquakes.length;
 
     const dataset = earthquakes.map(eq => {
         // Simple equirectangular projection approximation in km
@@ -1253,6 +1249,13 @@ export function calculateSpatialClustering(
 
     const computationTime = performance.now() - startTime;
 
+    // OPTIMIZATION: Log completion for large datasets
+    if (datasetSize > 100000) {
+        console.log(`✅ Clustering complete: ${nClusters} clusters found in ${(computationTime / 1000).toFixed(2)}s`);
+        console.log(`   Clustered: ${clusteredCount.toLocaleString()} events (${clusterPercent.toFixed(1)}%)`);
+        console.log(`   Noise: ${noiseIndices.length.toLocaleString()} events (${noisePercent.toFixed(1)}%)`);
+    }
+
     // Build metadata for exports
     const parameters: Record<string, any> = {};
     if (algorithm === 'dbscan' || algorithm === 'optics') {
@@ -1297,7 +1300,7 @@ export function calculateSpatialClustering(
         computationTime
     };
 
-    return {
+    const result: ClusterResult = {
         labels,
         nClusters,
         clusterPercent,
@@ -1305,4 +1308,9 @@ export function calculateSpatialClustering(
         clusters,
         metadata
     };
+
+    // OPTIMIZATION: Cache the result for future use
+    clusteringCache.set(earthquakes, options, result);
+
+    return result;
 }

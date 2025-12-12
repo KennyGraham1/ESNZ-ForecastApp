@@ -1,5 +1,5 @@
 import { EarthquakeData } from '@/types/earthquake';
-import * as DateFns from 'date-fns';
+import { parse as dateFnsParse } from 'date-fns';
 import { DATETIME_FORMAT } from '@/utils/dateFormat';
 
 export interface CSVParseResult {
@@ -26,9 +26,76 @@ function isCommentLine(line: string): boolean {
 }
 
 /**
+ * Iterative in-place sort for large datasets to avoid call stack overflow
+ * Sorts earthquakes by time (newest first) using iterative merge sort
+ */
+function sortEarthquakesIterative(earthquakes: EarthquakeData[]): void {
+    const n = earthquakes.length;
+
+    // For small arrays, use built-in sort
+    if (n < 10000) {
+        earthquakes.sort((a, b) => b.timeMs! - a.timeMs!);
+        return;
+    }
+
+    // Iterative merge sort to avoid stack overflow on large datasets
+    const temp: EarthquakeData[] = new Array(n);
+
+    // Start with merge subarrays of size 1, and merge to form size 2, then 4, 8, ...
+    for (let size = 1; size < n; size *= 2) {
+        for (let start = 0; start < n; start += 2 * size) {
+            const mid = Math.min(start + size, n);
+            const end = Math.min(start + 2 * size, n);
+
+            // Merge earthquakes[start...mid-1] and earthquakes[mid...end-1]
+            merge(earthquakes, temp, start, mid, end);
+        }
+    }
+}
+
+/**
+ * Merge two sorted subarrays in descending order (newest first)
+ */
+function merge(
+    arr: EarthquakeData[],
+    temp: EarthquakeData[],
+    start: number,
+    mid: number,
+    end: number
+): void {
+    let i = start;
+    let j = mid;
+    let k = start;
+
+    // Merge in descending order (newest first: higher timeMs first)
+    while (i < mid && j < end) {
+        if (arr[i].timeMs! >= arr[j].timeMs!) {
+            temp[k++] = arr[i++];
+        } else {
+            temp[k++] = arr[j++];
+        }
+    }
+
+    // Copy remaining elements
+    while (i < mid) {
+        temp[k++] = arr[i++];
+    }
+
+    while (j < end) {
+        temp[k++] = arr[j++];
+    }
+
+    // Copy back to original array
+    for (let i = start; i < end; i++) {
+        arr[i] = temp[i];
+    }
+}
+
+/**
  * Parse a CSV file containing earthquake catalog data
  * Supports multiple date formats and validates required columns
  * Automatically skips commented lines (starting with # or //)
+ * Supports scientific catalog formats with flexible column mappings
  */
 export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
     const errors: string[] = [];
@@ -79,26 +146,53 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
         // Normalize headers (lowercase, trim)
         const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
 
-        // Validate required columns
-        const requiredColumns = ['time', 'latitude', 'longitude', 'depth', 'magnitude'];
-        const missingColumns = requiredColumns.filter(col => !normalizedHeaders.includes(col));
+        // Detect file format and create column mapping
+        const columnMapping = detectColumnMapping(normalizedHeaders);
 
-        if (missingColumns.length > 0) {
+        // Validate that we can extract required fields
+        const canExtractTime = columnMapping.hasTime || columnMapping.hasSplitDateTime;
+        const canExtractLat = columnMapping.latitude.length > 0;
+        const canExtractLon = columnMapping.longitude.length > 0;
+        const canExtractDepth = columnMapping.depth.length > 0;
+        const canExtractMag = columnMapping.magnitude.length > 0;
+
+        if (!canExtractTime) {
             return {
                 success: false,
-                errors: [`Missing required columns: ${missingColumns.join(', ')}`]
+                errors: ['Cannot find time information. Need either a "time" column or year/month/day columns.']
             };
         }
 
-        // Get column indices
+        const missingFields: string[] = [];
+        if (!canExtractLat) missingFields.push('latitude (tried: lat, latitude, lat_gn, lat_jr)');
+        if (!canExtractLon) missingFields.push('longitude (tried: lon, longitude, lon_gn, lon_jr)');
+        if (!canExtractDepth) missingFields.push('depth (tried: depth, depth_gn, depth_jr)');
+        if (!canExtractMag) missingFields.push('magnitude (tried: mag, magnitude, mag_gn, mag_sm, mag_jr)');
+
+        if (missingFields.length > 0) {
+            return {
+                success: false,
+                errors: [`Missing required fields: ${missingFields.join(', ')}`]
+            };
+        }
+
+        console.log(`📊 Detected format: ${columnMapping.hasSplitDateTime ? 'Scientific (split date/time)' : 'Standard'}`);
+        console.log(`   Time: ${columnMapping.hasSplitDateTime ? 'year/month/day/hour/min/sec' : 'time column'}`);
+        console.log(`   Lat sources: ${columnMapping.latitude.join(', ')}`);
+        console.log(`   Lon sources: ${columnMapping.longitude.join(', ')}`);
+        console.log(`   Mag sources: ${columnMapping.magnitude.join(', ')}`);
+
+        // Get column indices for fast access
         const columnIndices: { [key: string]: number } = {};
         normalizedHeaders.forEach((header, index) => {
             columnIndices[header] = index;
         });
 
-        // Parse data rows
+        // Parse data rows with progress logging for large files
         const earthquakes: EarthquakeData[] = [];
         let rowNumber = 1; // Start from 1 (header is row 0)
+        const totalRows = lines.length - 1;
+        const progressInterval = Math.max(1, Math.floor(totalRows / 10)); // Log every 10%
 
         for (let i = 1; i < lines.length; i++) {
             rowNumber++;
@@ -106,11 +200,20 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
 
             if (!line) continue;
 
+            // Progress logging for large files
+            if (totalRows > 10000 && i % progressInterval === 0) {
+                const progress = Math.round((i / totalRows) * 100);
+                console.log(`⏳ Parsing: ${progress}% (${earthquakes.length.toLocaleString()} events loaded)`);
+            }
+
             try {
                 const values = parseCSVLine(line);
 
                 if (values.length !== headers.length) {
-                    warnings.push(`Row ${rowNumber}: Column count mismatch (expected ${headers.length}, got ${values.length})`);
+                    // Only warn if mismatch is significant (not just trailing commas)
+                    if (Math.abs(values.length - headers.length) > 2) {
+                        warnings.push(`Row ${rowNumber}: Column count mismatch (expected ${headers.length}, got ${values.length})`);
+                    }
                     continue;
                 }
 
@@ -120,8 +223,8 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
                     row[header] = values[index]?.trim() || '';
                 });
 
-                // Parse earthquake data
-                const earthquake = parseEarthquakeRow(row, rowNumber, warnings);
+                // Parse earthquake data with flexible column mapping
+                const earthquake = parseEarthquakeRowFlexible(row, rowNumber, warnings, columnMapping);
 
                 if (earthquake) {
                     earthquakes.push(earthquake);
@@ -141,7 +244,10 @@ export async function parseEarthquakeCSV(file: File): Promise<CSVParseResult> {
         }
 
         // Sort by time (newest first) to match application convention
-        earthquakes.sort((a, b) => b.time.getTime() - a.time.getTime());
+        // Use iterative approach for large datasets to avoid stack overflow
+        console.log(`🔄 Sorting ${earthquakes.length.toLocaleString()} earthquakes...`);
+        sortEarthquakesIterative(earthquakes);
+        console.log(`✅ Sorting complete`);
 
         return {
             success: true,
@@ -197,7 +303,256 @@ function parseCSVLine(line: string): string[] {
 }
 
 /**
- * Parse a single earthquake row from CSV data
+ * Column mapping configuration for flexible CSV parsing
+ */
+interface ColumnMapping {
+    hasTime: boolean;
+    hasSplitDateTime: boolean;
+    timeColumn?: string;
+    yearColumn?: string;
+    monthColumn?: string;
+    dayColumn?: string;
+    hourColumn?: string;
+    minColumn?: string;
+    secColumn?: string;
+    latitude: string[];      // Priority-ordered list of latitude columns
+    longitude: string[];     // Priority-ordered list of longitude columns
+    depth: string[];         // Priority-ordered list of depth columns
+    magnitude: string[];     // Priority-ordered list of magnitude columns
+    locality: string[];      // Optional locality columns
+    eventID: string[];       // Optional event ID columns
+}
+
+/**
+ * Detect column mapping from headers
+ * Supports both standard and scientific catalog formats
+ */
+function detectColumnMapping(headers: string[]): ColumnMapping {
+    const mapping: ColumnMapping = {
+        hasTime: false,
+        hasSplitDateTime: false,
+        latitude: [],
+        longitude: [],
+        depth: [],
+        magnitude: [],
+        locality: [],
+        eventID: []
+    };
+
+    // Check for standard time column
+    if (headers.includes('time') || headers.includes('datetime') || headers.includes('date')) {
+        mapping.hasTime = true;
+        mapping.timeColumn = headers.find(h => h === 'time' || h === 'datetime' || h === 'date');
+    }
+
+    // Check for split date/time columns (scientific format)
+    const hasYear = headers.some(h => h === 'year' || h === 'yr');
+    const hasMonth = headers.some(h => h === 'month' || h === 'mon' || h === 'mo');
+    const hasDay = headers.some(h => h === 'day' || h === 'dy');
+
+    if (hasYear && hasMonth && hasDay) {
+        mapping.hasSplitDateTime = true;
+        mapping.yearColumn = headers.find(h => h === 'year' || h === 'yr');
+        mapping.monthColumn = headers.find(h => h === 'month' || h === 'mon' || h === 'mo');
+        mapping.dayColumn = headers.find(h => h === 'day' || h === 'dy');
+        mapping.hourColumn = headers.find(h => h === 'hour' || h === 'hr' || h === 'h');
+        mapping.minColumn = headers.find(h => h === 'min' || h === 'minute' || h === 'minutes');
+        mapping.secColumn = headers.find(h => h === 'sec' || h === 'second' || h === 'seconds');
+    }
+
+    // Latitude columns (priority order: standard -> GeoNet -> JR catalog)
+    const latCandidates = ['latitude', 'lat', 'lat_gn', 'lat_jr', 'lat_sm'];
+    mapping.latitude = latCandidates.filter(col => headers.includes(col));
+
+    // Longitude columns (priority order)
+    const lonCandidates = ['longitude', 'lon', 'long', 'lon_gn', 'lon_jr', 'lon_sm'];
+    mapping.longitude = lonCandidates.filter(col => headers.includes(col));
+
+    // Depth columns (priority order)
+    const depthCandidates = ['depth', 'depth_gn', 'depth_jr', 'depth_sm', 'dep'];
+    mapping.depth = depthCandidates.filter(col => headers.includes(col));
+
+    // Magnitude columns (priority: GeoNet -> SM -> JR -> generic)
+    const magCandidates = ['magnitude', 'mag', 'mag_gn', 'mag_sm', 'mag_jr', 'ml', 'mw', 'mb', 'ms'];
+    mapping.magnitude = magCandidates.filter(col => headers.includes(col));
+
+    // Locality/location columns
+    const localityCandidates = ['locality', 'location', 'place', 'region', 'area'];
+    mapping.locality = localityCandidates.filter(col => headers.includes(col));
+
+    // Event ID columns
+    const idCandidates = ['eventid', 'event_id', 'id', 'publicid', 'public_id'];
+    mapping.eventID = idCandidates.filter(col => headers.includes(col));
+
+    return mapping;
+}
+
+/**
+ * Check if a value is NaN, empty, or invalid
+ */
+function isInvalidValue(value: string | undefined): boolean {
+    if (!value) return true;
+    const trimmed = value.trim();
+    if (trimmed === '') return true;
+    if (trimmed.toLowerCase() === 'nan') return true;
+    if (trimmed === 'null') return true;
+    if (trimmed === 'undefined') return true;
+    return false;
+}
+
+/**
+ * Get first valid numeric value from priority-ordered list of columns
+ */
+function getFirstValidNumber(row: CSVRow, columns: string[]): number | null {
+    for (const col of columns) {
+        const value = row[col];
+        if (isInvalidValue(value)) continue;
+
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+            // Special handling: -9 is often used as missing data marker in catalogs
+            if (num === -9) continue;
+            return num;
+        }
+    }
+    return null;
+}
+
+/**
+ * Get first valid string value from priority-ordered list of columns
+ */
+function getFirstValidString(row: CSVRow, columns: string[]): string | null {
+    for (const col of columns) {
+        const value = row[col];
+        if (!isInvalidValue(value)) {
+            return value;
+        }
+    }
+    return null;
+}
+
+/**
+ * Parse earthquake row with flexible column mapping
+ */
+function parseEarthquakeRowFlexible(
+    row: CSVRow,
+    rowNumber: number,
+    warnings: string[],
+    mapping: ColumnMapping
+): EarthquakeData | null {
+    try {
+        // Parse time
+        let time: Date | null = null;
+
+        if (mapping.hasTime && mapping.timeColumn) {
+            // Standard format with time column
+            const timeStr = row[mapping.timeColumn];
+            if (!isInvalidValue(timeStr)) {
+                time = parseTimeValue(timeStr, `Row ${rowNumber}`);
+            }
+        } else if (mapping.hasSplitDateTime) {
+            // Scientific format with split date/time columns
+            const year = row[mapping.yearColumn!];
+            const month = row[mapping.monthColumn!];
+            const day = row[mapping.dayColumn!];
+            const hour = row[mapping.hourColumn!] || '0';
+            const min = row[mapping.minColumn!] || '0';
+            const sec = row[mapping.secColumn!] || '0';
+
+            // Validate date components
+            if (isInvalidValue(year) || isInvalidValue(month) || isInvalidValue(day)) {
+                warnings.push(`Row ${rowNumber}: Missing date components`);
+                return null;
+            }
+
+            // Parse components
+            const yearNum = parseInt(year);
+            const monthNum = parseInt(month);
+            const dayNum = parseInt(day);
+            const hourNum = parseInt(hour) || 0;
+            const minNum = parseInt(min) || 0;
+            const secNum = parseFloat(sec) || 0;
+
+            // Validate ranges
+            if (yearNum < 1000 || yearNum > 2100) {
+                warnings.push(`Row ${rowNumber}: Invalid year ${yearNum}`);
+                return null;
+            }
+            if (monthNum < 1 || monthNum > 12) {
+                warnings.push(`Row ${rowNumber}: Invalid month ${monthNum}`);
+                return null;
+            }
+            if (dayNum < 1 || dayNum > 31) {
+                warnings.push(`Row ${rowNumber}: Invalid day ${dayNum}`);
+                return null;
+            }
+
+            // Create date (month is 0-indexed in JavaScript Date)
+            time = new Date(yearNum, monthNum - 1, dayNum, hourNum, minNum, secNum);
+        }
+
+        if (!time || isNaN(time.getTime())) {
+            warnings.push(`Row ${rowNumber}: Invalid time value`);
+            return null;
+        }
+
+        // Parse latitude with fallback sources
+        const latitude = getFirstValidNumber(row, mapping.latitude);
+        if (latitude === null || latitude < -90 || latitude > 90) {
+            warnings.push(`Row ${rowNumber}: Invalid or missing latitude`);
+            return null;
+        }
+
+        // Parse longitude with fallback sources
+        const longitude = getFirstValidNumber(row, mapping.longitude);
+        if (longitude === null || longitude < -180 || longitude > 180) {
+            warnings.push(`Row ${rowNumber}: Invalid or missing longitude`);
+            return null;
+        }
+
+        // Parse depth with fallback sources
+        const depth = getFirstValidNumber(row, mapping.depth);
+        if (depth === null || depth < 0) {
+            warnings.push(`Row ${rowNumber}: Invalid or missing depth`);
+            return null;
+        }
+
+        // Parse magnitude with fallback sources (priority: mag_gn > mag_sm > mag_jr > mag)
+        const magnitude = getFirstValidNumber(row, mapping.magnitude);
+        if (magnitude === null) {
+            warnings.push(`Row ${rowNumber}: Invalid or missing magnitude`);
+            return null;
+        }
+
+        // Optional: locality
+        const locality = getFirstValidString(row, mapping.locality) || 'Unknown Location';
+
+        // Optional: event ID
+        const eventID = getFirstValidString(row, mapping.eventID) || `uploaded_${rowNumber}_${Date.now()}`;
+
+        // Pre-compute timestamp for performance
+        const timeMs = time.getTime();
+
+        return {
+            eventID,
+            time,
+            timeMs,
+            latitude,
+            longitude,
+            depth,
+            magnitude,
+            locality,
+            mmi: undefined
+        };
+
+    } catch (error) {
+        warnings.push(`Row ${rowNumber}: ${error instanceof Error ? error.message : 'Parse error'}`);
+        return null;
+    }
+}
+
+/**
+ * Parse a single earthquake row from CSV data (legacy standard format)
  */
 function parseEarthquakeRow(row: CSVRow, rowNumber: number, warnings: string[]): EarthquakeData | null {
     try {
@@ -280,37 +635,47 @@ export function validateEarthquakeData(earthquakes: EarthquakeData[]): { valid: 
         return { valid: false, errors };
     }
 
+    // FIXED: Use iterative approach instead of spread operator to avoid stack overflow on large datasets
     // Check for reasonable magnitude range
-    const magnitudes = earthquakes.map(eq => eq.magnitude);
-    const minMag = Math.min(...magnitudes);
-    const maxMag = Math.max(...magnitudes);
+    let minMag = Infinity;
+    let maxMag = -Infinity;
+    for (const eq of earthquakes) {
+        if (eq.magnitude < minMag) minMag = eq.magnitude;
+        if (eq.magnitude > maxMag) maxMag = eq.magnitude;
+    }
 
     if (minMag < -2 || maxMag > 10) {
         errors.push(`Magnitude range (${minMag.toFixed(1)} - ${maxMag.toFixed(1)}) is outside reasonable bounds (-2 to 10)`);
     }
 
     // Check for reasonable depth range
-    const depths = earthquakes.map(eq => eq.depth);
-    const minDepth = Math.min(...depths);
-    const maxDepth = Math.max(...depths);
+    let minDepth = Infinity;
+    let maxDepth = -Infinity;
+    for (const eq of earthquakes) {
+        if (eq.depth < minDepth) minDepth = eq.depth;
+        if (eq.depth > maxDepth) maxDepth = eq.depth;
+    }
 
     if (minDepth < 0 || maxDepth > 1000) {
         errors.push(`Depth range (${minDepth.toFixed(1)} - ${maxDepth.toFixed(1)} km) is outside reasonable bounds (0 to 1000 km)`);
     }
 
     // Check for valid time range
-    const times = earthquakes.map(eq => eq.time.getTime());
-    const minTime = Math.min(...times);
-    const maxTime = Math.max(...times);
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    for (const eq of earthquakes) {
+        const time = eq.time.getTime();
+        if (time < minTime) minTime = time;
+        if (time > maxTime) maxTime = time;
+    }
     const now = Date.now();
 
     if (maxTime > now + 86400000) { // Allow 1 day in future for timezone issues
         errors.push('Some earthquake times are in the future');
     }
 
-    if (minTime < new Date('1900-01-01').getTime()) {
-        errors.push('Some earthquake times are before 1900');
-    }
+    // Allow historical earthquake data (no lower bound on time)
+    // New Zealand has earthquake records dating back to the 1800s and earlier
 
     return {
         valid: errors.length === 0,
@@ -386,18 +751,13 @@ function parseTimeValue(timeValue: any, context: string): Date | null {
         // correctly according to NZ/UK preference over US defaults.
         for (const format of SUPPORTED_DATE_FORMATS) {
             try {
-                // Handle potential ESM/CJS interop issues with date-fns in test environment
-                const parseFunc = DateFns.parse || (DateFns as any).default?.parse;
-
-                if (typeof parseFunc === 'function') {
-                    const parsed = parseFunc(trimmed, format, new Date());
-                    if (!isNaN(parsed.getTime())) {
-                        // Additional validation: check if the parsed date is reasonable
-                        const year = parsed.getFullYear();
-                        // Basic sanity check year range
-                        if (year >= 1700 && year <= 2100) {
-                            return parsed;
-                        }
+                const parsed = dateFnsParse(trimmed, format, new Date());
+                if (!isNaN(parsed.getTime())) {
+                    // Additional validation: check if the parsed date is reasonable
+                    const year = parsed.getFullYear();
+                    // Basic sanity check year range
+                    if (year >= 1700 && year <= 2100) {
+                        return parsed;
                     }
                 }
             } catch (e) {
@@ -532,7 +892,7 @@ export async function parseEarthquakeJSON(file: File): Promise<CSVParseResult> {
         }
 
         // Sort by time descending (newest first)
-        earthquakes.sort((a, b) => b.timeMs! - a.timeMs!);
+        sortEarthquakesIterative(earthquakes);
 
         return {
             success: true,
@@ -684,7 +1044,7 @@ export async function parseEarthquakeGeoJSON(file: File): Promise<CSVParseResult
         }
 
         // Sort by time descending (newest first)
-        earthquakes.sort((a, b) => b.timeMs! - a.timeMs!);
+        sortEarthquakesIterative(earthquakes);
 
         return {
             success: true,

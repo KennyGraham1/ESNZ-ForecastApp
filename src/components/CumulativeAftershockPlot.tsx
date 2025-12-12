@@ -85,7 +85,10 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
         // Build cumulative count: number of aftershocks observed up to time t
         const cumulative: [number, number][] = [];
         aftershocks.forEach((as, i) => {
-            cumulative.push([as.day, i + 1]); // i+1 because we start counting from 1
+            // Ensure valid day value
+            if (typeof as.day === 'number' && isFinite(as.day)) {
+                cumulative.push([as.day, i + 1]); // i+1 because we start counting from 1
+            }
         });
 
         const count = aftershocks.length;
@@ -111,7 +114,10 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                     N = K * Math.log((t + c) / c);
                 }
 
-                fitted.push([t, Math.max(1, N)]);
+                // Only add if both values are finite
+                if (isFinite(t) && isFinite(N)) {
+                    fitted.push([t, Math.max(1, N)]);
+                }
             }
         }
 
@@ -125,7 +131,7 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
     }, [earthquakes, providedMainEvent, optimizationMethod, magnitudeCompleteness]);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
-        if (cumulativeData.length === 0) {
+        if (!Array.isArray(cumulativeData) || cumulativeData.length === 0 || !Array.isArray(fittedData)) {
             return {
                 chart: { type: 'line', height: 400 },
                 title: { text: '' },
@@ -194,7 +200,15 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                     return `<b>Days:</b> ${this.x?.toFixed(1)}<br/><b>Events:</b> ${this.y?.toFixed(0)}`;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 line: {
                     marker: {
                         enabled: false

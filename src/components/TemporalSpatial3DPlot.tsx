@@ -55,29 +55,43 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
             };
         }
 
-        // OPTIMIZATION: Use stratified sampling to preserve distribution
+        // OPTIMIZATION: Use stratified sampling to preserve magnitude distribution
         const maxPoints = getOptimalSamplingThreshold('THREE_D');
         let processedData = data;
 
         if (data.length > SAMPLING_CONFIG.THREE_D.threshold) {
-            // We need to adapt stratifiedSample to work with PlotDataPoint or cast/map it
-            // stratifiedSample expects generic objects but uses lat/lon/magnitude/depth/time properties
-            // Our PlotDataPoint has these (lat instead of latitude, lon instead of longitude)
+            // Group by magnitude bins for stratified sampling (preserves distribution)
+            const bins = new Map<number, PlotDataPoint[]>();
+            data.forEach(point => {
+                const bin = Math.floor(point.magnitude);
+                if (!bins.has(bin)) {
+                    bins.set(bin, []);
+                }
+                bins.get(bin)?.push(point);
+            });
 
-            // Let's create a temporary adapter or just update stratifiedSample usage if needed.
-            // Actually, stratifiedSample checks for latitude/longitude.
-            // Our PlotDataPoint has lat/lon.
-            // Let's map it temporarily for sampling or just assume simple sampling for now.
+            // Calculate samples per bin proportionally
+            const sampled: PlotDataPoint[] = [];
+            bins.forEach((binData) => {
+                const proportion = binData.length / data.length;
+                const samplesForBin = Math.max(1, Math.floor(maxPoints * proportion));
+                const step = Math.max(1, Math.floor(binData.length / samplesForBin));
 
-            // Simplest approach: Just take every Nth point to match distribution roughly
-            const step = Math.ceil(data.length / maxPoints);
-            processedData = data.filter((_, i) => i % step === 0);
-            console.log(`📊 3D Temporal-Spatial: Sampled ${processedData.length} points from ${data.length} total`);
+                for (let i = 0; i < binData.length && sampled.length < maxPoints; i += step) {
+                    sampled.push(binData[i]);
+                }
+            });
+
+            processedData = sampled;
+            console.log(`📊 3D Temporal-Spatial: Stratified sampling: ${processedData.length} points from ${data.length} total (${bins.size} magnitude bins)`);
         }
 
         // Get depth range for axis scaling
-        const depths = processedData.map(d => d.depth);
-        const maxDepth = Math.max(...depths);
+        // FIXED: Use iterative approach to avoid stack overflow on large datasets
+        let maxDepth = -Infinity;
+        for (const d of processedData) {
+            if (d.depth > maxDepth) maxDepth = d.depth;
+        }
 
         // Exponential marker size scaling based on magnitude
         const getMarkerRadius = (mag: number) => {
@@ -201,9 +215,16 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                     `;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 scatter3d: {
-                    turboThreshold: 20000,
                     marker: {
                         fillOpacity: 0.7,
                         lineWidth: 0.5,

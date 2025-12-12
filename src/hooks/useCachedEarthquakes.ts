@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { EarthquakeData } from '@/types/earthquake';
+import { enhanceEarthquakeData } from '@/utils/earthquakeEnhancement';
 
 interface CachedEarthquakeResponse {
     data: EarthquakeData[];
@@ -54,10 +55,13 @@ async function fetchCachedEarthquakes(filters?: EarthquakeFilterParams): Promise
     const result = await response.json();
 
     // Convert time strings back to Date objects
-    result.data = result.data.map((eq: any) => ({
+    const earthquakesWithDates = result.data.map((eq: any) => ({
         ...eq,
         time: new Date(eq.time)
     }));
+
+    // Enhance earthquake data with computed fields and improved localities
+    result.data = enhanceEarthquakeData(earthquakesWithDates);
 
     return result;
 }
@@ -89,10 +93,13 @@ export async function refreshEarthquakeCache(): Promise<CachedEarthquakeResponse
     const result = await response.json();
 
     // Convert time strings back to Date objects
-    result.data = result.data.map((eq: any) => ({
+    const earthquakesWithDates = result.data.map((eq: any) => ({
         ...eq,
         time: new Date(eq.time)
     }));
+
+    // Enhance earthquake data with computed fields and improved localities
+    result.data = enhanceEarthquakeData(earthquakesWithDates);
 
     return result;
 }

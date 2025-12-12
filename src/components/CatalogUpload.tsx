@@ -4,6 +4,7 @@ import { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { Upload, FileUp, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { parseEarthquakeFile, validateEarthquakeData, getSupportedFileExtensions, getSupportedDateFormats } from '@/lib/csvParser';
 import { EarthquakeData } from '@/types/earthquake';
+import { enhanceEarthquakeData } from '@/utils/earthquakeEnhancement';
 
 interface CatalogUploadProps {
     onDataLoaded: (data: EarthquakeData[], filename: string) => void;
@@ -65,10 +66,10 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                 throw new Error(`Unsupported file type. Please select a ${supportedExtensions.join(', ')} file`);
             }
 
-            // Validate file size (max 50MB)
-            const maxSize = 50 * 1024 * 1024; // 50MB
+            // Validate file size (max 200MB)
+            const maxSize = 200 * 1024 * 1024; // 200MB
             if (file.size > maxSize) {
-                throw new Error('File size exceeds 50MB limit');
+                throw new Error('File size exceeds 200MB limit');
             }
 
             console.log(`📂 Processing file: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
@@ -119,8 +120,11 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
             setSuccess(successMsg);
             console.log(`✅ ${successMsg}`);
 
-            // Call the callback with the loaded data
-            onDataLoaded(result.data, file.name);
+            // Enhance earthquake data with computed fields and improved localities
+            const enhancedData = enhanceEarthquakeData(result.data);
+
+            // Call the callback with the enhanced data
+            onDataLoaded(enhancedData, file.name);
 
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -241,11 +245,18 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                 <p className="text-xs text-blue-800 font-medium mb-2">Supported File Formats:</p>
                 <div className="text-xs text-blue-700 space-y-2">
                     <div>
-                        <p className="font-semibold">CSV Format:</p>
+                        <p className="font-semibold">CSV Format (Standard):</p>
                         <p><strong>Required columns:</strong> time, latitude, longitude, depth, magnitude</p>
                         <p><strong>Optional:</strong> locality, mmi, eventID</p>
                         <p><strong>Comments:</strong> Lines starting with # or // are automatically skipped</p>
                         <p><strong>Example:</strong> 25/11/2024 14:30:00,-41.5,174.2,25.5,4.2,Wellington,5</p>
+                    </div>
+                    <div>
+                        <p className="font-semibold">CSV Format (Scientific Catalog):</p>
+                        <p><strong>Required:</strong> year, month, day + lat/lon/depth/mag columns</p>
+                        <p><strong>Flexible columns:</strong> Supports lon_GN, lat_GN, mag_GN, depth_GN, etc.</p>
+                        <p><strong>Auto-handles:</strong> NaN values, missing data (-9), multiple sources with fallback</p>
+                        <p><strong>Example:</strong> GeoNet NZ catalog, USGS format, custom scientific catalogs</p>
                     </div>
                     <div>
                         <p className="font-semibold">JSON Format:</p>

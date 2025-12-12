@@ -17,16 +17,16 @@ const CACHE_FILE = isVercel
     ? path.join('/tmp', 'earthquake-cache.json')
     : path.join(process.cwd(), 'data', 'earthquake-cache.json');
 
-// OPTIMIZATION: Reduce initial fetch to 10 years instead of 125 years
-// This reduces initial load time from minutes to seconds
+// OPTIMIZATION: Reduce initial fetch to 1 year for faster initial load
+// This reduces initial load time significantly
 // Users can request older data by adjusting filters - the API will extend the cache automatically
-const INITIAL_FETCH_DAYS = 3650; // 10 years of historical data (much faster initial load)
+const INITIAL_FETCH_DAYS = 365; // 1 year of historical data (fastest initial load)
 const MAX_FETCH_DAYS = 36500; // Maximum 100 years of data (safety limit)
 
 // In-memory cache to avoid reading the large file on every request
 let memoryCache: CacheData | null = null;
 let memoryCacheLoadTime: number = 0;
-const MEMORY_CACHE_TTL = 60000; // 1 minute - refresh from disk if older
+const MEMORY_CACHE_TTL = 1000 * 60 * 60; // 1 hour - keep in memory longer for better performance
 
 // OPTIMIZATION: Request coalescing - prevent multiple concurrent disk reads
 let pendingCacheLoad: Promise<CacheData | null> | null = null;
@@ -308,85 +308,12 @@ export async function GET(request: NextRequest) {
                 }
             }
 
-            // If we need historical data, fetch it and extend the cache
+            // OPTIMIZATION: Don't block on historical data fetch
+            // Return cached data immediately and let user manually fetch historical data if needed
             if (needsHistoricalFetch) {
-                // Safety check: don't fetch more than MAX_FETCH_DAYS
-                if (historicalDaysNeeded > MAX_FETCH_DAYS) {
-                    console.warn(`⚠️ Requested ${historicalDaysNeeded} days exceeds maximum ${MAX_FETCH_DAYS} days. Limiting to ${MAX_FETCH_DAYS}.`);
-                    historicalDaysNeeded = MAX_FETCH_DAYS;
-                }
-
-                console.log(`🌐 Fetching historical data: ${historicalDaysNeeded} days...`);
-
-                try {
-                    const historicalData = await fetchEarthquakeData({
-                        minMagnitude: 2.0,
-                        daysBack: historicalDaysNeeded
-                    });
-
-                    // Filter out duplicates (events already in cache)
-                    const existingEventIds = new Set(existingCache.earthquakes.map(eq => eq.eventID));
-                    const uniqueHistoricalEvents = historicalData.filter(eq => !existingEventIds.has(eq.eventID));
-
-                    console.log(`📥 Fetched ${historicalData.length} historical events, ${uniqueHistoricalEvents.length} are new`);
-
-                    // Pre-compute timestamps for new events
-                    const uniqueHistoricalEventsWithTimestamps = uniqueHistoricalEvents.map(eq => ({
-                        ...eq,
-                        timeMs: eq.time.getTime()
-                    }));
-
-                    // Merge with existing cache and sort by time (newest first)
-                    const mergedEarthquakes = [...uniqueHistoricalEventsWithTimestamps, ...existingCache.earthquakes]
-                        .sort((a, b) => {
-                            const bTime = b.timeMs !== undefined ? b.timeMs : new Date(b.time).getTime();
-                            const aTime = a.timeMs !== undefined ? a.timeMs : new Date(a.time).getTime();
-                            return bTime - aTime;
-                        });
-
-                    // Update the cache with extended historical data
-                    // Keep the original initialFetchDate to track when we first started caching
-                    const nowISO = new Date().toISOString();
-                    const extendedCache: CacheData = {
-                        earthquakes: mergedEarthquakes,
-                        lastUpdated: nowISO,
-                        initialFetchDate: existingCache.initialFetchDate, // Keep original
-                        totalEvents: mergedEarthquakes.length
-                    };
-
-                    await saveCacheToDisk(extendedCache);
-                    console.log(`💾 Cache extended with historical data: ${existingCache.totalEvents} → ${mergedEarthquakes.length} events (+${uniqueHistoricalEvents.length} historical)`);
-
-                    // Now filter and return the extended data
-                    const filteredData = perfMonitor.track(
-                        'server-side-filtering',
-                        mergedEarthquakes.length,
-                        () => filterEarthquakes(mergedEarthquakes, filters),
-                        { filters }
-                    );
-
-                    const metadata = getFilterMetadata(mergedEarthquakes.length, filteredData, filters);
-
-                    console.log(`✅ Serving ${filteredData.length} filtered events from ${mergedEarthquakes.length} total (extended cache)`);
-
-                    return createCompressedResponse({
-                        data: filteredData,
-                        cached: false,
-                        lastUpdated: nowISO,
-                        initialFetchDate: existingCache.initialFetchDate,
-                        isIncremental: false,
-                        filteredCount: metadata.filteredCount,
-                        returnedCount: metadata.returnedCount,
-                        totalEvents: metadata.totalEvents,
-                        hasMore: metadata.hasMore,
-                        offset: metadata.offset,
-                        limit: metadata.limit
-                    }, request);
-
-                } catch (error) {
-                    console.error('❌ Error fetching historical data:', error);
-                    // Fall through to return existing cache data
-                }
+                console.log(`⚠️ User requested ${historicalDaysNeeded} days, but cache only has data from ${existingCache.initialFetchDate}.`);
+                console.log(`💡 Returning cached data immediately. User can manually fetch historical data if needed.`);
+                // Fall through to return existing cache data with a warning flag
             }
 
             // No historical fetch needed, or it failed - return cached data with filtering

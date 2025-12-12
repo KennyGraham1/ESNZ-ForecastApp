@@ -7,31 +7,65 @@ import AftershockSequencePlot from '@/components/AftershockSequencePlot';
 import GutenbergRichterPlot from '@/components/GutenbergRichterPlot';
 import CumulativeAftershockPlot from '@/components/CumulativeAftershockPlot';
 import { MainEventInfo, OptimizationMethod } from '@/lib/analysis/omori';
+import RBush from 'rbush';
+import { getLocalityFromCoordinates } from '@/utils/nzRegions';
 
 const historicalEvents = [
     {
-        name: "2016 Kaikōura Earthquake",
-        time: "2016-11-13T11:02:56Z",
-        magnitude: 7.8,
-        latitude: -42.693,
-        longitude: 173.022,
-        description: "M7.8 earthquake that struck the northeast coast of the South Island"
+        name: "1855 Wairarapa Earthquake",
+        time: "1855-01-23T09:17:00Z",
+        magnitude: 8.2,
+        latitude: -41.40,
+        longitude: 175.30,
+        description: "Mw 8.2 earthquake - New Zealand's most powerful recorded earthquake"
     },
     {
-        name: "2011 Christchurch Earthquake",
-        time: "2011-02-22T23:51:42Z",
-        magnitude: 6.3,
-        latitude: -43.583,
-        longitude: 172.680,
-        description: "Devastating M6.3 earthquake that caused 185 fatalities"
+        name: "1888 North Canterbury (Amuri) Earthquake",
+        time: "1888-09-01T10:30:00Z",
+        magnitude: 7.3,
+        latitude: -42.60,
+        longitude: 172.70,
+        description: "M 7.3 earthquake in North Canterbury region"
     },
     {
-        name: "2010 Canterbury Earthquake",
-        time: "2010-09-03T16:35:46Z",
+        name: "1901 Cheviot Earthquake",
+        time: "1901-11-16T03:45:00Z",
+        magnitude: 6.9,
+        latitude: -42.65,
+        longitude: 173.10,
+        description: "M 6.9 earthquake near Cheviot"
+    },
+    {
+        name: "1929 Arthur's Pass Earthquake",
+        time: "1929-03-09T10:50:00Z",
         magnitude: 7.1,
-        latitude: -43.522,
-        longitude: 172.170,
-        description: "M7.1 earthquake near Darfield"
+        latitude: -42.90,
+        longitude: 171.60,
+        description: "M 7.1 earthquake in the Southern Alps"
+    },
+    {
+        name: "1929 Murchison Earthquake",
+        time: "1929-06-17T10:17:00Z",
+        magnitude: 7.8,
+        latitude: -41.73,
+        longitude: 172.20,
+        description: "M 7.8 earthquake that caused 17 fatalities"
+    },
+    {
+        name: "1931 Hawke's Bay (Napier) Earthquake",
+        time: "1931-02-03T10:46:00Z",
+        magnitude: 7.8,
+        latitude: -39.50,
+        longitude: 176.85,
+        description: "Mw 7.8 earthquake that caused 256 fatalities and reshaped Napier"
+    },
+    {
+        name: "1968 Inangahua Earthquake",
+        time: "1968-05-24T05:24:00Z",
+        magnitude: 7.1,
+        latitude: -41.80,
+        longitude: 172.10,
+        description: "Mw 7.1 earthquake in the Buller region"
     },
     {
         name: "2009 Dusky Sound Earthquake",
@@ -39,23 +73,39 @@ const historicalEvents = [
         magnitude: 7.8,
         latitude: -45.762,
         longitude: 166.562,
-        description: "Powerful M7.8 earthquake in Fiordland"
+        description: "Mw 7.8 earthquake in Fiordland"
     },
     {
-        name: "2007 Gisborne Earthquake",
-        time: "2007-12-20T07:55:15Z",
-        magnitude: 6.7,
-        latitude: -38.425,
-        longitude: 178.052,
-        description: "M6.7 offshore earthquake"
+        name: "2010 Darfield (Canterbury) Earthquake",
+        time: "2010-09-03T16:35:46Z",
+        magnitude: 7.1,
+        latitude: -43.522,
+        longitude: 172.170,
+        description: "Mw 7.1 earthquake near Darfield"
     },
     {
-        name: "2003 Fiordland Earthquake",
-        time: "2003-08-21T12:12:49Z",
-        magnitude: 7.2,
-        latitude: -45.207,
-        longitude: 166.838,
-        description: "M7.2 earthquake on Secretary Island"
+        name: "2011 Christchurch Earthquake",
+        time: "2011-02-22T23:51:42Z",
+        magnitude: 6.3,
+        latitude: -43.583,
+        longitude: 172.680,
+        description: "Mw 6.3 earthquake that caused 185 fatalities"
+    },
+    {
+        name: "2014 Eketāhuna Earthquake",
+        time: "2014-01-20T02:52:00Z",
+        magnitude: 6.2,
+        latitude: -40.62,
+        longitude: 175.88,
+        description: "Ml 6.2 earthquake in the southern Wairarapa"
+    },
+    {
+        name: "2016 Kaikōura Earthquake",
+        time: "2016-11-13T11:02:56Z",
+        magnitude: 7.8,
+        latitude: -42.693,
+        longitude: 173.022,
+        description: "Mw 7.8 earthquake that struck the northeast coast of the South Island"
     }
 ];
 
@@ -76,8 +126,12 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
     const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('hybrid');
     const [magnitudeCompleteness, setMagnitudeCompleteness] = useState<number | undefined>(undefined);
 
-    // Gardner-Knopoff declustering algorithm
+    // Filtered aftershock sequence data from AftershockSequencePlot
+    const [filteredSequenceData, setFilteredSequenceData] = useState<EarthquakeData[]>([]);
+
+    // Gardner-Knopoff declustering algorithm with spatial indexing optimization
     // Based on Gardner & Knopoff (1974) space-time window method
+    // OPTIMIZED: Uses RBush spatial index to reduce complexity from O(n²) to O(n log n)
     const declusterEarthquakes = (events: EarthquakeData[]): EarthquakeData[] => {
         if (events.length === 0) return [];
 
@@ -109,6 +163,33 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
             return R * c;
         };
 
+        // OPTIMIZATION: Build R-tree spatial index for fast neighbor queries
+        interface SpatialPoint {
+            minX: number;
+            minY: number;
+            maxX: number;
+            maxY: number;
+            index: number;
+        }
+
+        const tree = new RBush<SpatialPoint>();
+        const items: SpatialPoint[] = sorted.map((eq, idx) => ({
+            minX: eq.longitude,
+            minY: eq.latitude,
+            maxX: eq.longitude,
+            maxY: eq.latitude,
+            index: idx
+        }));
+        tree.load(items);
+
+        // Convert km to approximate degrees for bounding box queries
+        const kmToDegrees = (km: number, latitude: number): { lat: number; lon: number } => {
+            return {
+                lat: km / 110.57, // 1 degree latitude ≈ 110.57 km
+                lon: km / (111.32 * Math.cos((latitude * Math.PI) / 180)) // 1 degree longitude varies by latitude
+            };
+        };
+
         // For each event (starting with largest)
         for (let i = 0; i < sorted.length; i++) {
             const mainEvent = sorted[i];
@@ -122,15 +203,25 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
             const spatialWindowKm = spatialWindow(mainEvent.magnitude);
             const temporalWindowDays = temporalWindow(mainEvent.magnitude);
 
-            // Check all other events
-            for (let j = 0; j < sorted.length; j++) {
+            // OPTIMIZATION: Query R-tree for spatially nearby events only
+            const degreeOffset = kmToDegrees(spatialWindowKm, mainEvent.latitude);
+            const candidates = tree.search({
+                minX: mainEvent.longitude - degreeOffset.lon,
+                minY: mainEvent.latitude - degreeOffset.lat,
+                maxX: mainEvent.longitude + degreeOffset.lon,
+                maxY: mainEvent.latitude + degreeOffset.lat
+            });
+
+            // Check only candidate events (spatially nearby)
+            for (const candidate of candidates) {
+                const j = candidate.index;
                 if (i === j || isDependentEvent.has(j)) continue;
 
                 const otherEvent = sorted[j];
                 const otherTime = otherEvent.time instanceof Date ? otherEvent.time : new Date(otherEvent.time);
                 if (isNaN(otherTime.getTime())) continue;
 
-                // Calculate spatial distance
+                // Calculate precise spatial distance using Haversine
                 const distance = haversineDistance(
                     mainEvent.latitude,
                     mainEvent.longitude,
@@ -301,7 +392,9 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                                     <div className="font-bold text-lg text-blue-600">M{eq.magnitude.toFixed(1)}</div>
                                     <div className="text-sm text-gray-600 font-medium">{eq.dateString}</div>
                                     <div className="text-xs text-gray-500 truncate mt-1">
-                                        {eq.locality || 'Location data unavailable'}
+                                        {eq.locality && eq.locality !== 'Unknown Location'
+                                            ? eq.locality
+                                            : getLocalityFromCoordinates(eq.latitude, eq.longitude)}
                                     </div>
                                 </button>
                             ))}
@@ -406,7 +499,11 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                             <h3 className="text-xl font-bold text-gray-800 mb-1">Aftershock Sequence</h3>
                             <p className="text-sm text-gray-500">Temporal distribution of aftershocks</p>
                         </div>
-                        <AftershockSequencePlot earthquakes={earthquakes} mainEvent={mainEvent} />
+                        <AftershockSequencePlot
+                            earthquakes={earthquakes}
+                            mainEvent={mainEvent}
+                            onSequenceDataChange={setFilteredSequenceData}
+                        />
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
                         <div className="mb-4">
@@ -425,9 +522,9 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
 
                     {/* Frequency-Magnitude and Cumulative Analysis Section - Side by Side */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <GutenbergRichterPlot earthquakes={earthquakes} />
+                        <GutenbergRichterPlot earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes} />
                         <CumulativeAftershockPlot
-                            earthquakes={earthquakes}
+                            earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
                             mainEvent={mainEvent}
                             optimizationMethod={optimizationMethod}
                             magnitudeCompleteness={magnitudeCompleteness}

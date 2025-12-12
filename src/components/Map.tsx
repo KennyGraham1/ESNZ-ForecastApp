@@ -195,8 +195,10 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                 }
             },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000 // Support very large datasets (50k+ events)
+                },
                 mappoint: {
-                    turboThreshold: 20000, // Increase threshold for large datasets (20+ years)
                     point: {
                         events: {
                             click: function(this: any) {

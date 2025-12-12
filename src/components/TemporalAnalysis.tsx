@@ -124,9 +124,16 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                     `;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 scatter: {
-                    turboThreshold: 20000, // Increase threshold for large datasets (20+ years)
                     marker: {
                         radius: 5
                     }
@@ -333,9 +340,16 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 shared: true,
                 crosshairs: true
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 line: {
-                    turboThreshold: 20000, // Increase threshold for large datasets (20+ years)
                     marker: {
                         enabled: false
                     }

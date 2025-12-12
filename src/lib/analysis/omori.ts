@@ -179,6 +179,7 @@ function fitOmoriLawLM(
 
 /**
  * Nelder-Mead (Simplex) optimization for Omori's Law
+ * FIXED: Stricter parameter bounds and better penalty function
  */
 function fitOmoriLawNelderMead(
     days: number[],
@@ -187,18 +188,42 @@ function fitOmoriLawNelderMead(
     // Initial guess from coarse grid search
     const gridResult = fitOmoriLawGridSearch(days, counts);
 
-    // Objective function: sum of squared residuals
+    // Estimate reasonable K range from data
+    const maxCount = Math.max(...counts);
+    const minDay = Math.min(...days);
+    const K_max = maxCount * Math.pow(minDay + 1.0, 1.5); // Upper bound
+
+    // Objective function: sum of squared residuals with strict bounds
     const objectiveFunction = (params: number[]): number => {
         const [K, c, p] = params;
-        // Add penalty for unreasonable parameters
-        if (K <= 0 || c <= 0 || p <= 0.5 || p >= 2.5) {
+
+        // STRICT parameter bounds based on seismology literature
+        // K: productivity (typically 1-10000 for real aftershock sequences)
+        // c: time offset (typically 0.01-2.0 days)
+        // p: decay exponent (typically 0.8-1.5)
+        if (K <= 1 || K > K_max ||
+            c <= 0.01 || c > 2.0 ||
+            p <= 0.7 || p >= 1.6) {
             return 1e10;
         }
 
-        return days.reduce((sum, t, i) => {
-            const predicted = omoriLaw(t, K, c, p);
-            return sum + Math.pow(counts[i] - predicted, 2);
-        }, 0);
+        // Check for numerical stability
+        let sse = 0;
+        for (let i = 0; i < days.length; i++) {
+            const predicted = omoriLaw(days[i], K, c, p);
+            if (!isFinite(predicted) || predicted < 0) {
+                return 1e10;
+            }
+            sse += Math.pow(counts[i] - predicted, 2);
+        }
+
+        // Add soft penalty to prefer physically reasonable values
+        // Prefer c < 0.5 days (most aftershocks)
+        // Prefer p near 1.0-1.2
+        const c_penalty = c > 0.5 ? (c - 0.5) * 0.1 : 0;
+        const p_penalty = Math.abs(p - 1.1) > 0.3 ? (Math.abs(p - 1.1) - 0.3) * 0.1 : 0;
+
+        return sse + c_penalty + p_penalty;
     };
 
     // Nelder-Mead implementation
@@ -542,8 +567,134 @@ function fitOmoriLawMLE(
 }
 
 /**
+ * Calculate uncertainty using Hessian approximation (more reliable than bootstrap)
+ * Uses finite differences to approximate the Hessian matrix at the MLE
+ * Then uses Fisher Information to calculate standard errors and CIs
+ */
+function calculateHessianUncertainty(
+    days: number[],
+    counts: number[],
+    K: number,
+    c: number,
+    p: number
+): ParameterUncertainty {
+    // Objective function: sum of squared residuals
+    const sse = (params: number[]): number => {
+        const [testK, testC, testP] = params;
+        let sum = 0;
+        for (let i = 0; i < days.length; i++) {
+            const predicted = omoriLaw(days[i], testK, testC, testP);
+            if (!isFinite(predicted)) return 1e10;
+            sum += Math.pow(counts[i] - predicted, 2);
+        }
+        return sum;
+    };
+
+    const params = [K, c, p];
+    const n = params.length;
+    const delta = [K * 0.01, c * 0.01, p * 0.01]; // 1% perturbation
+
+    // Approximate Hessian using finite differences
+    const hessian: number[][] = Array(n).fill(0).map(() => Array(n).fill(0));
+
+    for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+            const paramsIpJp = [...params];
+            const paramsIpJm = [...params];
+            const paramsImJp = [...params];
+            const paramsImJm = [...params];
+
+            paramsIpJp[i] += delta[i];
+            paramsIpJp[j] += delta[j];
+
+            paramsIpJm[i] += delta[i];
+            paramsIpJm[j] -= delta[j];
+
+            paramsImJp[i] -= delta[i];
+            paramsImJp[j] += delta[j];
+
+            paramsImJm[i] -= delta[i];
+            paramsImJm[j] -= delta[j];
+
+            const fIpJp = sse(paramsIpJp);
+            const fIpJm = sse(paramsIpJm);
+            const fImJp = sse(paramsImJp);
+            const fImJm = sse(paramsImJm);
+
+            hessian[i][j] = (fIpJp - fIpJm - fImJp + fImJm) / (4 * delta[i] * delta[j]);
+        }
+    }
+
+    // Calculate variance-covariance matrix (inverse of Hessian / 2)
+    // For least squares: Var(θ) = σ² * (H/2)^(-1) where σ² = SSE/(n-p)
+    try {
+        const sigma2 = sse(params) / Math.max(1, days.length - n);
+
+        // Invert Hessian (simplified 3x3 matrix inversion)
+        const det =
+            hessian[0][0] * (hessian[1][1] * hessian[2][2] - hessian[1][2] * hessian[2][1]) -
+            hessian[0][1] * (hessian[1][0] * hessian[2][2] - hessian[1][2] * hessian[2][0]) +
+            hessian[0][2] * (hessian[1][0] * hessian[2][1] - hessian[1][1] * hessian[2][0]);
+
+        if (Math.abs(det) < 1e-10) {
+            console.warn('Hessian is singular, cannot calculate uncertainty');
+            return {};
+        }
+
+        // Cofactor matrix
+        const cof: number[][] = [
+            [
+                hessian[1][1] * hessian[2][2] - hessian[1][2] * hessian[2][1],
+                -(hessian[1][0] * hessian[2][2] - hessian[1][2] * hessian[2][0]),
+                hessian[1][0] * hessian[2][1] - hessian[1][1] * hessian[2][0]
+            ],
+            [
+                -(hessian[0][1] * hessian[2][2] - hessian[0][2] * hessian[2][1]),
+                hessian[0][0] * hessian[2][2] - hessian[0][2] * hessian[2][0],
+                -(hessian[0][0] * hessian[2][1] - hessian[0][1] * hessian[2][0])
+            ],
+            [
+                hessian[0][1] * hessian[1][2] - hessian[0][2] * hessian[1][1],
+                -(hessian[0][0] * hessian[1][2] - hessian[0][2] * hessian[1][0]),
+                hessian[0][0] * hessian[1][1] - hessian[0][1] * hessian[1][0]
+            ]
+        ];
+
+        // Inverse = transpose(cofactor) / det, scaled by sigma2/2
+        const varK = (sigma2 / 2) * cof[0][0] / det;
+        const varC = (sigma2 / 2) * cof[1][1] / det;
+        const varP = (sigma2 / 2) * cof[2][2] / det;
+
+        if (varK <= 0 || varC <= 0 || varP <= 0) {
+            console.warn('Negative variances calculated');
+            return {};
+        }
+
+        const K_se = Math.sqrt(varK);
+        const c_se = Math.sqrt(varC);
+        const p_se = Math.sqrt(varP);
+
+        // 95% CI using normal approximation: estimate ± 1.96 * SE
+        const z = 1.96;
+
+        return {
+            K_se,
+            c_se,
+            p_se,
+            K_ci: [Math.max(1, K - z * K_se), K + z * K_se],
+            c_ci: [Math.max(0.01, c - z * c_se), Math.min(2.0, c + z * c_se)],
+            p_ci: [Math.max(0.7, p - z * p_se), Math.min(1.6, p + z * p_se)]
+        };
+    } catch (error) {
+        console.warn('Failed to calculate Hessian-based uncertainty:', error);
+        return {};
+    }
+}
+
+/**
  * Bootstrap resampling for uncertainty estimation in non-MLE methods
  * Resamples the event times with replacement and refits parameters
+ * FIXED: More robust outlier detection and stricter validation
  */
 function bootstrapUncertainty(
     days: number[],
@@ -552,6 +703,11 @@ function bootstrapUncertainty(
     nBootstrap: number = 100
 ): ParameterUncertainty {
     const bootstrapResults: { K: number; c: number; p: number }[] = [];
+
+    // Estimate reasonable parameter bounds from data
+    const maxCount = Math.max(...counts);
+    const minDay = Math.min(...days);
+    const K_max = maxCount * Math.pow(minDay + 1.0, 1.5);
 
     // Perform bootstrap resampling
     for (let b = 0; b < nBootstrap; b++) {
@@ -568,8 +724,15 @@ function bootstrapUncertainty(
 
         try {
             const result = fittingMethod(resampledDays, resampledCounts);
-            // Only include valid results
-            if (result.K > 0 && result.c > 0 && result.p > 0.5 && result.p < 2.0) {
+
+            // STRICT validation: Only include physically reasonable results
+            const isValid =
+                result.K > 1 && result.K < K_max &&
+                result.c > 0.01 && result.c < 2.0 &&
+                result.p > 0.7 && result.p < 1.6 &&
+                result.rSquared > -0.5; // Allow slightly negative but not completely wrong
+
+            if (isValid) {
                 bootstrapResults.push({ K: result.K, c: result.c, p: result.p });
             }
         } catch (error) {
@@ -578,18 +741,38 @@ function bootstrapUncertainty(
         }
     }
 
-    if (bootstrapResults.length < 10) {
-        // Not enough successful bootstrap iterations
+    if (bootstrapResults.length < 20) {
+        // Not enough successful bootstrap iterations (raised threshold)
         console.warn(`Bootstrap failed: only ${bootstrapResults.length} successful iterations out of ${nBootstrap}`);
         return {};
     }
 
     console.log(`Bootstrap completed: ${bootstrapResults.length} successful iterations out of ${nBootstrap}`);
 
-    // Calculate statistics from bootstrap distribution
-    const K_values = bootstrapResults.map(r => r.K).sort((a, b) => a - b);
-    const c_values = bootstrapResults.map(r => r.c).sort((a, b) => a - b);
-    const p_values = bootstrapResults.map(r => r.p).sort((a, b) => a - b);
+    // Remove outliers using IQR method before calculating statistics
+    const removeOutliers = (arr: number[]): number[] => {
+        const sorted = [...arr].sort((a, b) => a - b);
+        const q1 = sorted[Math.floor(sorted.length * 0.25)];
+        const q3 = sorted[Math.floor(sorted.length * 0.75)];
+        const iqr = q3 - q1;
+        const lowerBound = q1 - 1.5 * iqr;
+        const upperBound = q3 + 1.5 * iqr;
+        return sorted.filter(val => val >= lowerBound && val <= upperBound);
+    };
+
+    // Calculate statistics from bootstrap distribution with outlier removal
+    const K_values = removeOutliers(bootstrapResults.map(r => r.K));
+    const c_values = removeOutliers(bootstrapResults.map(r => r.c));
+    const p_values = removeOutliers(bootstrapResults.map(r => r.p));
+
+    if (K_values.length < 10 || c_values.length < 10 || p_values.length < 10) {
+        console.warn('Too many outliers in bootstrap results');
+        return {};
+    }
+
+    K_values.sort((a, b) => a - b);
+    c_values.sort((a, b) => a - b);
+    p_values.sort((a, b) => a - b);
 
     const getPercentile = (arr: number[], percentile: number): number => {
         const index = Math.floor((percentile / 100) * arr.length);
@@ -879,37 +1062,47 @@ export function calculateOmoriParameters(
         iterations = result.iterations;
         logLikelihood = result.logLikelihood;
 
-        // Calculate bootstrap uncertainty estimates for non-MLE methods
+        // IMPROVED: Use Hessian-based uncertainty (more reliable than bootstrap)
         try {
-            // Determine which fitting function to use for bootstrap
-            let fittingFunction: (d: number[], c: number[]) => { K: number; c: number; p: number; rSquared: number; iterations: number };
+            console.log(`📊 Calculating Hessian-based uncertainty for ${optimizationMethod}...`);
+            const hessianUncertainty = calculateHessianUncertainty(days, counts, K, c, p);
 
-            switch (optimizationMethod) {
-                case 'grid-search':
-                    fittingFunction = fitOmoriLawGridSearch;
-                    break;
-                case 'levenberg-marquardt':
-                    fittingFunction = fitOmoriLawLM;
-                    break;
-                case 'nelder-mead':
-                    fittingFunction = fitOmoriLawNelderMead;
-                    break;
-                case 'hybrid':
-                default:
-                    fittingFunction = fitOmoriLawHybrid;
-                    break;
-            }
-
-            // Run bootstrap (100 iterations for better estimates)
-            const bootstrapResults = bootstrapUncertainty(days, counts, fittingFunction, 100);
-
-            if (Object.keys(bootstrapResults).length > 0) {
-                uncertainty = bootstrapResults;
+            if (Object.keys(hessianUncertainty).length > 0) {
+                uncertainty = hessianUncertainty;
+                console.log('✅ Hessian-based uncertainty calculated successfully');
             } else {
-                console.warn(`Bootstrap uncertainty estimation failed for ${optimizationMethod}`);
+                // Fallback to bootstrap if Hessian fails
+                console.warn('Hessian calculation failed, falling back to bootstrap');
+
+                let fittingFunction: (d: number[], c: number[]) => { K: number; c: number; p: number; rSquared: number; iterations: number };
+
+                switch (optimizationMethod) {
+                    case 'grid-search':
+                        fittingFunction = fitOmoriLawGridSearch;
+                        break;
+                    case 'levenberg-marquardt':
+                        fittingFunction = fitOmoriLawLM;
+                        break;
+                    case 'nelder-mead':
+                        fittingFunction = fitOmoriLawNelderMead;
+                        break;
+                    case 'hybrid':
+                    default:
+                        fittingFunction = fitOmoriLawHybrid;
+                        break;
+                }
+
+                const bootstrapResults = bootstrapUncertainty(days, counts, fittingFunction, 100);
+
+                if (Object.keys(bootstrapResults).length > 0) {
+                    uncertainty = bootstrapResults;
+                    console.log('✅ Bootstrap uncertainty calculated successfully (fallback)');
+                } else {
+                    console.warn(`⚠️ Both Hessian and Bootstrap uncertainty estimation failed for ${optimizationMethod}`);
+                }
             }
         } catch (error) {
-            console.warn('Failed to calculate bootstrap uncertainty:', error);
+            console.warn('Failed to calculate uncertainty:', error);
         }
     }
 

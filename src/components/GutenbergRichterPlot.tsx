@@ -39,8 +39,40 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
 
         const { bValue, aValue, magnitudeOfCompleteness, rSquared, earthquakesAboveMc, binCenters, cumulativeCounts, fittedLine } = result;
 
-        const minY = Math.min(...cumulativeCounts.filter(c => c > 0));
-        const maxY = Math.max(...cumulativeCounts);
+        // Additional validation for arrays and matching lengths
+        if (!Array.isArray(binCenters) || !Array.isArray(cumulativeCounts) || !Array.isArray(fittedLine)) {
+            return {
+                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                title: { text: '' },
+                credits: { enabled: false },
+                exporting: { enabled: false },
+                series: []
+            };
+        }
+
+        // Ensure all arrays have the same length
+        if (binCenters.length !== cumulativeCounts.length || binCenters.length !== fittedLine.length) {
+            console.error('G-R Plot: Array length mismatch', {
+                binCenters: binCenters.length,
+                cumulativeCounts: cumulativeCounts.length,
+                fittedLine: fittedLine.length
+            });
+            return {
+                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                title: { text: '' },
+                credits: { enabled: false },
+                exporting: { enabled: false },
+                series: []
+            };
+        }
+
+        // FIXED: Use iterative approach to avoid stack overflow on large datasets
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const count of cumulativeCounts) {
+            if (count > 0 && count < minY) minY = count;
+            if (count > maxY) maxY = count;
+        }
 
         return {
             chart: {
@@ -92,7 +124,15 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                     return `<b>${this.series.name}</b><br/>Magnitude: ${this.x?.toFixed(2)}<br/>Count: ${this.y?.toFixed(0)}`;
                 }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 scatter: {
                     marker: {
                         radius: 4
@@ -108,7 +148,14 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 {
                     type: 'scatter',
                     name: 'Observed',
-                    data: binCenters.map((x, i) => [x, cumulativeCounts[i]]),
+                    data: binCenters.map((x, i) => {
+                        const y = cumulativeCounts[i];
+                        // Ensure both values are valid numbers
+                        if (typeof x !== 'number' || typeof y !== 'number' || !isFinite(x) || !isFinite(y)) {
+                            return null;
+                        }
+                        return [x, y];
+                    }).filter((point): point is [number, number] => point !== null),
                     color: 'steelblue',
                     marker: {
                         radius: 6
@@ -117,7 +164,14 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 {
                     type: 'line',
                     name: 'Fitted (G-R Law)',
-                    data: binCenters.map((x, i) => [x, fittedLine[i]]),
+                    data: binCenters.map((x, i) => {
+                        const y = fittedLine[i];
+                        // Ensure both values are valid numbers
+                        if (typeof x !== 'number' || typeof y !== 'number' || !isFinite(x) || !isFinite(y)) {
+                            return null;
+                        }
+                        return [x, y];
+                    }).filter((point): point is [number, number] => point !== null),
                     color: 'red',
                     dashStyle: 'Dash',
                     lineWidth: 2

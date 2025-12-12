@@ -67,21 +67,21 @@ export const PERFORMANCE_CONFIG = {
      */
     SAMPLING: {
         MAP: {
-            threshold: 10000,
-            maxPoints: 5000,
+            threshold: 50000,
+            maxPoints: 25000,
             useBoost: true, // Enable Highcharts boost module
         },
         DEPTH_PROFILE: {
-            threshold: 5000,
-            maxPoints: 5000,
+            threshold: 50000,
+            maxPoints: 25000,
         },
         TEMPORAL: {
-            threshold: 5000,
-            maxPoints: 5000,
+            threshold: 50000,
+            maxPoints: 25000,
         },
         THREE_D: {
-            threshold: 3000,
-            maxPoints: 3000,
+            threshold: 20000,
+            maxPoints: 15000,
         },
         CLUSTERING: {
             threshold: 1000, // Don't sample clustering data (needs full dataset)
@@ -120,8 +120,8 @@ export const PERFORMANCE_CONFIG = {
      */
     HIGHCHARTS: {
         // Enable boost module for datasets larger than this
-        BOOST_THRESHOLD: 10000,
-        
+        BOOST_THRESHOLD: 5000,
+
         // Boost module settings
         BOOST_CONFIG: {
             useGPUTranslations: true,

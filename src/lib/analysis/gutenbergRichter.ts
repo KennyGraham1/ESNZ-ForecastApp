@@ -32,8 +32,13 @@ export function calculateGutenbergRichter(
     }
 
     const magnitudes = earthquakes.map(eq => eq.magnitude);
-    const minMag = Math.min(...magnitudes);
-    const maxMag = Math.max(...magnitudes);
+    // FIXED: Use iterative approach instead of spread operator to avoid stack overflow on large datasets
+    let minMag = Infinity;
+    let maxMag = -Infinity;
+    for (const mag of magnitudes) {
+        if (mag < minMag) minMag = mag;
+        if (mag > maxMag) maxMag = mag;
+    }
 
     // Create magnitude bins
     const numBins = Math.ceil((maxMag - minMag) / binWidth) + 1;

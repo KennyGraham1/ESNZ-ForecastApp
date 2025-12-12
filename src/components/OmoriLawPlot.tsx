@@ -1,11 +1,12 @@
 'use client';
 
 import { EarthquakeData } from '@/types/earthquake';
-import { useMemo, useRef, useState, memo } from 'react';
-import { MainEventInfo, calculateOmoriParameters, OptimizationMethod } from '@/lib/analysis/omori';
+import { useMemo, useRef, useState, memo, useEffect } from 'react';
+import { MainEventInfo, calculateOmoriParameters, OptimizationMethod, OmoriParameters } from '@/lib/analysis/omori';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
+import LoadingProgress from './LoadingProgress';
 
 interface OmoriLawPlotProps {
     earthquakes: EarthquakeData[];
@@ -47,6 +48,11 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         externalMagnitudeCompleteness?.toString() || ''
     );
 
+    // Progress tracking state
+    const [isCalculating, setIsCalculating] = useState(false);
+    const [calculationProgress, setCalculationProgress] = useState(0);
+    const [omoriParams, setOmoriParams] = useState<OmoriParameters | null>(null);
+
     const handleApply = () => {
         setAppliedOptimizationMethod(inputOptimizationMethod);
         setAppliedMagnitudeCompleteness(inputMagnitudeCompleteness);
@@ -61,9 +67,36 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         }
     };
 
-    const omoriParams = useMemo(() => {
-        const mc = appliedMagnitudeCompleteness ? parseFloat(appliedMagnitudeCompleteness) : undefined;
-        return calculateOmoriParameters(earthquakes, mainEvent, 365, appliedOptimizationMethod, mc);
+    // Calculate Omori parameters with progress tracking
+    useEffect(() => {
+        const calculateWithProgress = async () => {
+            setIsCalculating(true);
+            setCalculationProgress(0);
+
+            // Simulate progress updates
+            const progressInterval = setInterval(() => {
+                setCalculationProgress((prev) => Math.min(prev + 10, 90));
+            }, 100);
+
+            try {
+                // Run calculation in next tick to allow UI to update
+                await new Promise(resolve => setTimeout(resolve, 0));
+
+                const mc = appliedMagnitudeCompleteness ? parseFloat(appliedMagnitudeCompleteness) : undefined;
+                const result = calculateOmoriParameters(earthquakes, mainEvent, 365, appliedOptimizationMethod, mc);
+
+                setOmoriParams(result);
+                setCalculationProgress(100);
+            } catch (error) {
+                console.error('Omori calculation error:', error);
+                setOmoriParams(null);
+            } finally {
+                clearInterval(progressInterval);
+                setTimeout(() => setIsCalculating(false), 300); // Brief delay to show 100%
+            }
+        };
+
+        calculateWithProgress();
     }, [earthquakes, mainEvent, appliedOptimizationMethod, appliedMagnitudeCompleteness]);
 
     const dailyRateOptions: Highcharts.Options = useMemo(() => {
@@ -78,6 +111,16 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         }
 
         const { dailyCounts, fittedCounts } = omoriParams;
+
+        // Additional validation
+        if (!Array.isArray(dailyCounts) || !Array.isArray(fittedCounts) || dailyCounts.length === 0) {
+            return {
+                chart: { type: 'scatter', height: 350 },
+                title: { text: '' },
+                credits: { enabled: false },
+                series: []
+            };
+        }
 
         return {
             chart: {
@@ -143,11 +186,27 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 borderWidth: 1,
                 style: { fontSize: '11px' }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
+            plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                }
+            },
             series: [
                 {
                     type: 'scatter',
                     name: 'Observed',
-                    data: dailyCounts.map(d => [d.day, d.count]),
+                    data: dailyCounts.map(d => {
+                        // Ensure valid numbers
+                        if (typeof d.day !== 'number' || typeof d.count !== 'number' || !isFinite(d.day) || !isFinite(d.count)) {
+                            return null;
+                        }
+                        return [d.day, d.count];
+                    }).filter((point): point is [number, number] => point !== null),
                     color: '#4682B4', // Steel blue
                     marker: {
                         symbol: 'circle',
@@ -159,7 +218,13 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 {
                     type: 'line',
                     name: 'Omori-Utsu Fit',
-                    data: fittedCounts.map(d => [d.day, d.count]),
+                    data: fittedCounts.map(d => {
+                        // Ensure valid numbers
+                        if (typeof d.day !== 'number' || typeof d.count !== 'number' || !isFinite(d.day) || !isFinite(d.count)) {
+                            return null;
+                        }
+                        return [d.day, d.count];
+                    }).filter((point): point is [number, number] => point !== null),
                     color: '#DC143C', // Crimson red
                     lineWidth: 2.5,
                     marker: {
@@ -194,12 +259,21 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         for (let i = 0; i < cumulativeCounts.length; i++) {
             const expected = expectedCumulativeCounts?.[i]?.count ?? 0;
             const observed = cumulativeCounts[i].count;
-            qqData.push([expected, observed]);
+            // Ensure valid numbers
+            if (typeof expected === 'number' && typeof observed === 'number' &&
+                isFinite(expected) && isFinite(observed)) {
+                qqData.push([expected, observed]);
+            }
         }
 
         // Find max value for 1:1 reference line
-        const maxExpected = Math.max(...qqData.map(d => d[0]));
-        const maxObserved = Math.max(...qqData.map(d => d[1]));
+        // FIXED: Use iterative approach to avoid stack overflow on large datasets
+        let maxExpected = -Infinity;
+        let maxObserved = -Infinity;
+        for (const [expected, observed] of qqData) {
+            if (expected > maxExpected) maxExpected = expected;
+            if (observed > maxObserved) maxObserved = observed;
+        }
         const maxVal = Math.max(maxExpected, maxObserved);
 
         return {
@@ -384,7 +458,15 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 style: { fontSize: '11px' },
                 valueDecimals: 1
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
             plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                },
                 column: {
                     pointRange: binSize,
                     groupPadding: 0,
@@ -522,6 +604,16 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 borderWidth: 1,
                 style: { fontSize: '11px' }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
+            plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                }
+            },
             series: [
                 {
                     type: 'scatter',
@@ -624,6 +716,16 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 borderWidth: 1,
                 style: { fontSize: '11px' }
             },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true
+            },
+            plotOptions: {
+                series: {
+                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                }
+            },
             series: [
                 {
                     type: 'line',
@@ -655,6 +757,36 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             ]
         };
     }, [omoriParams]);
+
+    // Show loading progress while calculating
+    if (isCalculating) {
+        const getMethodName = (method: OptimizationMethod): string => {
+            const names: Record<OptimizationMethod, string> = {
+                'hybrid': 'Hybrid (Grid Search + Levenberg-Marquardt)',
+                'levenberg-marquardt': 'Levenberg-Marquardt',
+                'nelder-mead': 'Nelder-Mead Simplex',
+                'grid-search': 'Grid Search',
+                'mle': 'Maximum Likelihood Estimation'
+            };
+            return names[method] || method;
+        };
+
+        return (
+            <>
+                <LoadingProgress
+                    operation="Fitting Omori Law Parameters"
+                    total={100}
+                    progress={calculationProgress}
+                    details={`Using ${getMethodName(appliedOptimizationMethod)} optimization${appliedMagnitudeCompleteness ? ` with Mc = ${appliedMagnitudeCompleteness}` : ''}`}
+                    icon="📊"
+                />
+                <div className="bg-white p-4 rounded-lg shadow border border-gray-200 opacity-50">
+                    <h3 className="text-lg font-semibold mb-4">Omori&apos;s Law Analysis</h3>
+                    <p className="text-gray-500">Calculating parameters...</p>
+                </div>
+            </>
+        );
+    }
 
     // Early return if no data
     if (!omoriParams) {
