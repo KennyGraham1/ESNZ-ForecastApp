@@ -363,10 +363,6 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                     `;
                 }
             },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true
-            },
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)

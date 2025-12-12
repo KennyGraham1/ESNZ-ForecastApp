@@ -299,10 +299,6 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                 shared: true,
                 crosshairs: true
             },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true
-            },
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)

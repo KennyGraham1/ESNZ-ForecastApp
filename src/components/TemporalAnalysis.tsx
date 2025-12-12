@@ -124,10 +124,6 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                     `;
                 }
             },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true
-            },
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
@@ -339,10 +335,6 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             tooltip: {
                 shared: true,
                 crosshairs: true
-            },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true
             },
             plotOptions: {
                 series: {
