@@ -47,6 +47,19 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
             }
         }));
 
+        // Calculate reasonable axis ranges
+        const latitudes = processedEarthquakes.map(eq => eq.latitude);
+        const depths = processedEarthquakes.map(eq => eq.depth);
+
+        const minLat = Math.min(...latitudes);
+        const maxLat = Math.max(...latitudes);
+        const minDepth = Math.max(0, Math.min(...depths)); // Depth can't be negative
+        const maxDepth = Math.max(...depths);
+
+        // Add 5% padding to the ranges for better visualization
+        const latPadding = (maxLat - minLat) * 0.05;
+        const depthPadding = (maxDepth - minDepth) * 0.05;
+
         return {
             chart: {
                 type: 'scatter',
@@ -74,13 +87,17 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                 title: {
                     text: 'Latitude (°S)'
                 },
-                reversed: true // South to North
+                reversed: true, // South to North
+                min: minLat - latPadding,
+                max: maxLat + latPadding
             },
             yAxis: {
                 title: {
                     text: 'Depth (km)'
                 },
-                reversed: true // Depth increases downward
+                reversed: true, // Depth increases downward
+                min: Math.max(0, minDepth - depthPadding),
+                max: maxDepth + depthPadding
             },
             colorAxis: {
                 // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
@@ -124,10 +141,6 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                         </div>
                     `;
                 }
-            },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true
             },
             plotOptions: {
                 series: {
