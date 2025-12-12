@@ -308,12 +308,62 @@ export async function GET(request: NextRequest) {
                 }
             }
 
-            // OPTIMIZATION: Don't block on historical data fetch
-            // Return cached data immediately and let user manually fetch historical data if needed
+            // Fetch historical data if needed
             if (needsHistoricalFetch) {
                 console.log(`⚠️ User requested ${historicalDaysNeeded} days, but cache only has data from ${existingCache.initialFetchDate}.`);
-                console.log(`💡 Returning cached data immediately. User can manually fetch historical data if needed.`);
-                // Fall through to return existing cache data with a warning flag
+                console.log(`🌐 Fetching historical data to extend cache...`);
+
+                try {
+                    // Limit to MAX_FETCH_DAYS for safety
+                    const safeDaysToFetch = Math.min(historicalDaysNeeded, MAX_FETCH_DAYS);
+
+                    console.log(`🌐 Fetching ${safeDaysToFetch} days of historical data...`);
+                    const historicalEvents = await fetchEarthquakeData({
+                        minMagnitude: 2.0,
+                        daysBack: safeDaysToFetch
+                    });
+
+                    // Merge with existing cache, removing duplicates
+                    const existingEventIds = new Set(existingCache.earthquakes.map(eq => eq.eventID));
+                    const uniqueHistoricalEvents = historicalEvents.filter(eq => !existingEventIds.has(eq.eventID));
+
+                    console.log(`📥 Found ${historicalEvents.length} historical events, ${uniqueHistoricalEvents.length} are new`);
+
+                    // Pre-compute timestamps for historical events
+                    const uniqueHistoricalEventsWithTimestamps = uniqueHistoricalEvents.map(eq => ({
+                        ...eq,
+                        timeMs: eq.time.getTime()
+                    }));
+
+                    // Merge and sort by time (newest first)
+                    const mergedEarthquakes = [...uniqueHistoricalEventsWithTimestamps, ...existingCache.earthquakes]
+                        .sort((a, b) => {
+                            const bTime = b.timeMs !== undefined ? b.timeMs : new Date(b.time).getTime();
+                            const aTime = a.timeMs !== undefined ? a.timeMs : new Date(a.time).getTime();
+                            return bTime - aTime;
+                        });
+
+                    // Update cache with extended historical data
+                    const now = new Date();
+                    const extendedCache: CacheData = {
+                        earthquakes: mergedEarthquakes,
+                        lastUpdated: now.toISOString(),
+                        initialFetchDate: new Date(now.getTime() - (safeDaysToFetch * 24 * 60 * 60 * 1000)).toISOString(),
+                        totalEvents: mergedEarthquakes.length
+                    };
+
+                    await saveCacheToDisk(extendedCache);
+                    console.log(`💾 Cache extended: ${existingCache.totalEvents} → ${mergedEarthquakes.length} events (+${uniqueHistoricalEvents.length} historical)`);
+
+                    // Update existing cache reference for filtering below
+                    existingCache.earthquakes = mergedEarthquakes;
+                    existingCache.totalEvents = mergedEarthquakes.length;
+                    existingCache.initialFetchDate = extendedCache.initialFetchDate;
+                } catch (error) {
+                    console.error('❌ Error fetching historical data:', error);
+                    console.log(`💡 Returning cached data with limited time range.`);
+                    // Fall through to return existing cache data
+                }
             }
 
             // No historical fetch needed, or it failed - return cached data with filtering

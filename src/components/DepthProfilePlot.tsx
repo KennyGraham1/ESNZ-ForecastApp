@@ -149,7 +149,8 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                 },
                 scatter: {
                     marker: {
-                        radius: 5
+                        radius: 3,
+                        symbol: 'circle'
                     }
                 }
             },
@@ -160,8 +161,9 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                     x: d.x,
                     y: d.y,
                     marker: {
-                        radius: Math.pow(2, d.z - 2),
-                        fillOpacity: 0.6
+                        // Scale marker size more reasonably: M2=1.5, M4=3, M6=6, M8=12
+                        radius: Math.max(1.5, Math.min(12, (d.z - 1) * 1.5)),
+                        fillOpacity: 0.5
                     },
                     colorValue: d.z,
                     custom: d.custom

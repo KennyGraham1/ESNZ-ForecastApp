@@ -420,7 +420,7 @@ export default function Home() {
             {/* Active Filters Display */}
             <div className="bg-white px-4 py-3 rounded-lg border border-slate-200 shadow-sm">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm font-semibold text-slate-700">Active Filters:</span>
+                <span className="text-sm font-semibold text-slate-700">Data Loaded:</span>
                 <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-md border border-blue-200">
                   <span className="text-xs text-slate-600">Time Range:</span>
                   <span className="text-sm font-bold text-blue-700">
@@ -440,8 +440,12 @@ export default function Home() {
                   <span className="text-xs text-slate-600">Min Magnitude:</span>
                   <span className="text-sm font-bold text-purple-700">M{filterOptions.minMagnitude}+</span>
                 </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-md border border-amber-200">
+                  <span className="text-xs text-slate-600">Loaded from cache:</span>
+                  <span className="text-sm font-bold text-amber-700">{earthquakes.length.toLocaleString()} events</span>
+                </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-green-50 rounded-md border border-green-200">
-                  <span className="text-xs text-slate-600">Showing:</span>
+                  <span className="text-xs text-slate-600">After filters:</span>
                   <span className="text-sm font-bold text-green-700">{filteredEarthquakes.length.toLocaleString()} events</span>
                 </div>
               </div>
