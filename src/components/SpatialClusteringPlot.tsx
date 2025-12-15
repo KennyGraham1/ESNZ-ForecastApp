@@ -288,6 +288,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                     depth: eq.depth,
                     cluster,
                     index: i,
+                    eventID: eq.eventID,
                 }
             };
         });
@@ -358,6 +359,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                             ${clusterInfo}
                             <strong>${custom.locality}</strong><br/>
                             M${custom.magnitude.toFixed(1)}<br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             Depth: ${custom.depth.toFixed(1)} km
                         </div>
                     `;

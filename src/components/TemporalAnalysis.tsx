@@ -45,7 +45,8 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 locality: eq.locality,
                 magnitude: eq.magnitude,
                 depth: eq.depth,
-                time: eq.time
+                time: eq.time,
+                eventID: eq.eventID
             }
         }));
 
@@ -118,6 +119,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                         <div style="padding: 4px;">
                             <strong>${custom.locality}</strong><br/>
                             M${custom.magnitude.toFixed(1)}<br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             Depth: ${custom.depth.toFixed(1)} km<br/>
                             ${timeStr}
                         </div>

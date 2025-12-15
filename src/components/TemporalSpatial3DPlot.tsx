@@ -20,6 +20,7 @@ export interface PlotDataPoint {
     cluster: number;
     isSelected: boolean;
     originalIndex: number; // The stable index to report back on click
+    eventID: string;
 }
 
 interface TemporalSpatial3DPlotProps {
@@ -119,7 +120,8 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                     time: d.time,
                     cluster: d.cluster,
                     originalIndex: d.originalIndex,
-                    isSelected: d.isSelected
+                    isSelected: d.isSelected,
+                    eventID: d.eventID
                 }
             };
         });
@@ -207,6 +209,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                         <div style="padding: 8px;">
                             <strong>${custom.locality || 'Unknown location'}</strong><br/>
                             <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             ${timeStr}<br/>
                             Depth: ${custom.depth.toFixed(1)} km<br/>
                             Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°<br/>

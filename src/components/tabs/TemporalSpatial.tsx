@@ -459,6 +459,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     isSelected: d.isSelected,
                     originalIndex: d.originalIndex,
                     cluster: d.cluster,
+                    eventID: d.eventID,
                 };
             } catch (e) {
                 return null;
@@ -516,6 +517,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         <div style="padding: 8px;">
                             <strong>${custom.locality || 'Unknown location'}</strong><br/>
                             <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             ${timeStr}<br/>
                             Depth: ${custom.depth.toFixed(1)} km<br/>
                             Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°<br/>
@@ -562,6 +564,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         locality: d.locality,
                         originalIndex: d.originalIndex,
                         cluster: d.cluster,
+                        eventID: d.eventID,
                     }
                 }))
             }],
@@ -612,6 +615,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     originalIndex: d.originalIndex,
                     cluster: d.cluster,
                     color: getClusterColor(d.cluster),
+                    eventID: d.eventID,
                 };
             })
             .filter((eq): eq is NonNullable<typeof eq> => eq !== null);
@@ -726,6 +730,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             <div style="padding: 8px;">
                                 <strong>${point.locality || 'Unknown location'}</strong><br/>
                                 <strong>M${point.magnitude.toFixed(1)}</strong><br/>
+                                Event ID: ${point.eventID || 'N/A'}<br/>
                                 ${timeStr}<br/>
                                 Depth: ${point.depth.toFixed(1)} km<br/>
                                 Lat: ${point.lat.toFixed(2)}°, Lon: ${point.lon.toFixed(2)}°<br/>

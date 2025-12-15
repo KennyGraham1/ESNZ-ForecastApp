@@ -40,6 +40,7 @@ export interface MainEventInfo {
     latitude?: number;
     longitude?: number;
     depth?: number;
+    eventID?: string;
 }
 
 /**

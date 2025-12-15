@@ -74,7 +74,8 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 magnitude: eq.magnitude,
                 depth: eq.depth,
                 latitude: eq.latitude,
-                longitude: eq.longitude
+                longitude: eq.longitude,
+                eventID: eq.eventID
             }
         }));
 
@@ -187,6 +188,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                     return `
                         <div style="padding: 4px;">
                             <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             Depth: ${custom.depth.toFixed(1)} km<br/>
                             Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°
                         </div>

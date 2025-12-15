@@ -710,6 +710,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     return `
                         <div style="padding: 4px;">
                             <strong>M${custom.magnitude?.toFixed(1) || 'N/A'}</strong><br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             ${custom.date || 'N/A'}<br/>
                             Depth: ${custom.depth?.toFixed(1) || 'N/A'} km<br/>
                             Days since main event: ${custom.daysSince?.toFixed(1) || 'N/A'}
@@ -915,7 +916,8 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     depth: eq.depth,
                     daysSince: eq.daysSince,
                     date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
-                    index
+                    index,
+                    eventID: eq.eventID
                 }
             };
         });
@@ -978,6 +980,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     return `
                         <div style="padding: 4px;">
                             <strong>M${custom.magnitude?.toFixed(1) || 'N/A'}</strong><br/>
+                            Event ID: ${custom.eventID || 'N/A'}<br/>
                             Depth: ${custom.depth?.toFixed(1) || 'N/A'} km<br/>
                             Days since main event: ${custom.daysSince?.toFixed(1) || 'N/A'}<br/>
                             ${custom.date || 'N/A'}
@@ -1148,6 +1151,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     daysSince: eq.daysSince,
                     date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
                     index,
+                    eventID: eq.eventID,
                     color: isSelected ? '#ff0000' : getColorForDays(eq.daysSince),
                     marker: {
                         radius: isSelected ? Math.max(3, eq.magnitude * 1.5) * 1.5 : Math.max(3, eq.magnitude * 1.5),
@@ -1335,6 +1339,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     return `
                         <div style="padding: 4px;">
                             <strong>M${point.magnitude?.toFixed(1) || 'N/A'}</strong><br/>
+                            Event ID: ${point.eventID || 'N/A'}<br/>
                             Depth: ${point.depth?.toFixed(1) || 'N/A'} km<br/>
                             Days since main event: ${point.daysSince?.toFixed(1) || 'N/A'}<br/>
                             ${point.date || 'N/A'}
@@ -1432,7 +1437,8 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                         lat: mainEvent.latitude,
                         lon: mainEvent.longitude,
                         name: mainEvent.name,
-                        magnitude: mainEvent.magnitude
+                        magnitude: mainEvent.magnitude,
+                        eventID: mainEvent.eventID
                     }],
                     color: '#ff0000',
                     marker: {
@@ -1446,7 +1452,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     showInLegend: true,
                     zIndex: 60,
                     tooltip: {
-                        pointFormat: '<b>{point.name}</b><br/>M{point.magnitude}<br/>Main Event'
+                        pointFormat: '<b>{point.name}</b><br/>Event ID: {point.eventID}<br/>M{point.magnitude}<br/>Main Event'
                     }
                 },
                 {

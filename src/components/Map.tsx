@@ -186,6 +186,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                                 M${point.magnitude.toFixed(1)}
                             </div>
                             <div style="font-size: 13px; color: #4b5563; line-height: 1.6;">
+                                <p style="margin: 4px 0;"><strong style="color: #374151;">Event ID:</strong> ${point.eventID || 'N/A'}</p>
                                 <p style="margin: 4px 0;"><strong style="color: #374151;">Time:</strong> ${timeStr}</p>
                                 <p style="margin: 4px 0;"><strong style="color: #374151;">Depth:</strong> ${point.depth.toFixed(1)} km</p>
                                 <p style="margin: 4px 0;"><strong style="color: #374151;">Location:</strong> ${point.locality}</p>
