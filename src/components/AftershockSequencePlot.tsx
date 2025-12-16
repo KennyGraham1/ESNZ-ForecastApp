@@ -7,6 +7,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import RBush from 'rbush';
+import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { formatDate } from '@/utils/dateFormat';
 
 interface AftershockSequencePlotProps {
@@ -534,7 +535,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
 
             // Validate data
             if (!isFinite(eq.daysSince) || !isFinite(eq.magnitude)) {
-                console.error('❌ Invalid data point:', {index, daysSince: eq.daysSince, magnitude: eq.magnitude});
+                console.error('❌ Invalid data point:', { index, daysSince: eq.daysSince, magnitude: eq.magnitude });
                 return null;
             }
 
@@ -725,7 +726,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 scatter: {
                     marker: {

@@ -7,6 +7,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import LoadingProgress from './LoadingProgress';
+import { HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface OmoriLawPlotProps {
     earthquakes: EarthquakeData[];
@@ -193,7 +194,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 }
             },
             series: [
@@ -335,7 +336,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 borderColor: '#999',
                 borderWidth: 1,
                 style: { fontSize: '11px' },
-                formatter: function() {
+                formatter: function () {
                     return `<b>Expected:</b> ${this.x?.toFixed(1)}<br/><b>Observed:</b> ${this.y?.toFixed(1)}`;
                 }
             },
@@ -465,7 +466,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 column: {
                     pointRange: binSize,
@@ -611,7 +612,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 }
             },
             series: [
@@ -723,7 +724,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 }
             },
             series: [

@@ -6,6 +6,7 @@ import { calculateGutenbergRichter } from '@/lib/analysis/gutenbergRichter';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
+import { HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface GutenbergRichterPlotProps {
     earthquakes: EarthquakeData[];
@@ -120,7 +121,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
             },
             tooltip: {
                 shared: false,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     return `<b>${this.series.name}</b><br/>Magnitude: ${this.x?.toFixed(2)}<br/>Count: ${this.y?.toFixed(0)}`;
                 }
             },
@@ -131,7 +132,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 scatter: {
                     marker: {

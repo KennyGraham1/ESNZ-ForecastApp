@@ -6,7 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { stratifiedSample } from '@/utils/dataOptimization';
-import { SAMPLING_CONFIG, getOptimalSamplingThreshold } from '@/config/performance';
+import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface TemporalAnalysisProps {
     earthquakes: EarthquakeData[];
@@ -108,7 +108,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     const timeStr = custom.time instanceof Date
@@ -129,7 +129,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 scatter: {
                     marker: {
@@ -341,7 +341,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 line: {
                     marker: {

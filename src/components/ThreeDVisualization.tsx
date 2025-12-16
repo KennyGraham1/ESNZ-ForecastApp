@@ -6,7 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { stratifiedSample } from '@/utils/dataOptimization';
-import { SAMPLING_CONFIG, getOptimalSamplingThreshold } from '@/config/performance';
+import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface ThreeDVisualizationProps {
     earthquakes: EarthquakeData[];
@@ -182,7 +182,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     return `
@@ -202,7 +202,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 scatter3d: {  // ✅ Changed to scatter3d
                     marker: {

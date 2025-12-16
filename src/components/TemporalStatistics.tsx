@@ -6,6 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { formatDateForTooltip } from '@/utils/dateFormat';
+import { HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface TemporalStatisticsProps {
     earthquakes: EarthquakeData[];
@@ -83,7 +84,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
             },
             tooltip: {
                 useHTML: true,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     // Format date as dd/mm/yyyy HH:mm:ss
@@ -304,7 +305,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 line: {
                     marker: {

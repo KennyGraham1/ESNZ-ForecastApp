@@ -16,7 +16,7 @@ export function getDeviceCapabilities() {
 
     const memory = (navigator as any).deviceMemory || 4; // GB
     const cores = navigator.hardwareConcurrency || 4;
-    
+
     let tier: 'low' | 'mid' | 'high';
     if (memory >= 8 && cores >= 8) {
         tier = 'high';
@@ -25,7 +25,7 @@ export function getDeviceCapabilities() {
     } else {
         tier = 'low';
     }
-    
+
     return { memory, cores, tier };
 }
 
@@ -39,10 +39,10 @@ export const PERFORMANCE_CONFIG = {
     CACHE: {
         // In-memory cache TTL (milliseconds)
         MEMORY_TTL: parseInt(process.env.NEXT_PUBLIC_CACHE_TTL_MS || '60000', 10),
-        
+
         // Disk cache file path
         DISK_PATH: 'data/earthquake-cache.json',
-        
+
         // Enable request coalescing to prevent concurrent disk reads
         ENABLE_COALESCING: true,
     },
@@ -53,10 +53,10 @@ export const PERFORMANCE_CONFIG = {
     FETCH: {
         // Initial fetch: ~125 years of historical data (1900 to present)
         INITIAL_DAYS: 45625,
-        
+
         // Incremental fetch: last 30 days
         INCREMENTAL_DAYS: 30,
-        
+
         // Batch size for paginated fetches
         BATCH_SIZE: 1000,
     },
@@ -93,9 +93,9 @@ export const PERFORMANCE_CONFIG = {
      * Clustering Algorithm Settings
      */
     CLUSTERING: {
-        // Use Web Worker for datasets larger than this (lowered to 500 for better performance)
+        // Use Web Worker for datasets larger than this (increased to 20000 to avoid worker overhead/instability for medium datasets)
         // Web Workers prevent UI freezing during clustering calculations
-        WEB_WORKER_THRESHOLD: 500,
+        WEB_WORKER_THRESHOLD: 20000,
 
         // Enable Web Workers (can be disabled for debugging)
         ENABLE_WEB_WORKERS: process.env.NEXT_PUBLIC_ENABLE_WEB_WORKERS !== 'false',
@@ -120,7 +120,7 @@ export const PERFORMANCE_CONFIG = {
      */
     HIGHCHARTS: {
         // Enable boost module for datasets larger than this
-        BOOST_THRESHOLD: 5000,
+        BOOST_THRESHOLD: 50000,
 
         // Boost module settings
         BOOST_CONFIG: {
@@ -135,10 +135,10 @@ export const PERFORMANCE_CONFIG = {
     MONITORING: {
         // Enable performance tracking
         ENABLED: process.env.NODE_ENV === 'development',
-        
+
         // Log slow operations (milliseconds)
         SLOW_OPERATION_THRESHOLD: 1000,
-        
+
         // Maximum metrics to keep in memory
         MAX_METRICS: 1000,
     },
@@ -150,10 +150,10 @@ export const PERFORMANCE_CONFIG = {
 export function getOptimalSamplingThreshold(chartType: keyof typeof PERFORMANCE_CONFIG.SAMPLING): number {
     const device = getDeviceCapabilities();
     const baseConfig = PERFORMANCE_CONFIG.SAMPLING[chartType];
-    
+
     // Adjust thresholds based on device tier
     const multiplier = device.tier === 'high' ? 2 : device.tier === 'low' ? 0.5 : 1;
-    
+
     return Math.floor(baseConfig.maxPoints * multiplier);
 }
 

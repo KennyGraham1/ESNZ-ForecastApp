@@ -6,6 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { MainEventInfo, calculateOmoriParameters, OptimizationMethod } from '@/lib/analysis/omori';
+import { HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface CumulativeAftershockPlotProps {
     earthquakes: EarthquakeData[];
@@ -196,7 +197,7 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 borderColor: '#999',
                 borderWidth: 1,
                 style: { fontSize: '11px' },
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     return `<b>Days:</b> ${this.x?.toFixed(1)}<br/><b>Events:</b> ${this.y?.toFixed(0)}`;
                 }
             },
@@ -207,7 +208,7 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 line: {
                     marker: {

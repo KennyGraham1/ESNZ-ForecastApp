@@ -9,7 +9,7 @@ import ChartExportButtons from './ChartExportButtons';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
 import { perfMonitor } from '@/lib/monitoring/performance';
 import { trackError } from '@/lib/monitoring/errors';
-import { CLUSTERING_CONFIG } from '@/config/performance';
+import { CLUSTERING_CONFIG, HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface SpatialClusteringPlotProps {
     earthquakes: EarthquakeData[];
@@ -368,7 +368,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
             plotOptions: {
                 series: {
                     turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 scatter: {
                     marker: {
