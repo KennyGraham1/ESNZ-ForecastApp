@@ -173,7 +173,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     width: 4
                 },
                 padding: 0,
-                formatter: function(this: any) {
+                formatter: function (this: any) {
                     const point = this.point;
                     if (!point.magnitude) return '';
                     const timeStr = point.time instanceof Date
@@ -202,7 +202,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                 mappoint: {
                     point: {
                         events: {
-                            click: function(this: any) {
+                            click: function (this: any) {
                                 const point = this;
                                 if (onPointClick && point.index !== undefined) {
                                     const eq = earthquakes[point.index];
@@ -293,6 +293,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         <div className="w-full">
             <div className="h-[600px] w-full rounded-lg overflow-hidden border border-gray-300 bg-white">
                 <HighchartsReact
+                    key={`map-${earthquakes.length}`}
                     highcharts={Highcharts}
                     options={options}
                     ref={chartRef}

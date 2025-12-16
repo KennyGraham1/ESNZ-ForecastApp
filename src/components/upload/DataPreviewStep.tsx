@@ -8,12 +8,14 @@ interface DataPreviewStepProps {
     statistics: PreviewStatistics;
     isLoading?: boolean;
     filename: string;
+    onDownloadReport?: () => void;
 }
 
-export default function DataPreviewStep({ 
-    statistics, 
+export default function DataPreviewStep({
+    statistics,
     isLoading = false,
-    filename 
+    filename,
+    onDownloadReport
 }: DataPreviewStepProps) {
     if (isLoading) {
         return (
@@ -23,12 +25,12 @@ export default function DataPreviewStep({
             </div>
         );
     }
-    
+
     const hasData = statistics.validRows > 0;
-    const successRate = statistics.totalRows > 0 
-        ? ((statistics.validRows / statistics.totalRows) * 100).toFixed(1) 
+    const successRate = statistics.totalRows > 0
+        ? ((statistics.validRows / statistics.totalRows) * 100).toFixed(1)
         : '0';
-    
+
     return (
         <div className="space-y-6">
             {/* Summary Header */}
@@ -36,14 +38,14 @@ export default function DataPreviewStep({
                 <BarChart3 className="w-5 h-5" />
                 <h3 className="font-semibold">Data Preview & Statistics</h3>
             </div>
-            
+
             {/* File info */}
             <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-600">
                     File: <span className="font-medium text-gray-800">{filename}</span>
                 </p>
             </div>
-            
+
             {/* Row Statistics */}
             <div className="grid grid-cols-4 gap-4">
                 <div className="bg-blue-50 rounded-lg p-4 text-center">
@@ -56,14 +58,23 @@ export default function DataPreviewStep({
                 </div>
                 <div className="bg-red-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-red-700">{statistics.invalidRows.toLocaleString()}</p>
-                    <p className="text-sm text-red-600">Invalid Rows</p>
+                    <p className="text-sm text-red-600 mb-1">Invalid Rows</p>
+                    {statistics.invalidRows > 0 && onDownloadReport && (
+                        <button
+                            onClick={onDownloadReport}
+                            className="text-xs w-full mt-1 bg-red-100 hover:bg-red-200 text-red-800 px-2 py-1 rounded border border-red-300 transition-colors flex items-center justify-center gap-1"
+                            title="Download full error report"
+                        >
+                            Download Report
+                        </button>
+                    )}
                 </div>
                 <div className="bg-gray-100 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-gray-700">{successRate}%</p>
                     <p className="text-sm text-gray-600">Success Rate</p>
                 </div>
             </div>
-            
+
             {/* Import Status */}
             {hasData ? (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
@@ -86,7 +97,7 @@ export default function DataPreviewStep({
                     </div>
                 </div>
             )}
-            
+
             {/* Date Range */}
             {statistics.minDate && statistics.maxDate && (
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -110,7 +121,7 @@ export default function DataPreviewStep({
                     </div>
                 </div>
             )}
-            
+
             {/* Magnitude & Depth Stats */}
             <div className="grid grid-cols-2 gap-4">
                 {/* Magnitude */}
@@ -134,7 +145,7 @@ export default function DataPreviewStep({
                         </div>
                     </div>
                 )}
-                
+
                 {/* Depth */}
                 {statistics.minDepth !== null && statistics.maxDepth !== null && (
                     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -160,40 +171,40 @@ export default function DataPreviewStep({
 
             {/* Geographic Bounds */}
             {statistics.minLatitude !== null && statistics.maxLatitude !== null &&
-             statistics.minLongitude !== null && statistics.maxLongitude !== null && (
-                <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                        <MapPin className="w-4 h-4 text-gray-600" />
-                        <h4 className="font-medium text-gray-700">Geographic Bounds</h4>
+                statistics.minLongitude !== null && statistics.maxLongitude !== null && (
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <MapPin className="w-4 h-4 text-gray-600" />
+                            <h4 className="font-medium text-gray-700">Geographic Bounds</h4>
+                        </div>
+                        <div className="grid grid-cols-4 gap-3 text-center">
+                            <div>
+                                <p className="text-xs text-gray-500">Min Latitude</p>
+                                <p className="text-sm font-medium text-gray-800">
+                                    {statistics.minLatitude.toFixed(3)}°
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500">Max Latitude</p>
+                                <p className="text-sm font-medium text-gray-800">
+                                    {statistics.maxLatitude.toFixed(3)}°
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500">Min Longitude</p>
+                                <p className="text-sm font-medium text-gray-800">
+                                    {statistics.minLongitude.toFixed(3)}°
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500">Max Longitude</p>
+                                <p className="text-sm font-medium text-gray-800">
+                                    {statistics.maxLongitude.toFixed(3)}°
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div className="grid grid-cols-4 gap-3 text-center">
-                        <div>
-                            <p className="text-xs text-gray-500">Min Latitude</p>
-                            <p className="text-sm font-medium text-gray-800">
-                                {statistics.minLatitude.toFixed(3)}°
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500">Max Latitude</p>
-                            <p className="text-sm font-medium text-gray-800">
-                                {statistics.maxLatitude.toFixed(3)}°
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500">Min Longitude</p>
-                            <p className="text-sm font-medium text-gray-800">
-                                {statistics.minLongitude.toFixed(3)}°
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500">Max Longitude</p>
-                            <p className="text-sm font-medium text-gray-800">
-                                {statistics.maxLongitude.toFixed(3)}°
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
+                )}
 
             {/* Warnings */}
             {statistics.sampleWarnings.length > 0 && (

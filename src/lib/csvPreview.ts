@@ -59,37 +59,37 @@ function isCommentLine(line: string): boolean {
 function detectDelimiter(lines: string[]): string {
     const delimiters = [',', ';', '\t', '|'];
     const counts: Record<string, number[]> = {};
-    
+
     delimiters.forEach(d => counts[d] = []);
-    
+
     // Check first few non-comment lines
     const sampleLines = lines.filter(l => !isCommentLine(l) && l.trim()).slice(0, 5);
-    
+
     for (const line of sampleLines) {
         for (const d of delimiters) {
             counts[d].push((line.match(new RegExp(d === '|' ? '\\|' : d, 'g')) || []).length);
         }
     }
-    
+
     // Find delimiter with most consistent non-zero count
     let bestDelimiter = ',';
     let bestScore = -1;
-    
+
     for (const d of delimiters) {
         const c = counts[d];
         if (c.length === 0 || c[0] === 0) continue;
-        
+
         // Check consistency (standard deviation)
         const avg = c.reduce((a, b) => a + b, 0) / c.length;
         const variance = c.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / c.length;
         const consistency = avg / (Math.sqrt(variance) + 1);
-        
+
         if (consistency > bestScore) {
             bestScore = consistency;
             bestDelimiter = d;
         }
     }
-    
+
     return bestDelimiter;
 }
 
@@ -100,11 +100,11 @@ function parseCSVLine(line: string, delimiter: string = ','): string[] {
     const values: string[] = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
         const char = line[i];
         const nextChar = line[i + 1];
-        
+
         if (char === '"') {
             if (inQuotes && nextChar === '"') {
                 current += '"';
@@ -119,7 +119,7 @@ function parseCSVLine(line: string, delimiter: string = ','): string[] {
             current += char;
         }
     }
-    
+
     values.push(current.trim());
     return values;
 }
@@ -134,7 +134,7 @@ export async function extractFilePreview(
 ): Promise<FilePreviewResult> {
     try {
         const text = await file.text();
-        
+
         if (!text || text.trim().length === 0) {
             return {
                 success: false,
@@ -146,11 +146,11 @@ export async function extractFilePreview(
                 commentedLinesSkipped: 0
             };
         }
-        
+
         const allLines = text.split(/\r?\n/);
         const lines: string[] = [];
         let commentedLinesSkipped = 0;
-        
+
         for (const line of allLines) {
             const trimmed = line.trim();
             if (trimmed.length === 0) continue;
@@ -160,7 +160,7 @@ export async function extractFilePreview(
             }
             lines.push(line);
         }
-        
+
         if (lines.length < 2) {
             return {
                 success: false,
@@ -172,18 +172,18 @@ export async function extractFilePreview(
                 commentedLinesSkipped
             };
         }
-        
+
         const delimiter = detectDelimiter(lines);
         const headers = parseCSVLine(lines[0], delimiter);
-        
+
         // Extract preview rows
         const previewRows: string[][] = [];
         const maxRows = Math.min(maxPreviewRows + 1, lines.length);
-        
+
         for (let i = 1; i < maxRows; i++) {
             previewRows.push(parseCSVLine(lines[i], delimiter));
         }
-        
+
         return {
             success: true,
             headers,
@@ -727,7 +727,7 @@ export async function parseCSVWithCustomMapping(
                 if (!time || isNaN(time.getTime())) {
                     if (validationRules.skipInvalidRows) {
                         invalidRows++;
-                        if (warnings.length < 20) {
+                        if (warnings.length < 200) {
                             warnings.push(`Row ${rowNumber}: Invalid or missing time`);
                         }
                         continue;
@@ -767,7 +767,7 @@ export async function parseCSVWithCustomMapping(
                 if (latitude === null || longitude === null) {
                     if (validationRules.skipInvalidRows) {
                         invalidRows++;
-                        if (warnings.length < 20) {
+                        if (warnings.length < 200) {
                             warnings.push(`Row ${rowNumber}: Invalid coordinates`);
                         }
                         continue;
@@ -794,7 +794,7 @@ export async function parseCSVWithCustomMapping(
                 if (isNaN(depth)) {
                     if (validationRules.skipInvalidRows) {
                         invalidRows++;
-                        if (warnings.length < 20) {
+                        if (warnings.length < 200) {
                             warnings.push(`Row ${rowNumber}: Invalid depth`);
                         }
                         continue;
@@ -819,7 +819,7 @@ export async function parseCSVWithCustomMapping(
                 if (isNaN(magnitude)) {
                     if (validationRules.skipInvalidRows) {
                         invalidRows++;
-                        if (warnings.length < 20) {
+                        if (warnings.length < 200) {
                             warnings.push(`Row ${rowNumber}: Invalid magnitude`);
                         }
                         continue;

@@ -347,6 +347,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                 </div>
                 <div className="h-[400px] w-full">
                     <HighchartsReact
+                        key={`mag-time-${earthquakes.length}`}
                         highcharts={Highcharts}
                         options={magnitudeTimeOptions}
                         ref={chartRef1}
@@ -367,6 +368,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                 </div>
                 <div className="h-[400px] w-full">
                     <HighchartsReact
+                        key={`freq-${earthquakes.length}`}
                         highcharts={Highcharts}
                         options={temporalTrendOptions}
                         ref={chartRef2}

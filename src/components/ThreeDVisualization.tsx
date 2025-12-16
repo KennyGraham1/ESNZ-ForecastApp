@@ -382,6 +382,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             </div>
             <div className="h-[500px] cursor-grab active:cursor-grabbing">
                 <HighchartsReact
+                    key={`3d-${earthquakes.length}`}
                     highcharts={Highcharts}
                     options={chartOptions}
                     ref={chartRef}

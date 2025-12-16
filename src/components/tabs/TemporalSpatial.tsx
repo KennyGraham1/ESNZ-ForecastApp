@@ -65,6 +65,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         }
         return earthquakes;
     }, [earthquakes]);
+    // Clear selection when data changes to prevent stale indices/crashes
+    useEffect(() => {
+        if (selectedIndices.size > 0) {
+            clearSelection();
+        }
+    }, [processedEarthquakes, clearSelection]);
 
     // POLYGON SELECTION FEATURE - STATE KEPT BUT FEATURE DISABLED
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1162,6 +1168,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 </div>
                 <div className="h-[600px]">
                     <HighchartsReact
+                        key={`map-${processedEarthquakes.length}-${clusteringAlgorithm}`}
                         highcharts={Highcharts}
                         constructorType="mapChart"
                         options={mapOptions}
@@ -1180,6 +1187,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 </div>
                 <div className="h-[500px]">
                     <HighchartsReact
+                        key={`temp-${processedEarthquakes.length}-${clusteringAlgorithm}`}
                         highcharts={Highcharts}
                         options={temporalPlotOptions}
                         ref={chartRef}

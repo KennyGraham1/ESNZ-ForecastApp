@@ -1,15 +1,11 @@
-'use client';
-
 import { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import {
     Upload, FileUp, AlertCircle, CheckCircle, X,
-    ChevronRight, ChevronLeft, Zap, Settings
+    ChevronRight, ChevronLeft, Zap, Settings, Download
 } from 'lucide-react';
-import { getSupportedFileExtensions } from '@/lib/csvParser';
+import { getFileParser, getSupportedFileExtensions } from '@/lib/fileParser';
 import {
-    extractFilePreview,
     suggestColumnMappings,
-    parseCSVWithCustomMapping,
     getMissingRequiredFields,
     FilePreviewResult
 } from '@/lib/csvPreview';
@@ -67,6 +63,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
     const [success, setSuccess] = useState<string | null>(null);
     const [previewStats, setPreviewStats] = useState<PreviewStatistics | null>(null);
     const [parsedData, setParsedData] = useState<EarthquakeData[] | null>(null);
+    const [importReport, setImportReport] = useState<{ valid: number; invalid: number; warnings: string[] } | null>(null);
 
     // Drag and drop handlers
     const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -104,14 +101,12 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         setError(null);
         setSuccess(null);
 
-        // Validate file type
-        const supportedExtensions = getSupportedFileExtensions();
-        const fileName = file.name.toLowerCase();
-        const isCSV = fileName.endsWith('.csv');
-        const isSupported = supportedExtensions.some(ext => fileName.endsWith(ext));
+        // Get appropriate parser
+        const parser = getFileParser(file);
 
-        if (!isSupported) {
-            setError(`Unsupported file type. Please select a ${supportedExtensions.join(', ')} file`);
+        if (!parser) {
+            const supported = getSupportedFileExtensions().join(', ');
+            setError(`Unsupported file type. Supported formats: ${supported}`);
             return;
         }
 
@@ -123,36 +118,33 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         }
 
         setSelectedFile(file);
+        setIsProcessing(true);
 
-        // For CSV files, extract preview for column mapping
-        if (isCSV) {
-            setIsProcessing(true);
-            try {
-                const preview = await extractFilePreview(file);
-                if (!preview.success) {
-                    setError(preview.errors?.join('; ') || 'Failed to read file');
-                    setIsProcessing(false);
-                    return;
-                }
-                setFilePreview(preview);
-
-                // Auto-suggest mappings
-                const suggestions = suggestColumnMappings(preview.headers);
-                setMappingConfig({
-                    columns: suggestions.mappings,
-                    useSplitDateTime: suggestions.hasSplitDateTime,
-                    yearColumn: suggestions.splitDateTimeColumns?.year,
-                    monthColumn: suggestions.splitDateTimeColumns?.month,
-                    dayColumn: suggestions.splitDateTimeColumns?.day,
-                    hourColumn: suggestions.splitDateTimeColumns?.hour,
-                    minuteColumn: suggestions.splitDateTimeColumns?.minute,
-                    secondColumn: suggestions.splitDateTimeColumns?.second,
-                });
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to read file');
+        try {
+            const preview = await parser.getPreview(file);
+            if (!preview.success) {
+                setError(preview.errors?.join('; ') || 'Failed to read file');
+                setIsProcessing(false);
+                return;
             }
-            setIsProcessing(false);
+            setFilePreview(preview);
+
+            // Auto-suggest mappings
+            const suggestions = suggestColumnMappings(preview.headers);
+            setMappingConfig({
+                columns: suggestions.mappings,
+                useSplitDateTime: suggestions.hasSplitDateTime,
+                yearColumn: suggestions.splitDateTimeColumns?.year,
+                monthColumn: suggestions.splitDateTimeColumns?.month,
+                dayColumn: suggestions.splitDateTimeColumns?.day,
+                hourColumn: suggestions.splitDateTimeColumns?.hour,
+                minuteColumn: suggestions.splitDateTimeColumns?.minute,
+                secondColumn: suggestions.splitDateTimeColumns?.second,
+            });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to read file');
         }
+        setIsProcessing(false);
     };
 
     const handleBrowseClick = () => {
@@ -179,6 +171,9 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         setError(null);
 
         try {
+            const parser = getFileParser(selectedFile);
+            if (!parser) throw new Error('Could not determine file type');
+
             const options: ImportOptions = {
                 dateFormat: 'auto',
                 coordinateFormat: 'decimal',
@@ -186,16 +181,24 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                 mapping: mappingConfig,
             };
 
-            const result = await parseCSVWithCustomMapping(selectedFile, options);
+            const result = await parser.parse(selectedFile, options);
+
+            // Set report regardless of success/failure so user can see what went wrong
+            setImportReport({
+                valid: result.statistics?.validRows || 0,
+                invalid: result.statistics?.invalidRows || 0,
+                warnings: result.warnings || []
+            });
 
             if (!result.success || result.data.length === 0) {
-                setError(result.errors.join('; ') || 'No valid data found');
+                setError(result.errors.join('; ') || 'No valid data found. Check report for details.');
                 setIsProcessing(false);
                 return;
             }
 
             // Enhance and import
             const enhancedData = enhanceEarthquakeData(result.data);
+
             setSuccess(`Successfully imported ${enhancedData.length.toLocaleString()} earthquakes`);
             onDataLoaded(enhancedData, selectedFile.name);
 
@@ -213,6 +216,9 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         setError(null);
 
         try {
+            const parser = getFileParser(selectedFile);
+            if (!parser) throw new Error('Could not determine file type');
+
             const options: ImportOptions = {
                 dateFormat,
                 coordinateFormat,
@@ -220,10 +226,17 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                 mapping: mappingConfig,
             };
 
-            const result = await parseCSVWithCustomMapping(selectedFile, options);
+            const result = await parser.parse(selectedFile, options);
+
+            // Set report regardless of success/failure
+            setImportReport({
+                valid: result.statistics?.validRows || 0,
+                invalid: result.statistics?.invalidRows || 0,
+                warnings: result.warnings || []
+            });
 
             if (!result.success && result.data.length === 0) {
-                setError(result.errors.join('; ') || 'No valid data found');
+                setError(result.errors.join('; ') || 'No valid data found. Check report for details.');
                 setIsProcessing(false);
                 return;
             }
@@ -248,6 +261,59 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         onDataLoaded(enhancedData, selectedFile.name);
     };
 
+    const handleDownloadReport = () => {
+        if (!importReport || !selectedFile) return;
+
+        // Construct CSV content with CRLF line endings
+        const rows = [
+            // Summary Section
+            ['IMPORT ERROR REPORT'],
+            ['Generated', new Date().toLocaleString()],
+            ['File Name', selectedFile.name],
+            ['Total Rows', (importReport.valid + importReport.invalid).toString()],
+            ['Valid Rows', importReport.valid.toString()],
+            ['Invalid Rows', importReport.invalid.toString()],
+            [], // Empty line
+            // Header for errors
+            ['ROW NUMBER', 'ERROR DESCRIPTION'],
+        ];
+
+        // Add error details
+        importReport.warnings.forEach(warning => {
+            const match = warning.match(/^Row (\d+): (.*)/);
+            if (match) {
+                // "Row" is column 1, "Message" is column 2
+                // Escape quotes in message if necessary (simple CSV escaping)
+                const msg = match[2].replace(/"/g, '""');
+                rows.push([match[1], `"${msg}"`]);
+            } else {
+                // If format doesn't match, put generic info
+                rows.push(['N/A', `"${warning.replace(/"/g, '""')}"`]);
+            }
+        });
+
+        // Add note if truncated
+        if (importReport.invalid > importReport.warnings.length) {
+            rows.push(['...', `And ${importReport.invalid - importReport.warnings.length} more errors not shown`]);
+        }
+
+        // Join rows and columns
+        const csvContent = rows.map(row => row.join(',')).join('\r\n');
+
+        // Add BOM for Excel UTF-8 compatibility
+        const BOM = '\uFEFF';
+        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8' });
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Import_Report_${selectedFile.name.split('.')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     // Reset wizard
     const handleReset = () => {
         setSelectedFile(null);
@@ -259,6 +325,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         setSuccess(null);
         setPreviewStats(null);
         setParsedData(null);
+        setImportReport(null);
         setDateFormat('auto');
         setCoordinateFormat('decimal');
         setValidationRules(DEFAULT_VALIDATION_RULES);
@@ -316,13 +383,12 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
-                            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                                isDragging
-                                    ? 'border-blue-500 bg-blue-50'
-                                    : selectedFile
-                                        ? 'border-green-400 bg-green-50'
-                                        : 'border-gray-300 bg-gray-50 hover:border-gray-400'
-                            }`}
+                            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging
+                                ? 'border-blue-500 bg-blue-50'
+                                : selectedFile
+                                    ? 'border-green-400 bg-green-50'
+                                    : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+                                }`}
                         >
                             {isProcessing ? (
                                 <div className="flex flex-col items-center gap-3">
@@ -347,7 +413,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                                 <>
                                     <FileUp className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                                     <p className="text-sm text-gray-600 mb-2">
-                                        Drag and drop a CSV file here, or
+                                        Drag and drop a data file here (CSV, Excel, JSON, etc.), or
                                     </p>
                                     <button
                                         onClick={handleBrowseClick}
@@ -358,12 +424,12 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                                     <input
                                         ref={fileInputRef}
                                         type="file"
-                                        accept=".csv"
+                                        accept={getSupportedFileExtensions().join(',')}
                                         onChange={handleFileInput}
                                         className="hidden"
                                     />
                                     <p className="text-xs text-gray-500 mt-3">
-                                        Supported format: CSV (with column mapping)
+                                        Supported formats: CSV, Excel, JSON, GeoJSON, TSV/TAB, DAT
                                     </p>
                                 </>
                             )}
@@ -429,6 +495,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                         statistics={previewStats}
                         filename={selectedFile.name}
                         isLoading={isProcessing}
+                        onDownloadReport={handleDownloadReport}
                     />
                 ) : null;
 
@@ -465,14 +532,12 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                             const isPast = STEPS.findIndex(s => s.id === currentStep) > index;
                             return (
                                 <div key={step.id} className="flex items-center">
-                                    <div className={`flex items-center gap-2 ${
-                                        isActive ? 'text-blue-600' : isPast ? 'text-green-600' : 'text-gray-400'
-                                    }`}>
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                                            isActive ? 'bg-blue-600 text-white' :
-                                            isPast ? 'bg-green-600 text-white' :
-                                            'bg-gray-200 text-gray-500'
+                                    <div className={`flex items-center gap-2 ${isActive ? 'text-blue-600' : isPast ? 'text-green-600' : 'text-gray-400'
                                         }`}>
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isActive ? 'bg-blue-600 text-white' :
+                                            isPast ? 'bg-green-600 text-white' :
+                                                'bg-gray-200 text-gray-500'
+                                            }`}>
                                             {isPast ? '✓' : index + 1}
                                         </div>
                                         <span className="text-xs font-medium hidden sm:inline">{step.label}</span>
@@ -493,21 +558,52 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
 
                 {/* Error Message */}
                 {error && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
-                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                            <p className="text-sm text-red-800 font-medium">{error}</p>
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                        <div className="flex items-start gap-2">
+                            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <p className="text-sm text-red-800 font-medium">{error}</p>
+                            </div>
                         </div>
+
+                        {importReport && importReport.warnings.length > 0 && (
+                            <div className="mt-3 pl-7">
+                                <button
+                                    onClick={handleDownloadReport}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Download Error Report
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* Success Message */}
                 {success && (
-                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-start gap-2">
-                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                            <p className="text-sm text-green-800 font-medium">{success}</p>
+                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <div className="flex items-start gap-2">
+                            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <p className="text-sm text-green-800 font-medium">{success}</p>
+                            </div>
                         </div>
+
+                        {importReport && importReport.invalid > 0 && (
+                            <div className="mt-3 pl-7">
+                                <p className="text-sm text-gray-600 mb-2">
+                                    <span className="font-medium text-amber-600">{importReport.invalid} rows</span> were skipped or invalid.
+                                </p>
+                                <button
+                                    onClick={handleDownloadReport}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Download Error Report
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -550,11 +646,10 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                             <button
                                 onClick={useAdvancedMode ? goToNextStep : () => { setUseAdvancedMode(true); goToNextStep(); }}
                                 disabled={!canProceed() || isProcessing}
-                                className={`flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                                    useAdvancedMode
-                                        ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300'
-                                        : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
-                                } disabled:cursor-not-allowed`}
+                                className={`flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${useAdvancedMode
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300'
+                                    : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
+                                    } disabled:cursor-not-allowed`}
                             >
                                 {isProcessing ? 'Processing...' : (
                                     <>

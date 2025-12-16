@@ -413,6 +413,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
         if (onSequenceDataChange) {
             onSequenceDataChange(sequenceData);
         }
+
+        // Clear selection when data changes to prevent stale indices
+        setSelectedIndices(new Set());
+        setHighlightedIndex(null);
     }, [sequenceData, onSequenceDataChange]);
 
     // Point-in-polygon algorithm (ray casting)
@@ -1636,6 +1640,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 <h3 className="text-xl font-bold text-gray-800 mb-4">Aftershock Sequence Timeline</h3>
                 <div className="h-[500px]">
                     <HighchartsReact
+                        key={`timeline-${sequenceData.length}-${mainEvent.eventID}`}
                         highcharts={Highcharts}
                         options={chartOptions}
                         ref={chartRef}
@@ -1653,6 +1658,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 <h3 className="text-xl font-bold text-gray-800 mb-4">Magnitude vs Depth</h3>
                 <div className="h-[500px]">
                     <HighchartsReact
+                        key={`depth-${sequenceData.length}-${mainEvent.eventID}`}
                         highcharts={Highcharts}
                         options={depthChartOptions}
                         ref={depthChartRef}
@@ -1706,6 +1712,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                     <>
                         <div className="h-[600px]">
                             <HighchartsReact
+                                key={`map-${sequenceData.length}-${mainEvent.eventID}`}
                                 highcharts={Highcharts}
                                 options={mapChartOptions}
                                 ref={mapChartRef}
