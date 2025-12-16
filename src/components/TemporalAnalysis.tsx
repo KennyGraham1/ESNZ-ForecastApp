@@ -37,6 +37,26 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             console.log(`📊 Magnitude vs Time: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
         }
 
+        // Calculate depth range efficiently (O(n) without spread operator)
+        let minDepth = Infinity;
+        let maxDepth = -Infinity;
+
+        for (let i = 0; i < processedEarthquakes.length; i++) {
+            const depth = processedEarthquakes[i].depth;
+            if (depth < minDepth) minDepth = depth;
+            if (depth > maxDepth) maxDepth = depth;
+        }
+
+        // Handle edge cases
+        if (processedEarthquakes.length === 0) {
+            minDepth = 0;
+            maxDepth = 100;
+        }
+
+        // Round to sensible values for the scale
+        const depthMin = Math.floor(minDepth / 10) * 10;
+        const depthMax = Math.ceil(maxDepth / 10) * 10;
+
         const data = processedEarthquakes.map(eq => ({
             x: eq.time instanceof Date ? eq.time.getTime() : new Date(eq.time).getTime(),
             y: eq.magnitude,
@@ -85,14 +105,16 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
                 }
             },
             colorAxis: {
-                min: 0,
+                min: depthMin,
+                max: depthMax,
                 stops: [
-                    [0, '#440154'],
-                    [0.25, '#31688e'],
-                    [0.5, '#35b779'],
-                    [0.75, '#fde724'],
-                    [1, '#fde724']
+                    [0, '#440154'],      // Deep purple (deepest)
+                    [0.25, '#31688e'],   // Blue
+                    [0.5, '#35b779'],    // Green  
+                    [0.75, '#90d743'],   // Yellow-green
+                    [1, '#fde724']       // Bright yellow (shallowest)
                 ],
+                reversed: true,  // Shallow = warm colors, deep = cool colors
                 labels: {
                     format: '{value} km'
                 },
