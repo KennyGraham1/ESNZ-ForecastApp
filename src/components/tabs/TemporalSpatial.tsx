@@ -461,7 +461,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     latitude: d.lat,
                     longitude: d.lon,
                     locality: d.locality,
-                    size: Math.max(4, d.magnitude * 1.5),
+                    size: Math.max(2, Math.pow(2, d.magnitude - 2)),
                     isSelected: d.isSelected,
                     originalIndex: d.originalIndex,
                     cluster: d.cluster,
@@ -499,12 +499,50 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             xAxis: {
                 type: 'datetime',
                 title: {
-                    text: 'Time'
+                    text: 'Time',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
+                gridLineWidth: 0,
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
                 }
             },
             yAxis: {
                 title: {
-                    text: 'Magnitude'
+                    text: 'Magnitude',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
+                gridLineWidth: 0,
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
                 }
             },
             legend: {
@@ -512,22 +550,51 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             },
             tooltip: {
                 useHTML: true,
+                backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                borderWidth: 1,
+                shadow: {
+                    color: 'rgba(0, 0, 0, 0.1)',
+                    offsetX: 0,
+                    offsetY: 2,
+                    opacity: 0.5,
+                    width: 4
+                },
                 formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
-                    // Convert timeStr to Date object for formatDateForTooltip
                     const time = new Date(custom.timeStr);
                     const timeStr = formatDateForTooltip(time);
                     const clusterText = custom.cluster >= 0 ? `Cluster ${custom.cluster}` : 'Noise';
                     return `
-                        <div style="padding: 8px;">
-                            <strong>${custom.locality || 'Unknown location'}</strong><br/>
-                            <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
-                            Event ID: ${custom.eventID || 'N/A'}<br/>
-                            ${timeStr}<br/>
-                            Depth: ${custom.depth.toFixed(1)} km<br/>
-                            Lat: ${custom.latitude.toFixed(2)}°, Lon: ${custom.longitude.toFixed(2)}°<br/>
-                            <em>${clusterText}</em>
+                        <div style="padding: 8px; min-width: 200px;">
+                            <div style="font-weight: 600; color: #1f2937; margin-bottom: 6px; font-size: 13px;">${custom.locality || 'Unknown location'}</div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4b5563;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Magnitude:</span>
+                                    <span style="font-weight: 600; color: #dc2626;">M ${custom.magnitude.toFixed(1)}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Depth:</span>
+                                    <span style="font-weight: 500;">${custom.depth.toFixed(1)} km</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                                    <span style="color: #6b7280;">Lat:</span>
+                                    <span>${custom.latitude.toFixed(2)}°</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                                    <span style="color: #6b7280;">Lon:</span>
+                                    <span>${custom.longitude.toFixed(2)}°</span>
+                                </div>
+                                <div style="border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 4px; font-size: 11px; color: #6b7280;">
+                                    ${timeStr}
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #9ca3af;">
+                                    <span>ID: ${custom.eventID || 'N/A'}</span>
+                                    <span><em>${clusterText}</em></span>
+                                </div>
+                            </div>
                         </div>
                     `;
                 }
@@ -557,7 +624,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     marker: {
                         radius: d.size,
                         fillColor: d.isSelected ? '#ef4444' : getClusterColor(d.cluster),
-                        fillOpacity: d.isSelected ? 0.95 : 0.75,
+                        fillOpacity: d.isSelected ? 0.95 : 0.7,
                         lineWidth: d.isSelected ? 2 : 0,
                         lineColor: d.isSelected ? '#dc2626' : undefined
                     },

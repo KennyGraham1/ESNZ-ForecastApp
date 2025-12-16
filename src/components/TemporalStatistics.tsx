@@ -66,7 +66,11 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
             chart: {
                 type: 'scatter',
                 zoomType: 'xy',
-                height: 400
+                height: 400,
+                backgroundColor: '#ffffff',
+                style: {
+                    fontFamily: '"Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+                }
             },
             title: {
                 text: ''
@@ -76,58 +80,146 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
             },
             // Disable Highcharts built-in export menu - use custom export buttons
             exporting: {
-                enabled: false
+                enabled: false,
+                chartOptions: {
+                    chart: {
+                        backgroundColor: '#ffffff'
+                    }
+                }
             },
             xAxis: {
                 type: 'datetime',
                 title: {
-                    text: 'Time'
+                    text: 'Time',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                gridLineWidth: 0,
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
                 }
             },
             yAxis: {
                 title: {
-                    text: 'Magnitude'
+                    text: 'Magnitude',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    },
+                    format: '{value:.1f}'
+                },
+                gridLineWidth: 0,
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                minorGridLineWidth: 0,
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
                 }
             },
             colorAxis: {
                 min: depthMin,
                 max: depthMax,
                 stops: [
-                    [0, '#440154'],      // Deep purple (deepest)
-                    [0.25, '#31688e'],   // Blue
-                    [0.5, '#35b779'],    // Green  
-                    [0.75, '#90d743'],   // Yellow-green
-                    [1, '#fde724']       // Bright yellow (shallowest)
+                    [0, '#0d0887'],    // Deep indigo (deepest)
+                    [0.2, '#6a00a8'],  // Purple
+                    [0.4, '#b12a90'],  // Magenta
+                    [0.6, '#e16462'],  // Coral
+                    [0.8, '#fca636'],  // Orange
+                    [1, '#f0f921']     // Yellow (shallowest)
                 ],
-                reversed: true,  // Shallow = warm colors, deep = cool colors
+                reversed: true,
                 labels: {
-                    format: '{value} km'
+                    format: '{value} km',
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
                 },
                 title: {
-                    text: 'Depth (km)'
-                }
+                    text: 'Depth (km)',
+                    style: {
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
+                gridLineWidth: 0
             },
             legend: {
                 enabled: true,
                 align: 'right',
                 verticalAlign: 'middle',
-                layout: 'vertical'
+                layout: 'vertical',
+                symbolHeight: 200,
+                itemStyle: {
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    color: '#374151'
+                }
             },
             tooltip: {
                 useHTML: true,
+                backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                borderWidth: 1,
+                shadow: {
+                    color: 'rgba(0, 0, 0, 0.1)',
+                    offsetX: 0,
+                    offsetY: 2,
+                    opacity: 0.5,
+                    width: 4
+                },
+                style: {
+                    fontSize: '12px',
+                    fontFamily: '"Inter", sans-serif'
+                },
                 formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
-                    // Format date as dd/mm/yyyy HH:mm:ss
                     const timeStr = formatDateForTooltip(custom.time);
 
                     return `
-                        <div style="padding: 4px;">
-                            <strong>${custom.locality}</strong><br/>
-                            M${custom.magnitude.toFixed(1)}<br/>
-                            Event ID: ${custom.eventID || 'N/A'}<br/>
-                            Depth: ${custom.depth.toFixed(1)} km<br/>
-                            ${timeStr}
+                        <div style="padding: 8px; min-width: 180px;">
+                            <div style="font-weight: 600; color: #1f2937; margin-bottom: 6px; font-size: 13px;">${custom.locality}</div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4b5563;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Magnitude:</span>
+                                    <span style="font-weight: 600; color: #dc2626;">M ${custom.magnitude.toFixed(1)}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Depth:</span>
+                                    <span style="font-weight: 500;">${custom.depth.toFixed(1)} km</span>
+                                </div>
+                                <div style="border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 4px; font-size: 11px; color: #6b7280;">
+                                    ${timeStr}
+                                </div>
+                                <div style="font-size: 10px; color: #9ca3af;">
+                                    ID: ${custom.eventID || 'N/A'}
+                                </div>
+                            </div>
                         </div>
                     `;
                 }
@@ -135,7 +227,24 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
             plotOptions: {
                 scatter: {
                     marker: {
-                        radius: 5
+                        radius: 5,
+                        lineWidth: 1,
+                        lineColor: 'rgba(255, 255, 255, 0.8)',
+                        states: {
+                            hover: {
+                                lineWidthPlus: 1,
+                                radiusPlus: 2
+                            }
+                        }
+                    },
+                    states: {
+                        hover: {
+                            enabled: true,
+                            halo: {
+                                size: 8,
+                                opacity: 0.25
+                            }
+                        }
                     }
                 }
             },
@@ -146,8 +255,8 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                     x: d.x,
                     y: d.y,
                     marker: {
-                        radius: Math.max(5, d.custom.magnitude * 2),
-                        fillOpacity: 0.7
+                        radius: Math.max(2, Math.pow(2, d.custom.magnitude - 2)),
+                        fillOpacity: 0.8
                     },
                     colorValue: d.z,
                     custom: d.custom

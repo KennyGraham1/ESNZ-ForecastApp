@@ -86,19 +86,57 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
             },
             xAxis: {
                 title: {
-                    text: 'Latitude (°S)'
+                    text: 'Latitude (°S)',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
                 },
                 reversed: true, // South to North
                 min: minLat - latPadding,
-                max: maxLat + latPadding
+                max: maxLat + latPadding,
+                gridLineWidth: 0,
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
+                }
             },
             yAxis: {
                 title: {
-                    text: 'Depth (km)'
+                    text: 'Depth (km)',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
                 },
                 reversed: true, // Depth increases downward
                 min: Math.max(0, minDepth - depthPadding),
-                max: maxDepth + depthPadding
+                max: maxDepth + depthPadding,
+                gridLineWidth: 0,
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
+                }
             },
             colorAxis: {
                 // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
@@ -110,17 +148,27 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                     ? processedEarthquakes.reduce((max, eq) => Math.max(max, eq.magnitude), processedEarthquakes[0].magnitude)
                     : 10,
                 stops: [
-                    [0, '#440154'],
-                    [0.25, '#31688e'],
-                    [0.5, '#35b779'],
-                    [0.75, '#fde724'],
-                    [1, '#fde724']
+                    [0, '#0d0887'],
+                    [0.2, '#6a00a8'],
+                    [0.4, '#b12a90'],
+                    [0.6, '#e16462'],
+                    [0.8, '#fca636'],
+                    [1, '#f0f921']
                 ],
                 labels: {
-                    format: '{value}'
+                    format: '{value}',
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
                 },
                 title: {
-                    text: 'Magnitude'
+                    text: 'Magnitude',
+                    style: {
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
                 }
             },
             legend: {
@@ -131,15 +179,36 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
             },
             tooltip: {
                 useHTML: true,
+                backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                borderWidth: 1,
+                shadow: {
+                    color: 'rgba(0, 0, 0, 0.1)',
+                    offsetX: 0,
+                    offsetY: 2,
+                    opacity: 0.5,
+                    width: 4
+                },
                 formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
                     return `
-                        <div style="padding: 4px;">
-                            <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
-                            Event ID: ${custom.eventID || 'N/A'}<br/>
-                            Depth: ${custom.depth.toFixed(1)} km<br/>
-                            Lat: ${custom.latitude.toFixed(2)}°
+                        <div style="padding: 8px; min-width: 160px;">
+                            <div style="font-weight: 600; color: #dc2626; margin-bottom: 6px; font-size: 13px;">M${custom.magnitude.toFixed(1)}</div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4b5563;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Depth:</span>
+                                    <span style="font-weight: 500;">${custom.depth.toFixed(1)} km</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Latitude:</span>
+                                    <span style="font-weight: 500;">${custom.latitude.toFixed(2)}°S</span>
+                                </div>
+                                <div style="border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 4px; font-size: 10px; color: #9ca3af;">
+                                    ID: ${custom.eventID || 'N/A'}
+                                </div>
+                            </div>
                         </div>
                     `;
                 }
@@ -163,9 +232,8 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                     x: d.x,
                     y: d.y,
                     marker: {
-                        // Scale marker size more reasonably: M2=1.5, M4=3, M6=6, M8=12
-                        radius: Math.max(1.5, Math.min(12, (d.z - 1) * 1.5)),
-                        fillOpacity: 0.5
+                        radius: Math.max(2, Math.pow(2, d.z - 2)),
+                        fillOpacity: 0.7
                     },
                     colorValue: d.z,
                     custom: d.custom

@@ -910,7 +910,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 x: eq.magnitude,
                 y: -eq.depth, // Inverted depth (negative so shallow is at top)
                 marker: {
-                    radius: isSelected ? Math.max(3, eq.magnitude * 1.5) * 1.5 : Math.max(3, eq.magnitude * 1.5),
+                    radius: isSelected ? Math.max(2, Math.pow(2, eq.magnitude - 2)) * 1.5 : Math.max(2, Math.pow(2, eq.magnitude - 2)),
                     fillColor: isSelected ? '#ff0000' : getColorForDays(eq.daysSince),
                     fillOpacity: isSelected ? 1 : 0.7,
                     lineWidth: isSelected ? 2 : 0,
@@ -949,20 +949,56 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 enabled: false
             },
             xAxis: {
-                title: { text: 'Magnitude' },
-                gridLineWidth: 1,
-                gridLineColor: 'rgba(200, 200, 200, 0.2)'
+                title: {
+                    text: 'Magnitude',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
+                gridLineWidth: 0,
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
+                }
             },
             yAxis: {
-                title: { text: 'Depth (km)' },
+                title: {
+                    text: 'Depth (km)',
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
+                },
                 reversed: false, // Don't reverse since we're using negative values
                 labels: {
                     formatter: function (this: any) {
                         return Math.abs(this.value).toString(); // Show positive values
+                    },
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
                     }
                 },
-                gridLineWidth: 1,
-                gridLineColor: 'rgba(200, 200, 200, 0.2)'
+                gridLineWidth: 0,
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
+                crosshair: {
+                    width: 1,
+                    color: '#9ca3af',
+                    dashStyle: 'Dash'
+                }
             },
             colorAxis: {
                 min: minDays,
@@ -979,16 +1015,39 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             },
             tooltip: {
                 useHTML: true,
+                backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                borderColor: '#d1d5db',
+                borderRadius: 8,
+                borderWidth: 1,
+                shadow: {
+                    color: 'rgba(0, 0, 0, 0.1)',
+                    offsetX: 0,
+                    offsetY: 2,
+                    opacity: 0.5,
+                    width: 4
+                },
                 formatter: function (this: any) {
                     const custom = this.point?.custom;
                     if (!custom) return '';
                     return `
-                        <div style="padding: 4px;">
-                            <strong>M${custom.magnitude?.toFixed(1) || 'N/A'}</strong><br/>
-                            Event ID: ${custom.eventID || 'N/A'}<br/>
-                            Depth: ${custom.depth?.toFixed(1) || 'N/A'} km<br/>
-                            Days since main event: ${custom.daysSince?.toFixed(1) || 'N/A'}<br/>
-                            ${custom.date || 'N/A'}
+                        <div style="padding: 8px; min-width: 180px;">
+                            <div style="font-weight: 600; color: #dc2626; margin-bottom: 6px; font-size: 13px;">M${custom.magnitude?.toFixed(1) || 'N/A'}</div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4b5563;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Depth:</span>
+                                    <span style="font-weight: 500;">${custom.depth?.toFixed(1) || 'N/A'} km</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Days since:</span>
+                                    <span style="font-weight: 500;">${custom.daysSince?.toFixed(1) || 'N/A'} days</span>
+                                </div>
+                                <div style="border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 4px; font-size: 11px; color: #6b7280;">
+                                    ${custom.date || 'N/A'}
+                                </div>
+                                <div style="font-size: 10px; color: #9ca3af;">
+                                    ID: ${custom.eventID || 'N/A'}
+                                </div>
+                            </div>
                         </div>
                     `;
                 }
