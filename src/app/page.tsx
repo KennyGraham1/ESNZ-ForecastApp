@@ -9,6 +9,7 @@ import BasicDashboard from '@/components/tabs/BasicDashboard';
 import AdvancedStatistics from '@/components/tabs/AdvancedStatistics';
 import AftershockSequence from '@/components/tabs/AftershockSequence';
 import TemporalSpatial from '@/components/tabs/TemporalSpatial';
+import Sandbox from '@/components/tabs/Sandbox';
 import CacheIndicator from '@/components/CacheIndicator';
 import { PerformanceDebugPanel } from '@/components/PerformanceDebugPanel';
 import CatalogUpload from '@/components/CatalogUpload';
@@ -19,7 +20,8 @@ const TABS = [
   { id: 'basic', label: 'Basic Dashboard' },
   { id: 'advanced', label: 'Advanced Statistical Analysis' },
   { id: 'aftershock', label: 'Aftershock Sequence' },
-  { id: 'temporal-spatial', label: 'Temporal-Spatial Analysis' }
+  { id: 'temporal-spatial', label: 'Temporal-Spatial Analysis' },
+  { id: 'sandbox', label: 'Sandbox' }
 ];
 
 type DataSource = 'geonet' | 'uploaded';
@@ -425,15 +427,15 @@ export default function Home() {
                   <span className="text-xs text-slate-600">Time Range:</span>
                   <span className="text-sm font-bold text-blue-700">
                     {filterOptions.daysBack === 30 ? 'Last 30 Days' :
-                     filterOptions.daysBack === 90 ? 'Last 3 Months' :
-                     filterOptions.daysBack === 180 ? 'Last 6 Months' :
-                     filterOptions.daysBack === 365 ? 'Last Year' :
-                     filterOptions.daysBack === 730 ? 'Last 2 Years' :
-                     filterOptions.daysBack === 1825 ? 'Last 5 Years' :
-                     filterOptions.daysBack === 3650 ? 'Last 10 Years' :
-                     filterOptions.daysBack === 7300 ? 'Last 20 Years' :
-                     filterOptions.daysBack === 10950 ? 'Last 30 Years' :
-                     `Last ${filterOptions.daysBack} Days`}
+                      filterOptions.daysBack === 90 ? 'Last 3 Months' :
+                        filterOptions.daysBack === 180 ? 'Last 6 Months' :
+                          filterOptions.daysBack === 365 ? 'Last Year' :
+                            filterOptions.daysBack === 730 ? 'Last 2 Years' :
+                              filterOptions.daysBack === 1825 ? 'Last 5 Years' :
+                                filterOptions.daysBack === 3650 ? 'Last 10 Years' :
+                                  filterOptions.daysBack === 7300 ? 'Last 20 Years' :
+                                    filterOptions.daysBack === 10950 ? 'Last 30 Years' :
+                                      `Last ${filterOptions.daysBack} Days`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-purple-50 rounded-md border border-purple-200">
@@ -481,6 +483,7 @@ export default function Home() {
                     {activeTab === 'advanced' && <AdvancedStatistics earthquakes={filteredEarthquakes} />}
                     {activeTab === 'aftershock' && <AftershockSequence earthquakes={filteredEarthquakes} />}
                     {activeTab === 'temporal-spatial' && <TemporalSpatial earthquakes={filteredEarthquakes} />}
+                    {activeTab === 'sandbox' && <Sandbox earthquakes={filteredEarthquakes} />}
                   </>
                 )}
               </div>

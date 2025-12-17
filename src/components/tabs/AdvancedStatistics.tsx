@@ -5,7 +5,6 @@ import GutenbergRichterPlot from '@/components/GutenbergRichterPlot';
 import DepthProfilePlot from '@/components/DepthProfilePlot';
 import ThreeDVisualization from '@/components/ThreeDVisualization';
 import MagnitudeDistribution from '@/components/MagnitudeDistribution';
-import SpatialClusteringPlot from '@/components/SpatialClusteringPlot';
 import TemporalStatistics from '@/components/TemporalStatistics';
 
 interface AdvancedStatisticsProps {
@@ -51,17 +50,6 @@ export default function AdvancedStatistics({ earthquakes }: AdvancedStatisticsPr
                 </div>
                 <div className="p-6 max-h-[600px] overflow-y-auto">
                     <MagnitudeDistribution earthquakes={earthquakes} />
-                </div>
-            </div>
-
-            {/* Panel 4: Spatial Clustering */}
-            <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 overflow-hidden">
-                <div className="bg-gradient-to-r from-orange-500 to-red-600 px-6 py-4 border-b-2 border-gray-300">
-                    <h3 className="text-2xl font-bold text-white mb-1">🗺️ Spatial Clustering</h3>
-                    <p className="text-sm text-orange-100">DBSCAN cluster analysis of earthquake locations</p>
-                </div>
-                <div className="p-6 max-h-[600px] overflow-y-auto">
-                    <SpatialClusteringPlot earthquakes={earthquakes} />
                 </div>
             </div>
 

@@ -10,9 +10,19 @@ import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from 
 
 interface ThreeDVisualizationProps {
     earthquakes: EarthquakeData[];
+    xAxisField?: keyof EarthquakeData;
+    yAxisField?: keyof EarthquakeData;
+    zAxisField?: keyof EarthquakeData;
+    colorField?: keyof EarthquakeData;
 }
 
-const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: ThreeDVisualizationProps) {
+const ThreeDVisualization = memo(function ThreeDVisualization({
+    earthquakes,
+    xAxisField = 'longitude',
+    yAxisField = 'latitude',
+    zAxisField = 'depth',
+    colorField = 'magnitude'
+}: ThreeDVisualizationProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
@@ -36,24 +46,46 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             console.log(`📊 3D Visualization: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
         }
 
-        // Get magnitude and depth ranges for scaling
+        // Get magnitude range for sizing (always size by magnitude for now)
         const magnitudes = processedEarthquakes.map(eq => eq.magnitude);
-        const depths = processedEarthquakes.map(eq => eq.depth);
         const minMag = Math.min(...magnitudes);
         const maxMag = Math.max(...magnitudes);
-        const minDepth = Math.min(...depths);
-        const maxDepth = Math.max(...depths);
 
-        // Viridis color scale
-        const getColor = (mag: number) => {
-            const normalized = (mag - minMag) / (maxMag - minMag);
-            const colors = [
-                '#440154', '#482878', '#3e4989', '#31688e', '#26828e',
-                '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde724'
-            ];
-            const index = Math.floor(normalized * (colors.length - 1));
-            return colors[index];
+        // Check for time fields
+        const isTimeField = (field: string) => {
+            const f = field.toString().toLowerCase();
+            return f === 'time' || f.includes('date') || f.includes('timems');
         };
+
+        const isXTime = isTimeField(xAxisField.toString());
+        const isYTime = isTimeField(yAxisField.toString());
+        const isZTime = isTimeField(zAxisField.toString());
+        const isColorTime = isTimeField(colorField.toString());
+
+        // Helper: safe access and cast, handling dates
+        const getVal = (eq: EarthquakeData, field: keyof EarthquakeData) => {
+            const val = eq[field];
+            if (val instanceof Date) return val.getTime();
+            if (typeof val === 'string' && isTimeField(field.toString())) return new Date(val).getTime();
+            return typeof val === 'number' ? val : 0;
+        };
+
+        const colorValues = processedEarthquakes.map(eq => getVal(eq, colorField));
+        const minColor = Math.min(...colorValues);
+        const maxColor = Math.max(...colorValues);
+
+        // Calculate axis ranges
+        const xValues = processedEarthquakes.map(eq => getVal(eq, xAxisField));
+        const minX = Math.min(...xValues);
+        const maxX = Math.max(...xValues);
+
+        const yValues = processedEarthquakes.map(eq => getVal(eq, yAxisField));
+        const minY = Math.min(...yValues);
+        const maxY = Math.max(...yValues);
+
+        const zValues = processedEarthquakes.map(eq => getVal(eq, zAxisField));
+        const minZ = Math.min(...zValues);
+        const maxZ = Math.max(...zValues);
 
         // Exponential marker size scaling based on magnitude
         // Using formula similar to DepthProfilePlot for consistency
@@ -62,99 +94,105 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
             return Math.max(2, Math.pow(2, mag - 2));
         };
 
-        const data = processedEarthquakes.map(eq => ({
-            x: eq.longitude,
-            y: eq.latitude,
-            z: eq.depth, // Positive depth (will be inverted by reversed zAxis)
-            color: getColor(eq.magnitude),
-            marker: {
-                radius: getMarkerRadius(eq.magnitude)
-            },
-            custom: {
-                magnitude: eq.magnitude,
-                depth: eq.depth,
-                latitude: eq.latitude,
-                longitude: eq.longitude,
-                eventID: eq.eventID
-            }
-        }));
+        // Filter out invalid points (NaN or 0 timestamps if time)
+        const data = processedEarthquakes.map(eq => {
+            const x = getVal(eq, xAxisField);
+            const y = getVal(eq, yAxisField);
+            const z = getVal(eq, zAxisField);
+            const cVal = getVal(eq, colorField);
+
+            if (isNaN(x) || isNaN(y) || isNaN(z) || isNaN(cVal)) return null;
+
+            return {
+                x, y, z,
+                colorValue: cVal,
+                marker: {
+                    radius: getMarkerRadius(eq.magnitude)
+                },
+                custom: {
+                    magnitude: eq.magnitude,
+                    depth: eq.depth,
+                    latitude: eq.latitude,
+                    longitude: eq.longitude,
+                    eventID: eq.eventID,
+                    xVal: eq[xAxisField],
+                    yVal: eq[yAxisField],
+                    zVal: eq[zAxisField],
+                    cVal: cVal
+                }
+            };
+        }).filter(p => p !== null);
 
         return {
             chart: {
-                type: 'scatter3d',  // ✅ Changed from 'scatter' to 'scatter3d' for true 3D
+                type: 'scatter3d',
                 height: 500,
                 backgroundColor: 'white',
                 margin: 100,
                 options3d: {
                     enabled: true,
-                    alpha: 10,  // ✅ Vertical rotation angle (tilt) - optimized for depth visibility
-                    beta: 30,   // ✅ Horizontal rotation angle (spin) - optimized for depth visibility
-                    depth: 250, // ✅ Z-axis depth - balanced for proper 3D perspective
-                    viewDistance: 5,  // ✅ Camera distance - closer for better interaction
-                    fitToPlot: false,  // ✅ False to maintain consistent perspective during rotation
+                    alpha: 10,
+                    beta: 30,
+                    depth: 250,
+                    viewDistance: 5,
+                    fitToPlot: false,
                     frame: {
-                        visible: 'default',  // ✅ Make frame visible for spatial reference
+                        visible: 'default',
                         bottom: { size: 1, color: 'rgba(0,0,0,0.02)' },
                         back: { size: 1, color: 'rgba(0,0,0,0.04)' },
                         side: { size: 1, color: 'rgba(0,0,0,0.06)' }
                     }
                 }
             },
-            title: {
-                text: ''
-            },
-            subtitle: {
-                text: 'Drag to rotate • Scroll to zoom',
-                style: {
-                    fontSize: '12px',
-                    color: '#666'
-                }
-            },
-            credits: {
-                enabled: false
-            },
-            // Disable Highcharts built-in export menu - use custom export buttons
-            exporting: {
-                enabled: false
-            },
+            // ... [title/subtitle unchanged] ...
+            title: { text: '' },
+            subtitle: { text: 'Drag to rotate • Scroll to zoom', style: { fontSize: '12px', color: '#666' } },
+            credits: { enabled: false },
+            exporting: { enabled: false },
             xAxis: {
+                type: isXTime ? 'datetime' : 'linear',
+                min: minX,
+                max: maxX,
                 title: {
-                    text: 'Longitude (°E)'
+                    text: xAxisField.toString()
                 },
-                min: 160,
-                max: 180,
                 gridLineWidth: 1,
                 labels: {
-                    skew3d: true
+                    skew3d: true,
+                    format: isXTime ? undefined : '{value}'
                 }
             },
             yAxis: {
+                type: isYTime ? 'datetime' : 'linear',
+                min: minY,
+                max: maxY,
                 title: {
-                    text: 'Latitude (°S)'
+                    text: yAxisField.toString()
                 },
-                min: -48,
-                max: -32,
                 labels: {
                     skew3d: true,
-                    format: '{value}°'
+                    format: isYTime ? undefined : '{value}'
                 }
             },
             zAxis: {
+                type: isZTime ? 'datetime' : 'linear',
+                min: minZ,
+                max: maxZ,
                 title: {
-                    text: 'Depth (km)'
+                    text: zAxisField.toString()
                 },
-                min: 0,
-                max: Math.ceil(maxDepth / 50) * 50, // Round up to nearest 50km for clean axis
-                reversed: true, // Reversed so deeper earthquakes appear lower in the plot
+                reversed: zAxisField === 'depth', // Only reverse if depth
                 showFirstLabel: false,
                 labels: {
                     skew3d: true,
-                    format: '{value} km'
+                    format: isZTime ? undefined : '{value}'
                 }
             },
             colorAxis: {
-                min: minMag,
-                max: maxMag,
+                min: minColor,
+                max: maxColor,
+                type: (isColorTime ? 'datetime' : 'linear') as any, // Cast to any to avoid strict type mismatch
+                reversed: colorField === 'depth',
                 stops: [
                     [0, '#440154'],
                     [0.1, '#482878'],
@@ -168,10 +206,10 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                     [1, '#fde724']
                 ],
                 labels: {
-                    format: '{value}'
+                    format: isColorTime ? undefined : '{value}'
                 },
                 title: {
-                    text: 'Magnitude'
+                    text: colorField.toString()
                 }
             },
             legend: {
@@ -213,12 +251,9 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 }
             },
             series: [{
-                type: 'scatter3d',  // ✅ Changed to scatter3d for true 3D rendering
+                type: 'scatter3d',
                 name: 'Earthquakes',
-                data: data.map(d => ({
-                    ...d,
-                    colorValue: d.custom.magnitude
-                })),
+                data: data,
                 colorKey: 'colorValue'
             }],
             accessibility: {
@@ -226,7 +261,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({ earthquakes }: T
                 description: '3D visualization of earthquake distribution showing longitude (X), latitude (Y), and depth (Z, inverted). Marker size represents magnitude. Drag to rotate, scroll to zoom.'
             }
         };
-    }, [earthquakes]);
+    }, [earthquakes, xAxisField, yAxisField, zAxisField, colorField]); // Dependencies updated
 
     // Add interactive rotation and zoom functionality
     useEffect(() => {
