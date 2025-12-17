@@ -5,15 +5,17 @@ import { EarthquakeData } from '@/types/earthquake';
 import GenericScatterPlot from '@/components/sandbox/GenericScatterPlot';
 import GenericHistogram from '@/components/sandbox/GenericHistogram';
 import StatsPanel from '@/components/sandbox/StatsPanel';
+import { safeMinMax } from '@/utils/arrayMath';
 import Map from '@/components/Map';
 import ThreeDVisualization from '@/components/ThreeDVisualization';
+import MultiPanelTemporalPlot from '@/components/sandbox/MultiPanelTemporalPlot';
 import DateRangeSlider from '@/components/common/DateRangeSlider';
 
 interface SandboxProps {
     earthquakes: EarthquakeData[];
 }
 
-type PlotType = 'scatter' | 'map' | 'histogram' | '3d';
+type PlotType = 'scatter' | 'map' | 'histogram' | '3d' | 'multi-temporal';
 
 // Color Palettes
 const PALETTES = {
@@ -47,7 +49,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const [endDate, setEndDate] = useState<string | undefined>(undefined);
 
     // Visualization Config
-    const [plotType, setPlotType] = useState<'scatter' | 'map' | 'histogram' | '3d'>('scatter');
+    const [plotType, setPlotType] = useState<PlotType>('scatter');
 
     // Scatter Config
     const [xAxisField, setXAxisField] = useState<keyof EarthquakeData>('time');
@@ -66,6 +68,11 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const [threeDY, setThreeDY] = useState<keyof EarthquakeData>('latitude');
     const [threeDZ, setThreeDZ] = useState<keyof EarthquakeData>('depth');
     const [threeDColor, setThreeDColor] = useState<keyof EarthquakeData>('magnitude');
+
+    // Multi-Panel Config
+    const [multiField1, setMultiField1] = useState<keyof EarthquakeData>('longitude');
+    const [multiField2, setMultiField2] = useState<keyof EarthquakeData>('latitude');
+    const [multiField3, setMultiField3] = useState<keyof EarthquakeData>('depth');
 
     // Sampling Config (Fast Render)
     const [isSamplingEnabled, setIsSamplingEnabled] = useState<boolean>(true);
@@ -144,10 +151,10 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const globalDateRange = useMemo(() => {
         if (!earthquakes || earthquakes.length === 0) return { min: Date.now(), max: Date.now() };
         const times = earthquakes.map(eq => new Date(eq.time).getTime());
-        return {
-            min: Math.min(...times),
-            max: Math.max(...times)
-        };
+        // Use safeMinMax to avoid stack overflow with large arrays
+        // was: Math.min(...times)
+        const { min, max } = safeMinMax(times);
+        return { min, max };
     }, [earthquakes]);
 
 
@@ -265,6 +272,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 <button type="button" onClick={() => setPlotType('map')} className={`px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'map' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Map</button>
                                 <button type="button" onClick={() => setPlotType('histogram')} className={`px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'histogram' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Histogram</button>
                                 <button type="button" onClick={() => setPlotType('3d')} className={`px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === '3d' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>3D View</button>
+                                <button type="button" onClick={() => setPlotType('multi-temporal')} className={`col-span-2 px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'multi-temporal' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Multi-Temporal</button>
                             </div>
                         </div>
 
@@ -406,6 +414,43 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 </div>
                             </div>
                         )}
+
+                        {/* ---- Multi-Panel Controls ---- */}
+                        {plotType === 'multi-temporal' && (
+                            <div className="space-y-4 border-t pt-4">
+                                <h4 className="font-medium text-gray-700">Multi-Panel Configuration</h4>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Top Panel (Y Axis)</label>
+                                    <select
+                                        value={multiField1}
+                                        onChange={(e) => setMultiField1(e.target.value as any)}
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
+                                    >
+                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Middle Panel (Y Axis)</label>
+                                    <select
+                                        value={multiField2}
+                                        onChange={(e) => setMultiField2(e.target.value as any)}
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
+                                    >
+                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Bottom Panel (Y Axis)</label>
+                                    <select
+                                        value={multiField3}
+                                        onChange={(e) => setMultiField3(e.target.value as any)}
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
+                                    >
+                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -482,6 +527,16 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 zAxisField={threeDZ}
                                 colorField={threeDColor}
                                 fullDataForExport={exportData}
+                            />
+                        )}
+
+                        {plotType === 'multi-temporal' && (
+                            <MultiPanelTemporalPlot
+                                earthquakes={displayData}
+                                fullDataForExport={exportData}
+                                field1={multiField1}
+                                field2={multiField2}
+                                field3={multiField3}
                             />
                         )}
                     </div>

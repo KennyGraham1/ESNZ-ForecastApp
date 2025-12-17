@@ -6,6 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface ThreeDVisualizationProps {
     earthquakes: EarthquakeData[];
@@ -61,21 +62,21 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
         };
 
         const colorValues = processedEarthquakes.map(eq => getVal(eq, colorField));
-        const minColor = Math.min(...colorValues);
-        const maxColor = Math.max(...colorValues);
+        const minColor = safeMin(colorValues);
+        const maxColor = safeMax(colorValues);
 
         // Calculate axis ranges
         const xValues = processedEarthquakes.map(eq => getVal(eq, xAxisField));
-        const minX = Math.min(...xValues);
-        const maxX = Math.max(...xValues);
+        const minX = safeMin(xValues);
+        const maxX = safeMax(xValues);
 
         const yValues = processedEarthquakes.map(eq => getVal(eq, yAxisField));
-        const minY = Math.min(...yValues);
-        const maxY = Math.max(...yValues);
+        const minY = safeMin(yValues);
+        const maxY = safeMax(yValues);
 
         const zValues = processedEarthquakes.map(eq => getVal(eq, zAxisField));
-        const minZ = Math.min(...zValues);
-        const maxZ = Math.max(...zValues);
+        const minZ = safeMin(zValues);
+        const maxZ = safeMax(zValues);
 
         // Exponential marker size scaling based on magnitude
         const getMarkerRadius = (mag: number) => {

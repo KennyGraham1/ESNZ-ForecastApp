@@ -5,6 +5,7 @@ import { useMemo, useRef, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface GenericScatterPlotProps {
     earthquakes: EarthquakeData[];
@@ -43,8 +44,8 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
                 const v = eq[sizeField];
                 return typeof v === 'number' ? v : 0;
             });
-            const minS = Math.min(...values);
-            const maxS = Math.max(...values);
+            const minS = safeMin(values);
+            const maxS = safeMax(values);
             // Linear scaling logic: map min-max value to 2px-20px radius
             getSize = (val: number) => {
                 const norm = (val - minS) / (maxS - minS || 1);
@@ -131,8 +132,8 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
                 .filter(v => v !== null) as number[];
 
             if (colorValues.length > 0) {
-                minColorVal = Math.min(...colorValues);
-                maxColorVal = Math.max(...colorValues);
+                minColorVal = safeMin(colorValues);
+                maxColorVal = safeMax(colorValues);
             }
         }
 

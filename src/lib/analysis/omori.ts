@@ -1,5 +1,6 @@
 import { EarthquakeData } from '@/types/earthquake';
 import { levenbergMarquardt } from 'ml-levenberg-marquardt';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 export type OptimizationMethod = 'grid-search' | 'levenberg-marquardt' | 'nelder-mead' | 'hybrid' | 'mle';
 
@@ -63,7 +64,7 @@ function fitOmoriLawGridSearch(
     counts: number[]
 ): { K: number; c: number; p: number; rSquared: number; iterations: number } {
     // Initial parameter guesses
-    let K = Math.max(...counts) * 2;
+    let K = safeMax(counts) * 2;
     let c = 0.1;
     let p = 1.1;
 
@@ -190,8 +191,8 @@ function fitOmoriLawNelderMead(
     const gridResult = fitOmoriLawGridSearch(days, counts);
 
     // Estimate reasonable K range from data
-    const maxCount = Math.max(...counts);
-    const minDay = Math.min(...days);
+    const maxCount = safeMax(counts);
+    const minDay = safeMin(days);
     const K_max = maxCount * Math.pow(minDay + 1.0, 1.5); // Upper bound
 
     // Objective function: sum of squared residuals with strict bounds
@@ -258,7 +259,7 @@ function fitOmoriLawNelderMead(
 
             // Check convergence
             const fvals = simplex.map(f);
-            const range = Math.max(...fvals) - Math.min(...fvals);
+            const range = safeMax(fvals) - safeMin(fvals);
             if (range < tol) break;
 
             // Compute centroid of best n points
@@ -411,7 +412,7 @@ function fitOmoriLawMLE(
 
     // Estimate initial p from rate decay
     // Use adaptive time windows based on sequence length
-    const maxTime = Math.max(...sortedTimes);
+    const maxTime = safeMax(sortedTimes);
     const earlyWindow = Math.min(1.0, maxTime * 0.1);  // First 10% or 1 day
     const lateStart = Math.min(10.0, maxTime * 0.5);   // Starting at 50% or 10 days
     const lateEnd = Math.min(20.0, maxTime * 0.7);     // Ending at 70% or 20 days
@@ -538,7 +539,7 @@ function fitOmoriLawMLE(
     const logLikelihood = -result.fval;
 
     // Calculate R-squared using binned data for comparison
-    const maxDay = Math.ceil(Math.max(...sortedTimes));
+    const maxDay = Math.ceil(safeMax(sortedTimes));
     const dailyCounts = new Array(maxDay).fill(0);
     for (const t of sortedTimes) {
         const day = Math.floor(t);
@@ -706,8 +707,8 @@ function bootstrapUncertainty(
     const bootstrapResults: { K: number; c: number; p: number }[] = [];
 
     // Estimate reasonable parameter bounds from data
-    const maxCount = Math.max(...counts);
-    const minDay = Math.min(...days);
+    const maxCount = safeMax(counts);
+    const minDay = safeMin(days);
     const K_max = maxCount * Math.pow(minDay + 1.0, 1.5);
 
     // Perform bootstrap resampling
@@ -980,7 +981,7 @@ export function calculateOmoriParameters(
     });
 
     // Bin into daily counts
-    const maxDay = Math.ceil(Math.max(...aftershocksWithDays.map(a => a.daysSince)));
+    const maxDay = Math.ceil(safeMax(aftershocksWithDays.map(a => a.daysSince)));
     const dailyCounts: { day: number; count: number }[] = [];
 
     for (let day = 1; day <= Math.min(maxDay, daysAfter); day++) {

@@ -6,6 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { stratifiedSample } from '@/utils/dataOptimization';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface DepthProfilePlotProps {
@@ -52,10 +53,10 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
         const latitudes = processedEarthquakes.map(eq => eq.latitude);
         const depths = processedEarthquakes.map(eq => eq.depth);
 
-        const minLat = Math.min(...latitudes);
-        const maxLat = Math.max(...latitudes);
-        const minDepth = Math.max(0, Math.min(...depths)); // Depth can't be negative
-        const maxDepth = Math.max(...depths);
+        const minLat = safeMin(latitudes);
+        const maxLat = safeMax(latitudes);
+        const minDepth = Math.max(0, safeMin(depths)); // Depth can't be negative
+        const maxDepth = safeMax(depths);
 
         // Add 5% padding to the ranges for better visualization
         const latPadding = (maxLat - minLat) * 0.05;

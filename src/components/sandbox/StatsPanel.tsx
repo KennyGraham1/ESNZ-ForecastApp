@@ -2,6 +2,7 @@
 
 import { EarthquakeData } from '@/types/earthquake';
 import { useMemo } from 'react';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface StatsPanelProps {
     earthquakes: EarthquakeData[];
@@ -16,9 +17,9 @@ export default function StatsPanel({ earthquakes }: StatsPanelProps) {
         const count = earthquakes.length;
         const magnitudes = earthquakes.map(eq => eq.magnitude);
         const depths = earthquakes.map(eq => eq.depth);
-        const maxMag = Math.max(...magnitudes);
-        const minDepth = Math.min(...depths);
-        const maxDepth = Math.max(...depths);
+        const maxMag = safeMax(magnitudes);
+        const minDepth = safeMin(depths);
+        const maxDepth = safeMax(depths);
 
         return {
             count: count.toLocaleString(),

@@ -1,6 +1,7 @@
 import { EarthquakeData } from '@/types/earthquake';
 import JSZip from 'jszip';
 import { formatDateForCSV } from '@/utils/dateFormat';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 export function exportToCSV(data: EarthquakeData[], filename: string) {
     if (!data || data.length === 0) return;
@@ -149,8 +150,8 @@ export async function exportToZip(data: EarthquakeData[], filename: string) {
         downloadTimestamp: new Date().toISOString(),
         totalRecords: data.length,
         dataSummary: {
-            magnitudeRange: `${Math.min(...data.map(d => d.magnitude)).toFixed(2)} - ${Math.max(...data.map(d => d.magnitude)).toFixed(2)}`,
-            depthRangeKm: `${Math.min(...data.map(d => d.depth)).toFixed(1)} - ${Math.max(...data.map(d => d.depth)).toFixed(1)}`,
+            magnitudeRange: `${safeMin(data.map(d => d.magnitude)).toFixed(2)} - ${safeMax(data.map(d => d.magnitude)).toFixed(2)}`,
+            depthRangeKm: `${safeMin(data.map(d => d.depth)).toFixed(1)} - ${safeMax(data.map(d => d.depth)).toFixed(1)}`,
             timeRange: `${data[data.length - 1].time} to ${data[0].time}`
         }
     };

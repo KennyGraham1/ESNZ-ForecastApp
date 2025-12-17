@@ -2,6 +2,7 @@ import { EarthquakeData } from '@/types/earthquake';
 import { DBSCAN, OPTICS, KMEANS } from 'density-clustering';
 import RBush from 'rbush';
 import { clusteringCache } from './clusteringCache';
+import { safeMax } from '@/utils/arrayMath';
 import type {
     ClusteringAlgorithm,
     ClusterResult,
@@ -452,7 +453,7 @@ function stepMagnitudeClustering(
     while (workingData.some(e => e.clusterNo === 0)) {
         // Find the largest unclustered earthquake
         const unclustered = workingData.filter(e => e.clusterNo === 0);
-        const maxMag = Math.max(...unclustered.map(e => e.magnitude));
+        const maxMag = safeMax(unclustered.map(e => e.magnitude));
         const mainshockIdx = workingData.findIndex(e => e.clusterNo === 0 && e.magnitude === maxMag);
 
         if (mainshockIdx === -1) break;

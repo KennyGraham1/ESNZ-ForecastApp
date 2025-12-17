@@ -4,6 +4,7 @@ import { EarthquakeData } from '@/types/earthquake';
 import { useMemo, useRef, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface GenericHistogramProps {
     earthquakes: EarthquakeData[];
@@ -57,8 +58,8 @@ const GenericHistogram = memo(function GenericHistogram({
 
             if (!values.length) return;
 
-            const min = Math.min(...values);
-            const max = Math.max(...values);
+            const min = safeMin(values);
+            const max = safeMax(values);
 
             // For 'hour', we want exactly integers 0..23
             const isDiscrete = field === 'hour';

@@ -4,6 +4,7 @@ import { EarthquakeData } from '@/types/earthquake';
 import HighchartsReact from 'highcharts-react-official';
 import { ClusteringMetadata } from '@/lib/analysis/clustering';
 import { formatDateForCSV } from '@/utils/dateFormat';
+import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface ChartExportButtonsProps {
     chartRef: React.RefObject<HighchartsReact.RefObject>;
@@ -258,7 +259,7 @@ export default function ChartExportButtons({
         // Add clustering metadata if available
         if (clusteringMetadata && clusterLabels && clusterSizes) {
             const clusteredPoints = clusterLabels.filter(l => l >= 0);
-            const nClusters = clusteredPoints.length > 0 ? Math.max(...clusteredPoints) + 1 : 0;
+            const nClusters = clusteredPoints.length > 0 ? safeMax(clusteredPoints) + 1 : 0;
             const noiseCount = clusterLabels.filter(l => l === -1).length;
             const clusteredCount = clusterLabels.length - noiseCount;
             const clusterPercent = (clusteredCount / clusterLabels.length) * 100;
