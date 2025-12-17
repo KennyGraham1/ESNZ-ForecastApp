@@ -28,6 +28,18 @@ const PALETTES = {
 
 export default function Sandbox({ earthquakes }: SandboxProps) {
     // ---- State ----
+
+    // DEBUG: Inspect incoming earthquake data fields
+    useMemo(() => {
+        if (earthquakes && earthquakes.length > 0) {
+            console.log('🔍 Sandbox received data:', {
+                count: earthquakes.length,
+                keys: Object.keys(earthquakes[0]),
+                sample: earthquakes[0]
+            });
+        }
+    }, [earthquakes]);
+
     // Filters
     const [minMag, setMinMag] = useState<number>(0);
     const [maxDepth, setMaxDepth] = useState<number>(1000);
@@ -49,10 +61,18 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const [histBins, setHistBins] = useState<number>(20);
 
     // 3D Config
+    // 3D Config
     const [threeDX, setThreeDX] = useState<keyof EarthquakeData>('longitude');
     const [threeDY, setThreeDY] = useState<keyof EarthquakeData>('latitude');
     const [threeDZ, setThreeDZ] = useState<keyof EarthquakeData>('depth');
     const [threeDColor, setThreeDColor] = useState<keyof EarthquakeData>('magnitude');
+
+    // Sampling Config (Fast Render)
+    const [isSamplingEnabled, setIsSamplingEnabled] = useState<boolean>(true);
+
+    // Dynamic threshold based on plot type
+    // 3D plots are more resource intensive, so we sample more aggressively (2500 vs 5000)
+    const SAMPLING_THRESHOLD = plotType === '3d' ? 2500 : 5000;
 
     // ---- Data Filtering Logic ----
     const filteredData = useMemo(() => {
@@ -71,25 +91,53 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
         });
     }, [earthquakes, minMag, maxDepth, startDate, endDate]);
 
-    // ---- Dynamic Field Extraction ----
+    // ---- Sampling Logic ----
+    const { displayData, exportData } = useMemo(() => {
+        // If sampling is disabled or data is small, use full data for both
+        if (!isSamplingEnabled || filteredData.length <= SAMPLING_THRESHOLD) {
+            return { displayData: filteredData, exportData: filteredData };
+        }
+
+        // Random sampling
+        // We create a random subset of SAMPLING_THRESHOLD events
+        const sampled = [];
+        const step = Math.max(1, Math.floor(filteredData.length / SAMPLING_THRESHOLD));
+
+        // Use systematic sampling with random start for better distribution/performance than pure random shuffle
+        for (let i = 0; i < filteredData.length; i += step) {
+            if (sampled.length >= SAMPLING_THRESHOLD) break;
+            sampled.push(filteredData[i]);
+        }
+
+        return { displayData: sampled, exportData: filteredData };
+    }, [filteredData, isSamplingEnabled, SAMPLING_THRESHOLD]); // Added SAMPLING_THRESHOLD dependency
+
     // ---- Dynamic Field Extraction ----
     const numericFields = useMemo(() => {
         if (!earthquakes || earthquakes.length === 0) return ['magnitude', 'depth', 'latitude', 'longitude'];
 
-        // Take a sample event
-        const sample = earthquakes[0];
-
         // Always include these core fields
-        const core = ['time', 'magnitude', 'depth', 'latitude', 'longitude'];
+        const core = new Set(['time', 'magnitude', 'depth', 'latitude', 'longitude', 'timeMs']);
+        const dynamicFields = new Set<string>();
 
-        // Discover any other numeric fields
-        const dynamic = Object.keys(sample).filter(key => {
-            if (core.includes(key)) return false; // Already tracked
-            const val = (sample as any)[key];
-            return typeof val === 'number';
-        });
+        // Scan up to 50 events to find available fields
+        // This ensures we catch fields even if the first event is missing them
+        const sampleSize = Math.min(earthquakes.length, 50);
 
-        return [...core, ...dynamic];
+        for (let i = 0; i < sampleSize; i++) {
+            const eq = earthquakes[i];
+            Object.keys(eq).forEach(key => {
+                if (core.has(key)) return;
+
+                // Check if value is number
+                const val = (eq as any)[key];
+                if (typeof val === 'number') {
+                    dynamicFields.add(key);
+                }
+            });
+        }
+
+        return ['time', 'magnitude', 'depth', 'latitude', 'longitude', ...Array.from(dynamicFields).sort()];
     }, [earthquakes]);
 
     // ---- Global Data Range Calculation ----
@@ -112,7 +160,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
 
             <div className="flex flex-col lg:flex-row gap-6 h-full min-h-[600px]">
                 {/* ---- Sidebar Controls ---- */}
-                <div className="w-full lg:w-80 bg-white p-6 rounded-xl shadow-lg border border-gray-200 overflow-y-auto shrink-0 space-y-8 h-fit max-h-[calc(100vh-300px)]">
+                <div className="w-full lg:w-80 bg-white p-6 rounded-xl shadow-lg border border-gray-200 overflow-y-auto shrink-0 space-y-8 h-fit max-h-[calc(120vh-300px)]">
                     <div>
                         <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                             <span>🧪</span> Sandbox Controls
@@ -157,6 +205,29 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 className="w-full accent-blue-600"
                             />
                         </div>
+
+                        {/* Fast Render Toggle */}
+                        <div className="flex items-center justify-between pt-2 border-t">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 block">Fast Render</label>
+                                <span className="text-xs text-gray-500">Show sample ({SAMPLING_THRESHOLD}) points</span>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isSamplingEnabled}
+                                onClick={() => setIsSamplingEnabled(!isSamplingEnabled)}
+                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${isSamplingEnabled ? 'bg-indigo-600' : 'bg-gray-200'
+                                    }`}
+                            >
+                                <span
+                                    aria-hidden="true"
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isSamplingEnabled ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
+                                />
+                            </button>
+                        </div>
+                        {/* Removed duplicate count display */}
 
                         <div className="grid grid-cols-1 gap-2">
                             <div>
@@ -341,18 +412,27 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                 {/* ---- Visualization Area ---- */}
                 <div className="flex-grow bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden flex flex-col min-h-[500px]">
                     <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                        <h2 className="text-lg font-bold text-gray-800">
-                            {plotType === 'scatter' && 'Scatter Analysis'}
-                            {plotType === 'map' && 'Geospatial View'}
-                            {plotType === 'histogram' && 'Distribution Analysis'}
-                            {plotType === '3d' && '3D Visualization'}
-                        </h2>
+                        <div className="flex items-baseline gap-3">
+                            <h2 className="text-lg font-bold text-gray-800">
+                                {plotType === 'scatter' && 'Scatter Analysis'}
+                                {plotType === 'map' && 'Geospatial View'}
+                                {plotType === 'histogram' && 'Distribution Analysis'}
+                                {plotType === '3d' && '3D Visualization'}
+                            </h2>
+                            {filteredData.length > 0 && (
+                                <span className={`text-sm ${isSamplingEnabled && filteredData.length > SAMPLING_THRESHOLD ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                    {isSamplingEnabled && filteredData.length > SAMPLING_THRESHOLD ? '⚡ ' : ''}
+                                    {displayData.length} / {filteredData.length} events
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     <div className="flex-grow p-4 relative overflow-hidden">
                         {plotType === 'scatter' && (
                             <GenericScatterPlot
-                                earthquakes={filteredData}
+                                earthquakes={displayData}
+                                fullDataForExport={exportData}
                                 xAxisField={xAxisField}
                                 yAxisField={yAxisField}
                                 colorField={colorField}
@@ -378,7 +458,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 {histFields.length > 0 ? (
                                     <div className="h-full">
                                         <GenericHistogram
-                                            earthquakes={filteredData}
+                                            earthquakes={displayData}
                                             fields={histFields as any}
                                             bins={histBins}
                                             title="Comparative Distribution"
@@ -396,11 +476,12 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
 
                         {plotType === '3d' && (
                             <ThreeDVisualization
-                                earthquakes={filteredData}
+                                earthquakes={displayData}
                                 xAxisField={threeDX}
                                 yAxisField={threeDY}
                                 zAxisField={threeDZ}
                                 colorField={threeDColor}
+                                fullDataForExport={exportData}
                             />
                         )}
                     </div>

@@ -111,6 +111,14 @@ export async function fetchEarthquakeData(options: FetchOptions = {}): Promise<E
                 depth: feature.properties.depth,
                 magnitude: feature.properties.magnitude,
                 locality: feature.properties.locality || 'Unknown Location',
+                // Statistical statistical seismology fields
+                azimuthalGap: feature.properties.azimuthalgap,
+                magnitudeStationCount: feature.properties.magnitudestationcount,
+                minimumDistance: feature.properties.minimumdistance,
+                standardError: feature.properties.standarderror,
+                originError: feature.properties.originerror,
+                evaluationMethod: feature.properties.evaluationmethod,
+                usedPhaseCount: feature.properties.usedphasecount,
             }))
                 .filter((eq: EarthquakeData) => !isNaN(eq.time.getTime()))
                 .filter((eq: EarthquakeData) => {

@@ -32,4 +32,5 @@ export interface EarthquakeData {
     magnitude: number;
     locality: string;
     mmi?: number;
+    [key: string]: any;
 }

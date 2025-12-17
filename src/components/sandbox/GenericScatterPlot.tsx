@@ -14,6 +14,7 @@ interface GenericScatterPlotProps {
     colorPalette?: string[];
     pointSize?: number;
     sizeField?: keyof EarthquakeData; // NEW: Field to control bubble size
+    fullDataForExport?: EarthquakeData[]; // NEW: Full dataset for high-res export
     xLabel?: string;
     yLabel?: string;
     title?: string;
@@ -27,6 +28,7 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
     colorPalette,
     pointSize = 3,
     sizeField,
+    fullDataForExport,
     xLabel,
     yLabel,
     title = 'Scatter Plot'
@@ -143,6 +145,55 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
                 style: { fontFamily: 'Instrument Sans, sans-serif' },
                 spacing: [20, 20, 40, 20] // Increased bottom spacing for legend
             },
+            exporting: {
+                enabled: true,
+                sourceWidth: 2400,
+                sourceHeight: 1600,
+                scale: 2, // Resulting image will be 4800x3200 (approx 15MP)
+                chartOptions: {
+                    style: { fontFamily: 'Arial, Helvetica, sans-serif' }, // Standard fonts for portable export
+                    title: { style: { fontSize: '36px' } }, // Scale up title
+                    legend: { itemStyle: { fontSize: '24px' }, title: { style: { fontSize: '24px' } } }, // Scale up legend
+                    xAxis: {
+                        labels: { style: { fontSize: '20px' } },
+                        title: { style: { fontSize: '24px' } }
+                    },
+                    yAxis: {
+                        labels: { style: { fontSize: '20px' } },
+                        title: { style: { fontSize: '24px' } }
+                    },
+                    plotOptions: {
+                        scatter: {
+                            marker: {
+                                // Scale up fixed points slightly for high-res
+                                radius: pointSize * 2
+                            }
+                        }
+                    },
+                    ...(fullDataForExport ? {
+                        series: [{
+                            type: 'scatter',
+                            data: fullDataForExport.map(eq => {
+                                const xVal = getNumericValue(eq[xAxisField]);
+                                const yVal = getNumericValue(eq[yAxisField]);
+                                if (xVal === null || yVal === null) return null;
+
+                                const point: any = { x: xVal, y: yVal };
+                                if (colorField) {
+                                    const cVal = getNumericValue(eq[colorField]);
+                                    if (cVal !== null) point.colorValue = cVal;
+                                }
+                                if (sizeField) {
+                                    const sVal = typeof eq[sizeField] === 'number' ? eq[sizeField] : 0;
+                                    point.z = sVal;
+                                    point.marker = { radius: getSize(sVal as number) };
+                                }
+                                return point;
+                            }).filter(p => p !== null) as any
+                        }]
+                    } : {})
+                }
+            },
             title: { text: title, style: { fontSize: '18px', fontWeight: '600', color: '#111827' } },
             credits: { enabled: false },
             xAxis: {
@@ -243,6 +294,13 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
                         tooltipHtml += `<tr>
                                 <td style="padding: 2px 8px 2px 0; color: #6B7280;">${colorField}:</td>
                                 <td style="padding: 2px 0; font-weight: 500; text-align: right;">${cStr}</td>
+                            </tr>`;
+                    }
+
+                    if (sizeField && typeof this.z === 'number') {
+                        tooltipHtml += `<tr>
+                                <td style="padding: 2px 8px 2px 0; color: #6B7280;">${sizeField}:</td>
+                                <td style="padding: 2px 0; font-weight: 500; text-align: right;">${this.z.toFixed(2)}${getUnit(sizeField.toString())}</td>
                             </tr>`;
                     }
 

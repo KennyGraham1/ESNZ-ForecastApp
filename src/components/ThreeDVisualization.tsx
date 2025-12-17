@@ -5,8 +5,7 @@ import { useMemo, useRef, useEffect, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
-import { stratifiedSample } from '@/utils/dataOptimization';
-import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
+import { HIGHCHARTS_CONFIG } from '@/config/performance';
 
 interface ThreeDVisualizationProps {
     earthquakes: EarthquakeData[];
@@ -14,6 +13,7 @@ interface ThreeDVisualizationProps {
     yAxisField?: keyof EarthquakeData;
     zAxisField?: keyof EarthquakeData;
     colorField?: keyof EarthquakeData;
+    fullDataForExport?: EarthquakeData[]; // NEW: Full dataset for high-res export
 }
 
 const ThreeDVisualization = memo(function ThreeDVisualization({
@@ -21,7 +21,8 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
     xAxisField = 'longitude',
     yAxisField = 'latitude',
     zAxisField = 'depth',
-    colorField = 'magnitude'
+    colorField = 'magnitude',
+    fullDataForExport
 }: ThreeDVisualizationProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -29,27 +30,16 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
         // Validate data before processing
         if (!earthquakes || earthquakes.length === 0) {
             return {
-                chart: { type: 'scatter', height: 500 },
+                chart: { type: 'scatter3d', height: 500 }, // Fixed type mismatch
                 title: { text: '' },
                 credits: { enabled: false },
-                exporting: { enabled: false }, // Disable built-in export menu
+                exporting: { enabled: false },
                 series: []
             };
         }
 
-        // OPTIMIZATION: Use stratified sampling to preserve distribution (90% faster rendering)
-        const maxPoints = getOptimalSamplingThreshold('THREE_D');
-        let processedEarthquakes = earthquakes;
-
-        if (earthquakes.length > SAMPLING_CONFIG.THREE_D.threshold) {
-            processedEarthquakes = stratifiedSample(earthquakes, maxPoints);
-            console.log(`📊 3D Visualization: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
-        }
-
-        // Get magnitude range for sizing (always size by magnitude for now)
-        const magnitudes = processedEarthquakes.map(eq => eq.magnitude);
-        const minMag = Math.min(...magnitudes);
-        const maxMag = Math.max(...magnitudes);
+        // Use passed 'earthquakes' directly (external sampling handled by parent)
+        const processedEarthquakes = earthquakes;
 
         // Check for time fields
         const isTimeField = (field: string) => {
@@ -60,7 +50,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
         const isXTime = isTimeField(xAxisField.toString());
         const isYTime = isTimeField(yAxisField.toString());
         const isZTime = isTimeField(zAxisField.toString());
-        const isColorTime = isTimeField(colorField.toString());
+        const isColorTime = colorField ? isTimeField(colorField.toString()) : false; // Handle potential undefined if modified later
 
         // Helper: safe access and cast, handling dates
         const getVal = (eq: EarthquakeData, field: keyof EarthquakeData) => {
@@ -88,40 +78,42 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
         const maxZ = Math.max(...zValues);
 
         // Exponential marker size scaling based on magnitude
-        // Using formula similar to DepthProfilePlot for consistency
         const getMarkerRadius = (mag: number) => {
-            // Scale: M3.0 → radius ~2, M4.0 → radius ~4, M5.0 → radius ~8, M6.0 → radius ~16
             return Math.max(2, Math.pow(2, mag - 2));
         };
 
-        // Filter out invalid points (NaN or 0 timestamps if time)
-        const data = processedEarthquakes.map(eq => {
-            const x = getVal(eq, xAxisField);
-            const y = getVal(eq, yAxisField);
-            const z = getVal(eq, zAxisField);
-            const cVal = getVal(eq, colorField);
+        // Data transformation helper
+        const transformData = (data: EarthquakeData[]) => {
+            return data.map(eq => {
+                const x = getVal(eq, xAxisField);
+                const y = getVal(eq, yAxisField);
+                const z = getVal(eq, zAxisField);
+                const cVal = getVal(eq, colorField);
 
-            if (isNaN(x) || isNaN(y) || isNaN(z) || isNaN(cVal)) return null;
+                if (isNaN(x) || isNaN(y) || isNaN(z) || isNaN(cVal)) return null;
 
-            return {
-                x, y, z,
-                colorValue: cVal,
-                marker: {
-                    radius: getMarkerRadius(eq.magnitude)
-                },
-                custom: {
-                    magnitude: eq.magnitude,
-                    depth: eq.depth,
-                    latitude: eq.latitude,
-                    longitude: eq.longitude,
-                    eventID: eq.eventID,
-                    xVal: eq[xAxisField],
-                    yVal: eq[yAxisField],
-                    zVal: eq[zAxisField],
-                    cVal: cVal
-                }
-            };
-        }).filter(p => p !== null);
+                return {
+                    x, y, z,
+                    colorValue: cVal,
+                    marker: {
+                        radius: getMarkerRadius(eq.magnitude)
+                    },
+                    custom: {
+                        magnitude: eq.magnitude,
+                        depth: eq.depth,
+                        latitude: eq.latitude,
+                        longitude: eq.longitude,
+                        eventID: eq.eventID,
+                        xVal: eq[xAxisField],
+                        yVal: eq[yAxisField],
+                        zVal: eq[zAxisField],
+                        cVal: cVal
+                    }
+                };
+            }).filter((p): p is any => p !== null);
+        };
+
+        const data = transformData(processedEarthquakes);
 
         return {
             chart: {
@@ -144,73 +136,67 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                     }
                 }
             },
-            // ... [title/subtitle unchanged] ...
             title: { text: '' },
             subtitle: { text: 'Drag to rotate • Scroll to zoom', style: { fontSize: '12px', color: '#666' } },
             credits: { enabled: false },
-            exporting: { enabled: false },
+            exporting: {
+                enabled: true,
+                sourceWidth: 2400,
+                sourceHeight: 1600,
+                scale: 2,
+                chartOptions: {
+                    title: { text: '3D Earthquake Distribution' },
+                    subtitle: { text: '' },
+                    style: { fontFamily: 'Arial, Helvetica, sans-serif' },
+                    legend: { itemStyle: { fontSize: '18px' } },
+                    xAxis: { labels: { style: { fontSize: '14px' } }, title: { style: { fontSize: '18px' } } },
+                    yAxis: { labels: { style: { fontSize: '14px' } }, title: { style: { fontSize: '18px' } } },
+                    zAxis: { labels: { style: { fontSize: '14px' } }, title: { style: { fontSize: '18px' } } },
+                    // Use full data for export if available
+                    ...(fullDataForExport ? {
+                        series: [{
+                            type: 'scatter3d',
+                            data: transformData(fullDataForExport)
+                        }]
+                    } : {})
+                }
+            },
             xAxis: {
                 type: isXTime ? 'datetime' : 'linear',
                 min: minX,
                 max: maxX,
-                title: {
-                    text: xAxisField.toString()
-                },
+                title: { text: xAxisField.toString() },
                 gridLineWidth: 1,
-                labels: {
-                    skew3d: true,
-                    format: isXTime ? undefined : '{value}'
-                }
+                labels: { skew3d: true, format: isXTime ? undefined : '{value}' }
             },
             yAxis: {
                 type: isYTime ? 'datetime' : 'linear',
                 min: minY,
                 max: maxY,
-                title: {
-                    text: yAxisField.toString()
-                },
-                labels: {
-                    skew3d: true,
-                    format: isYTime ? undefined : '{value}'
-                }
+                title: { text: yAxisField.toString() },
+                labels: { skew3d: true, format: isYTime ? undefined : '{value}' }
             },
             zAxis: {
                 type: isZTime ? 'datetime' : 'linear',
                 min: minZ,
                 max: maxZ,
-                title: {
-                    text: zAxisField.toString()
-                },
-                reversed: zAxisField === 'depth', // Only reverse if depth
+                title: { text: zAxisField.toString() },
+                reversed: zAxisField === 'depth',
                 showFirstLabel: false,
-                labels: {
-                    skew3d: true,
-                    format: isZTime ? undefined : '{value}'
-                }
+                labels: { skew3d: true, format: isZTime ? undefined : '{value}' }
             },
             colorAxis: {
                 min: minColor,
                 max: maxColor,
-                type: (isColorTime ? 'datetime' : 'linear') as any, // Cast to any to avoid strict type mismatch
+                type: (isColorTime ? 'datetime' : 'linear') as any,
                 reversed: colorField === 'depth',
                 stops: [
-                    [0, '#440154'],
-                    [0.1, '#482878'],
-                    [0.2, '#3e4989'],
-                    [0.3, '#31688e'],
-                    [0.4, '#26828e'],
-                    [0.5, '#1f9e89'],
-                    [0.6, '#35b779'],
-                    [0.7, '#6ece58'],
-                    [0.8, '#b5de2b'],
-                    [1, '#fde724']
+                    [0, '#440154'], [0.1, '#482878'], [0.2, '#3e4989'], [0.3, '#31688e'],
+                    [0.4, '#26828e'], [0.5, '#1f9e89'], [0.6, '#35b779'], [0.7, '#6ece58'],
+                    [0.8, '#b5de2b'], [1, '#fde724']
                 ],
-                labels: {
-                    format: isColorTime ? undefined : '{value}'
-                },
-                title: {
-                    text: colorField.toString()
-                }
+                labels: { format: isColorTime ? undefined : '{value}' },
+                title: { text: colorField.toString() }
             },
             legend: {
                 enabled: true,
@@ -223,6 +209,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                 formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
+                    if (!custom) return '';
                     return `
                         <div style="padding: 4px;">
                             <strong>M${custom.magnitude.toFixed(1)}</strong><br/>
@@ -239,12 +226,12 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
             },
             plotOptions: {
                 series: {
-                    turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
+                    turboThreshold: 50000,
+                    boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD
                 },
-                scatter3d: {  // ✅ Changed to scatter3d
+                scatter3d: {
                     marker: {
-                        fillOpacity: 0.7, // Slight transparency to see overlapping points
+                        fillOpacity: 0.7,
                         lineWidth: 0.5,
                         lineColor: 'rgba(255,255,255,0.3)'
                     }
@@ -258,10 +245,11 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
             }],
             accessibility: {
                 enabled: true,
-                description: '3D visualization of earthquake distribution showing longitude (X), latitude (Y), and depth (Z, inverted). Marker size represents magnitude. Drag to rotate, scroll to zoom.'
+                description: '3D visualization of earthquake distribution.'
             }
         };
-    }, [earthquakes, xAxisField, yAxisField, zAxisField, colorField]); // Dependencies updated
+    }, [earthquakes, xAxisField, yAxisField, zAxisField, colorField, fullDataForExport]);
+    // Dependencies updated
 
     // Add interactive rotation and zoom functionality
     useEffect(() => {

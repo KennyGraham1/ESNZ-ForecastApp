@@ -2,18 +2,18 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Table, ArrowRight, Check, AlertCircle, Info } from 'lucide-react';
-import { 
-    ColumnMapping, 
-    MappingConfiguration, 
-    MappableField, 
-    REQUIRED_FIELDS, 
-    OPTIONAL_FIELDS 
+import {
+    ColumnMapping,
+    MappingConfiguration,
+    MappableField,
+    REQUIRED_FIELDS,
+    OPTIONAL_FIELDS
 } from '@/types/csvUpload';
-import { 
-    FilePreviewResult, 
-    ColumnSuggestions, 
-    suggestColumnMappings, 
-    getMissingRequiredFields 
+import {
+    FilePreviewResult,
+    ColumnSuggestions,
+    suggestColumnMappings,
+    getMissingRequiredFields
 } from '@/lib/csvPreview';
 
 interface ColumnMappingStepProps {
@@ -44,25 +44,25 @@ const FIELD_DESCRIPTIONS: Record<MappableField, string> = {
     mmi: 'Modified Mercalli Intensity',
 };
 
-export default function ColumnMappingStep({ 
-    preview, 
-    onMappingChange, 
-    initialMapping 
+export default function ColumnMappingStep({
+    preview,
+    onMappingChange,
+    initialMapping
 }: ColumnMappingStepProps) {
     // Initialize with suggestions
-    const suggestions = useMemo(() => 
-        suggestColumnMappings(preview.headers), 
+    const suggestions = useMemo(() =>
+        suggestColumnMappings(preview.headers),
         [preview.headers]
     );
-    
+
     const [mappings, setMappings] = useState<ColumnMapping[]>(
         initialMapping?.columns || suggestions.mappings
     );
-    
+
     const [useSplitDateTime, setUseSplitDateTime] = useState(
         initialMapping?.useSplitDateTime ?? suggestions.hasSplitDateTime
     );
-    
+
     const [splitDateColumns, setSplitDateColumns] = useState({
         year: initialMapping?.yearColumn || suggestions.splitDateTimeColumns?.year || '',
         month: initialMapping?.monthColumn || suggestions.splitDateTimeColumns?.month || '',
@@ -71,13 +71,17 @@ export default function ColumnMappingStep({
         minute: initialMapping?.minuteColumn || suggestions.splitDateTimeColumns?.minute || '',
         second: initialMapping?.secondColumn || suggestions.splitDateTimeColumns?.second || '',
     });
-    
+
+    // Custom field state
+    const [customField, setCustomField] = useState<string>('');
+    const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
+
     // Calculate missing fields
-    const missingFields = useMemo(() => 
+    const missingFields = useMemo(() =>
         getMissingRequiredFields(mappings, useSplitDateTime),
         [mappings, useSplitDateTime]
     );
-    
+
     // Get list of already-mapped fields
     const mappedFields = useMemo(() => {
         const fields = new Set<MappableField>();
@@ -91,7 +95,7 @@ export default function ColumnMappingStep({
         }
         return fields;
     }, [mappings, useSplitDateTime]);
-    
+
     // Update parent when mappings change
     useEffect(() => {
         const config: MappingConfiguration = {
@@ -106,32 +110,52 @@ export default function ColumnMappingStep({
         };
         onMappingChange(config);
     }, [mappings, useSplitDateTime, splitDateColumns, onMappingChange]);
-    
+
     // Handle column selection toggle
     const handleToggleSelect = (index: number) => {
-        setMappings(prev => prev.map((m, i) => 
+        setMappings(prev => prev.map((m, i) =>
             i === index ? { ...m, isSelected: !m.isSelected } : m
         ));
     };
-    
+
+
+
     // Handle field mapping change
-    const handleFieldChange = (index: number, field: MappableField | null) => {
-        setMappings(prev => prev.map((m, i) => 
-            i === index ? { ...m, targetField: field, isSelected: field !== null || m.isSelected } : m
+    const handleFieldChange = (index: number, field: string | null) => {
+        if (field === '__custom__') {
+            setActiveRowIndex(index);
+            setCustomField(mappings[index].sourceColumn); // Default to source name
+            return;
+        }
+
+        setMappings(prev => prev.map((m, i) =>
+            i === index ? { ...m, targetField: field as MappableField, isSelected: field !== null || m.isSelected } : m
         ));
     };
-    
+
+    // Confirm custom field
+    const handleCustomFieldConfirm = () => {
+        if (activeRowIndex !== null && customField.trim()) {
+            const fieldName = customField.trim();
+            setMappings(prev => prev.map((m, i) =>
+                i === activeRowIndex ? { ...m, targetField: fieldName, isSelected: true } : m
+            ));
+            setActiveRowIndex(null);
+            setCustomField('');
+        }
+    };
+
     // Get available fields for dropdown (excluding already-mapped ones)
     const getAvailableFields = (currentField: MappableField | null) => {
         const allFields: (MappableField | null)[] = [null, ...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
-        return allFields.filter(f => 
-            f === null || 
-            f === currentField || 
+        return allFields.filter(f =>
+            f === null ||
+            f === currentField ||
             !mappedFields.has(f) ||
             (f === 'time' && useSplitDateTime)
         );
     };
-    
+
     return (
         <div className="space-y-4">
             {/* Header */}
@@ -139,7 +163,7 @@ export default function ColumnMappingStep({
                 <Table className="w-5 h-5" />
                 <h3 className="font-semibold">Map Columns to Earthquake Fields</h3>
             </div>
-            
+
             {/* Missing fields warning */}
             {missingFields.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
@@ -150,7 +174,7 @@ export default function ColumnMappingStep({
                     </div>
                 </div>
             )}
-            
+
             {/* Split DateTime option */}
             {suggestions.hasSplitDateTime && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -220,11 +244,10 @@ export default function ColumnMappingStep({
                                 return (
                                     <tr
                                         key={mapping.sourceColumn}
-                                        className={`${
-                                            mapping.isSelected
-                                                ? 'bg-green-50'
-                                                : 'bg-white hover:bg-gray-50'
-                                        }`}
+                                        className={`${mapping.isSelected
+                                            ? 'bg-green-50'
+                                            : 'bg-white hover:bg-gray-50'
+                                            }`}
                                     >
                                         {/* Selection checkbox */}
                                         <td className="px-3 py-2">
@@ -252,30 +275,57 @@ export default function ColumnMappingStep({
 
                                         {/* Target field dropdown */}
                                         <td className="px-3 py-2">
-                                            <select
-                                                value={mapping.targetField || ''}
-                                                onChange={(e) => handleFieldChange(
-                                                    index,
-                                                    e.target.value as MappableField || null
-                                                )}
-                                                className={`w-full text-sm p-1.5 border rounded focus:ring-2 ${
-                                                    isRequired
-                                                        ? 'border-green-300 bg-green-50 focus:ring-green-500'
-                                                        : 'border-gray-300 focus:ring-blue-500'
-                                                }`}
-                                            >
-                                                <option value="">-- Not mapped --</option>
-                                                {getAvailableFields(mapping.targetField).filter(f => f !== null).map(field => (
-                                                    <option key={field} value={field!}>
-                                                        {FIELD_LABELS[field!]}
-                                                        {(REQUIRED_FIELDS as readonly string[]).includes(field!) ? ' *' : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {mapping.targetField && (
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    {FIELD_DESCRIPTIONS[mapping.targetField]}
-                                                </p>
+                                            {activeRowIndex === index ? (
+                                                <div className="flex gap-1">
+                                                    <input
+                                                        type="text"
+                                                        value={customField}
+                                                        onChange={(e) => setCustomField(e.target.value)}
+                                                        className="w-full text-sm p-1.5 border rounded focus:ring-2 border-blue-300 focus:ring-blue-500"
+                                                        placeholder="Field name"
+                                                        autoFocus
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleCustomFieldConfirm();
+                                                            if (e.key === 'Escape') setActiveRowIndex(null);
+                                                        }}
+                                                    />
+                                                    <button
+                                                        onClick={handleCustomFieldConfirm}
+                                                        className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                                                    >
+                                                        Add
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <select
+                                                        value={mapping.targetField || ''}
+                                                        onChange={(e) => handleFieldChange(
+                                                            index,
+                                                            e.target.value
+                                                        )}
+                                                        className={`w-full text-sm p-1.5 border rounded focus:ring-2 ${isRequired
+                                                            ? 'border-green-300 bg-green-50 focus:ring-green-500'
+                                                            : 'border-gray-300 focus:ring-blue-500'
+                                                            }`}
+                                                    >
+                                                        <option value="">-- Not mapped --</option>
+                                                        {getAvailableFields(mapping.targetField).filter(f => f !== null).map(field => (
+                                                            <option key={field} value={field!}>
+                                                                {FIELD_LABELS[field!] || field!}
+                                                                {(REQUIRED_FIELDS as readonly string[]).includes(field!) ? ' *' : ''}
+                                                            </option>
+                                                        ))}
+                                                        <option value="__custom__" className="font-semibold text-blue-600">
+                                                            + Add custom field...
+                                                        </option>
+                                                    </select>
+                                                    {mapping.targetField && FIELD_DESCRIPTIONS[mapping.targetField] && (
+                                                        <p className="text-xs text-gray-500 mt-0.5">
+                                                            {FIELD_DESCRIPTIONS[mapping.targetField]}
+                                                        </p>
+                                                    )}
+                                                </>
                                             )}
                                         </td>
 

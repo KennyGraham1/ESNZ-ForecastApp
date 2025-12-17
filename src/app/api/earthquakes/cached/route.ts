@@ -26,6 +26,7 @@ const MAX_FETCH_DAYS = 36500; // Maximum 100 years of data (safety limit)
 // In-memory cache to avoid reading the large file on every request
 let memoryCache: CacheData | null = null;
 let memoryCacheLoadTime: number = 0;
+// Force reload trigger
 const MEMORY_CACHE_TTL = 1000 * 60 * 60; // 1 hour - keep in memory longer for better performance
 
 // OPTIMIZATION: Request coalescing - prevent multiple concurrent disk reads

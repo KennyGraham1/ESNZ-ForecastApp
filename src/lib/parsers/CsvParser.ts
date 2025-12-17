@@ -301,6 +301,21 @@ export class CsvParser implements FileParser {
                         mmi: mmi && !isNaN(mmi) ? mmi : undefined
                     };
 
+                    // Populate custom fields
+                    for (const [field, index] of Object.entries(fieldIndices)) {
+                        if (['latitude', 'longitude', 'time', 'depth', 'magnitude', 'eventID', 'locality', 'mmi'].includes(field)) {
+                            continue;
+                        }
+
+                        const val = values[index];
+                        // Try to parse as number if it looks like one
+                        if (val && !isNaN(Number(val)) && val.trim() !== '') {
+                            earthquake[field] = Number(val);
+                        } else {
+                            earthquake[field] = val;
+                        }
+                    }
+
                     earthquakes.push(earthquake);
                     stats.validRows++;
 

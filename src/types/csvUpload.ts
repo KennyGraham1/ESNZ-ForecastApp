@@ -11,7 +11,7 @@ export const OPTIONAL_FIELDS = ['locality', 'mmi'] as const;
 export type OptionalField = typeof OPTIONAL_FIELDS[number];
 
 // All mappable fields
-export type MappableField = RequiredField | OptionalField;
+export type MappableField = RequiredField | OptionalField | (string & {});
 
 /**
  * Column mapping from source column to earthquake field
@@ -40,7 +40,7 @@ export interface MappingConfiguration {
 /**
  * Supported date format options
  */
-export type DateFormatOption = 
+export type DateFormatOption =
     | 'auto'           // Auto-detect
     | 'dd/mm/yyyy'     // Day/Month/Year (NZ/UK format)
     | 'mm/dd/yyyy'     // Month/Day/Year (US format)
@@ -64,7 +64,7 @@ export const DATE_FORMAT_OPTIONS: { value: DateFormatOption; label: string; exam
 /**
  * Coordinate format options
  */
-export type CoordinateFormatOption = 
+export type CoordinateFormatOption =
     | 'decimal'        // Decimal degrees (e.g., -41.2865)
     | 'dms'            // Degrees/Minutes/Seconds (e.g., 41°17'11"S)
     | 'dm';            // Degrees/Decimal Minutes (e.g., 41°17.183'S)
@@ -82,21 +82,21 @@ export interface ValidationRules {
     // Magnitude validation
     minMagnitude: number;
     maxMagnitude: number;
-    
+
     // Depth validation (km)
     minDepth: number;
     maxDepth: number;
-    
+
     // Geographic bounds
     minLatitude: number;
     maxLatitude: number;
     minLongitude: number;
     maxLongitude: number;
-    
+
     // Time validation
     allowFutureDates: boolean;
     minYear: number;
-    
+
     // Skip invalid rows or fail on first error
     skipInvalidRows: boolean;
 }
@@ -148,25 +148,25 @@ export interface PreviewStatistics {
     validRows: number;
     invalidRows: number;
     skippedRows: number;
-    
+
     // Date range
     minDate: Date | null;
     maxDate: Date | null;
-    
+
     // Magnitude range
     minMagnitude: number | null;
     maxMagnitude: number | null;
-    
+
     // Depth range
     minDepth: number | null;
     maxDepth: number | null;
-    
+
     // Geographic bounds
     minLatitude: number | null;
     maxLatitude: number | null;
     minLongitude: number | null;
     maxLongitude: number | null;
-    
+
     // Sample issues/warnings
     sampleWarnings: string[];
 }
