@@ -218,6 +218,12 @@ const COLUMN_ALIASES: Record<MappableField, string[]> = {
     eventID: ['eventid', 'event_id', 'id', 'publicid', 'public_id', 'quakeid', 'earthquake_id'],
     locality: ['locality', 'location', 'place', 'region', 'area', 'description'],
     mmi: ['mmi', 'intensity', 'modified_mercalli'],
+    azimuthalGap: ['azimuthal_gap', 'azimuthalgap', 'gap', 'azimuthal', 'az_gap'],
+    magnitudeType: ['magnitude_type', 'magnitudetype', 'mag_type', 'type_mag', 'magtype'],
+    evaluationStatus: ['evaluation_status', 'evaluationstatus', 'status', 'review_status'],
+    usedStationCount: ['used_station_count', 'station_count', 'stations', 'used_stations', 'nsta', 'no_stations'],
+    minimumDistance: ['minimum_distance', 'min_distance', 'mindistance', 'min_dist', 'distance_min'],
+    standardError: ['standard_error', 'standarderror', 'stderr', 'rms', 'se', 'std_error'],
 };
 
 /**

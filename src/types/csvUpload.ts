@@ -7,7 +7,7 @@ export const REQUIRED_FIELDS = ['latitude', 'longitude', 'depth', 'magnitude', '
 export type RequiredField = typeof REQUIRED_FIELDS[number];
 
 // Optional earthquake fields
-export const OPTIONAL_FIELDS = ['locality', 'mmi'] as const;
+export const OPTIONAL_FIELDS = ['locality', 'mmi', 'azimuthalGap', 'magnitudeType', 'evaluationStatus', 'usedStationCount', 'minimumDistance', 'standardError'] as const;
 export type OptionalField = typeof OPTIONAL_FIELDS[number];
 
 // All mappable fields

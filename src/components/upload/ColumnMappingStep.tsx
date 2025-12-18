@@ -31,6 +31,12 @@ const FIELD_LABELS: Record<MappableField, string> = {
     eventID: 'Event ID',
     locality: 'Location/Locality',
     mmi: 'MMI (Intensity)',
+    azimuthalGap: 'Azimuthal Gap',
+    magnitudeType: 'Magnitude Type',
+    evaluationStatus: 'Evaluation Status',
+    usedStationCount: 'Station Count',
+    minimumDistance: 'Min Distance',
+    standardError: 'Standard Error',
 };
 
 const FIELD_DESCRIPTIONS: Record<MappableField, string> = {
@@ -42,6 +48,12 @@ const FIELD_DESCRIPTIONS: Record<MappableField, string> = {
     eventID: 'Unique identifier for the event',
     locality: 'Location description or place name',
     mmi: 'Modified Mercalli Intensity',
+    azimuthalGap: 'Azimuthal gap in degrees',
+    magnitudeType: 'Type of magnitude (e.g., M, ML, Mw)',
+    evaluationStatus: 'Status (preliminary, confirmed)',
+    usedStationCount: 'Number of stations used',
+    minimumDistance: 'Distance to closest station',
+    standardError: 'Standard error of the location',
 };
 
 export default function ColumnMappingStep({

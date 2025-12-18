@@ -8,14 +8,14 @@ import StatsPanel from '@/components/sandbox/StatsPanel';
 import { safeMinMax } from '@/utils/arrayMath';
 import Map from '@/components/Map';
 import ThreeDVisualization from '@/components/ThreeDVisualization';
-import MultiPanelTemporalPlot from '@/components/sandbox/MultiPanelTemporalPlot';
+import MultiPanelPlot from '@/components/sandbox/MultiPanelPlot';
 import DateRangeSlider from '@/components/common/DateRangeSlider';
 
 interface SandboxProps {
     earthquakes: EarthquakeData[];
 }
 
-type PlotType = 'scatter' | 'map' | 'histogram' | '3d' | 'multi-temporal';
+type PlotType = 'scatter' | 'map' | 'histogram' | '3d' | 'multi-panel';
 
 // Color Palettes
 const PALETTES = {
@@ -74,6 +74,13 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const [multiField2, setMultiField2] = useState<keyof EarthquakeData>('latitude');
     const [multiField3, setMultiField3] = useState<keyof EarthquakeData>('depth');
 
+    const [multiAxisX, setMultiAxisX] = useState<keyof EarthquakeData>('time');
+
+    // Multi-Panel Styling
+    const [multiColorField, setMultiColorField] = useState<keyof EarthquakeData | undefined>(undefined);
+    const [multiSizeField, setMultiSizeField] = useState<keyof EarthquakeData | undefined>(undefined);
+    const [multiPalette, setMultiPalette] = useState<string>('Viridis');
+
     // Sampling Config (Fast Render)
     const [isSamplingEnabled, setIsSamplingEnabled] = useState<boolean>(true);
 
@@ -127,9 +134,9 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
         const core = new Set(['time', 'magnitude', 'depth', 'latitude', 'longitude', 'timeMs']);
         const dynamicFields = new Set<string>();
 
-        // Scan up to 50 events to find available fields
+        // Scan up to 100 events to find available fields
         // This ensures we catch fields even if the first event is missing them
-        const sampleSize = Math.min(earthquakes.length, 50);
+        const sampleSize = Math.min(earthquakes.length, 100);
 
         for (let i = 0; i < sampleSize; i++) {
             const eq = earthquakes[i];
@@ -272,7 +279,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 <button type="button" onClick={() => setPlotType('map')} className={`px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'map' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Map</button>
                                 <button type="button" onClick={() => setPlotType('histogram')} className={`px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'histogram' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Histogram</button>
                                 <button type="button" onClick={() => setPlotType('3d')} className={`px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === '3d' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>3D View</button>
-                                <button type="button" onClick={() => setPlotType('multi-temporal')} className={`col-span-2 px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'multi-temporal' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Multi-Temporal</button>
+                                <button type="button" onClick={() => setPlotType('multi-panel')} className={`col-span-2 px-3 py-2 text-sm font-medium border rounded-md transition-colors ${plotType === 'multi-panel' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}>Multi-Panel Analysis</button>
                             </div>
                         </div>
 
@@ -416,9 +423,19 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                         )}
 
                         {/* ---- Multi-Panel Controls ---- */}
-                        {plotType === 'multi-temporal' && (
+                        {plotType === 'multi-panel' && (
                             <div className="space-y-4 border-t pt-4">
                                 <h4 className="font-medium text-gray-700">Multi-Panel Configuration</h4>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">X Axis (Shared)</label>
+                                    <select
+                                        value={multiAxisX}
+                                        onChange={(e) => setMultiAxisX(e.target.value as any)}
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
+                                    >
+                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
+                                    </select>
+                                </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-500 mb-1">Top Panel (Y Axis)</label>
                                     <select
@@ -449,6 +466,40 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                         {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
                                     </select>
                                 </div>
+                                <div className="border-t pt-2 mt-2">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Color By</label>
+                                    <select
+                                        value={multiColorField || ''}
+                                        onChange={(e) => setMultiColorField(e.target.value ? e.target.value as any : undefined)}
+                                        className="block w-full border p-2 rounded text-sm mb-2"
+                                    >
+                                        <option value="">None (Default Colors)</option>
+                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
+                                    </select>
+
+                                    {multiColorField && (
+                                        <>
+                                            <label className="block text-xs font-medium text-gray-500 mb-1">Palette</label>
+                                            <select
+                                                value={multiPalette}
+                                                onChange={(e) => setMultiPalette(e.target.value)}
+                                                className="block w-full border p-2 rounded text-sm mb-2"
+                                            >
+                                                {Object.keys(PALETTES).map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                        </>
+                                    )}
+
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Size By (Dynamic)</label>
+                                    <select
+                                        value={multiSizeField || ''}
+                                        onChange={(e) => setMultiSizeField(e.target.value ? e.target.value as any : undefined)}
+                                        className="block w-full border p-2 rounded text-sm"
+                                    >
+                                        <option value="">None (Fixed Size)</option>
+                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
+                                    </select>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -463,6 +514,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 {plotType === 'map' && 'Geospatial View'}
                                 {plotType === 'histogram' && 'Distribution Analysis'}
                                 {plotType === '3d' && '3D Visualization'}
+                                {plotType === 'multi-panel' && 'Multi-Panel Analysis'}
                             </h2>
                             {filteredData.length > 0 && (
                                 <span className={`text-sm ${isSamplingEnabled && filteredData.length > SAMPLING_THRESHOLD ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
@@ -530,13 +582,17 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                             />
                         )}
 
-                        {plotType === 'multi-temporal' && (
-                            <MultiPanelTemporalPlot
+                        {plotType === 'multi-panel' && (
+                            <MultiPanelPlot
                                 earthquakes={displayData}
                                 fullDataForExport={exportData}
                                 field1={multiField1}
                                 field2={multiField2}
                                 field3={multiField3}
+                                xAxisField={multiAxisX}
+                                colorField={multiColorField}
+                                colorPalette={PALETTES[multiPalette as keyof typeof PALETTES]}
+                                sizeField={multiSizeField}
                             />
                         )}
                     </div>
