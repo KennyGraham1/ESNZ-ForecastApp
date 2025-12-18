@@ -9,6 +9,7 @@ import CumulativeAftershockPlot from '@/components/CumulativeAftershockPlot';
 import { MainEventInfo, OptimizationMethod } from '@/lib/analysis/omori';
 import RBush from 'rbush';
 import { getLocalityFromCoordinates } from '@/utils/nzRegions';
+import { REFERENCE_MODELS, ReferenceModel } from '@/lib/analysis/referenceModels';
 
 const historicalEvents = [
     {
@@ -125,6 +126,12 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
     // Shared Omori optimization parameters
     const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('hybrid');
     const [magnitudeCompleteness, setMagnitudeCompleteness] = useState<number | undefined>(undefined);
+    const [selectedReferenceModelId, setSelectedReferenceModelId] = useState<string>('');
+
+    const selectedReferenceModel = useMemo(() =>
+        REFERENCE_MODELS.find(m => m.id === selectedReferenceModelId) || null,
+        [selectedReferenceModelId]
+    );
 
     // Filtered aftershock sequence data from AftershockSequencePlot
     const [filteredSequenceData, setFilteredSequenceData] = useState<EarthquakeData[]>([]);
@@ -157,8 +164,8 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                     Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c;
         };
@@ -369,124 +376,124 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                     <div className="px-6 pb-6 border-t border-gray-100">
                         <div className="pt-5">
 
-                {recentSignificantEarthquakes.length > 0 ? (
-                    <div className="mb-6">
-                        <div className="flex items-center gap-2 mb-3">
-                            <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                                Recent Significant Earthquakes (M ≥ 5.5)
-                            </label>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-300">
-                                Declustered
-                            </span>
-                        </div>
-                        <p className="text-xs text-gray-600 mb-3 italic">
-                            Independent mainshocks only (Gardner-Knopoff declustering applied)
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {recentSignificantEarthquakes.map((eq, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => handleSelectRecent(eq)}
-                                    className="text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-blue-50 hover:border-blue-500 transition-all duration-200 hover:shadow-md"
-                                >
-                                    <div className="font-bold text-lg text-blue-600">M{eq.magnitude.toFixed(1)}</div>
-                                    <div className="text-sm text-gray-600 font-medium">{eq.dateString}</div>
-                                    <div className="text-xs text-gray-500 truncate mt-1">
-                                        {eq.locality && eq.locality !== 'Unknown Location'
-                                            ? eq.locality
-                                            : getLocalityFromCoordinates(eq.latitude, eq.longitude)}
+                            {recentSignificantEarthquakes.length > 0 ? (
+                                <div className="mb-6">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                                            Recent Significant Earthquakes (M ≥ 5.5)
+                                        </label>
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-300">
+                                            Declustered
+                                        </span>
                                     </div>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
-                        <p className="text-sm text-yellow-800 font-medium">
-                            ⚠️ No significant earthquakes (M ≥ 5.5) found in the current dataset.
-                        </p>
-                    </div>
-                )}
+                                    <p className="text-xs text-gray-600 mb-3 italic">
+                                        Independent mainshocks only (Gardner-Knopoff declustering applied)
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {recentSignificantEarthquakes.map((eq, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => handleSelectRecent(eq)}
+                                                className="text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-blue-50 hover:border-blue-500 transition-all duration-200 hover:shadow-md"
+                                            >
+                                                <div className="font-bold text-lg text-blue-600">M{eq.magnitude.toFixed(1)}</div>
+                                                <div className="text-sm text-gray-600 font-medium">{eq.dateString}</div>
+                                                <div className="text-xs text-gray-500 truncate mt-1">
+                                                    {eq.locality && eq.locality !== 'Unknown Location'
+                                                        ? eq.locality
+                                                        : getLocalityFromCoordinates(eq.latitude, eq.longitude)}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+                                    <p className="text-sm text-yellow-800 font-medium">
+                                        ⚠️ No significant earthquakes (M ≥ 5.5) found in the current dataset.
+                                    </p>
+                                </div>
+                            )}
 
-                <div className="mb-6">
-                    <button
-                        onClick={() => setShowHistoricalEvents(!showHistoricalEvents)}
-                        className="w-full flex items-center justify-between text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide hover:text-purple-600 transition-colors duration-200"
-                    >
-                        <span>Historical New Zealand Earthquakes</span>
-                        <svg
-                            className={`w-5 h-5 transition-transform duration-200 ${showHistoricalEvents ? 'rotate-180' : ''}`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </button>
-                    {showHistoricalEvents && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-fadeIn">
-                            {historicalEvents.map((eq, idx) => (
+                            <div className="mb-6">
                                 <button
-                                    key={idx}
-                                    onClick={() => {
-                                        setMainEventTime(eq.time);
-                                        setMainEventMag(eq.magnitude);
-                                        setMainEventName(eq.name);
-                                        setMainEventLat(eq.latitude);
-                                        setMainEventLon(eq.longitude);
-                                    }}
-                                    className="text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-purple-50 hover:border-purple-500 transition-all duration-200 hover:shadow-md h-full"
+                                    onClick={() => setShowHistoricalEvents(!showHistoricalEvents)}
+                                    className="w-full flex items-center justify-between text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide hover:text-purple-600 transition-colors duration-200"
                                 >
-                                    <div className="font-bold text-sm text-purple-600">{eq.name}</div>
-                                    <div className="text-xs text-gray-600 mt-1 font-medium">M{eq.magnitude} - {eq.time.split('T')[0]}</div>
+                                    <span>Historical New Zealand Earthquakes</span>
+                                    <svg
+                                        className={`w-5 h-5 transition-transform duration-200 ${showHistoricalEvents ? 'rotate-180' : ''}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
                                 </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                {showHistoricalEvents && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-fadeIn">
+                                        {historicalEvents.map((eq, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => {
+                                                    setMainEventTime(eq.time);
+                                                    setMainEventMag(eq.magnitude);
+                                                    setMainEventName(eq.name);
+                                                    setMainEventLat(eq.latitude);
+                                                    setMainEventLon(eq.longitude);
+                                                }}
+                                                className="text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-purple-50 hover:border-purple-500 transition-all duration-200 hover:shadow-md h-full"
+                                            >
+                                                <div className="font-bold text-sm text-purple-600">{eq.name}</div>
+                                                <div className="text-xs text-gray-600 mt-1 font-medium">M{eq.magnitude} - {eq.time.split('T')[0]}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Main Event Time (UTC)
-                        </label>
-                        <input
-                            type="datetime-local"
-                            value={mainEventTime}
-                            onChange={(e) => setMainEventTime(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Format: YYYY-MM-DD HH:MM</p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Main Event Magnitude
-                        </label>
-                        <input
-                            type="number"
-                            min="2"
-                            max="10"
-                            step="0.1"
-                            value={mainEventMag}
-                            onChange={(e) => setMainEventMag(parseFloat(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Typical range: 4.0 - 8.0</p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Event Name (Optional)
-                        </label>
-                        <input
-                            type="text"
-                            value={mainEventName}
-                            onChange={(e) => setMainEventName(e.target.value)}
-                            placeholder="e.g., Kaikoura Earthquake"
-                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">For labeling plots</p>
-                    </div>
-                </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Main Event Time (UTC)
+                                    </label>
+                                    <input
+                                        type="datetime-local"
+                                        value={mainEventTime}
+                                        onChange={(e) => setMainEventTime(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Format: YYYY-MM-DD HH:MM</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Main Event Magnitude
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="2"
+                                        max="10"
+                                        step="0.1"
+                                        value={mainEventMag}
+                                        onChange={(e) => setMainEventMag(parseFloat(e.target.value))}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Typical range: 4.0 - 8.0</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Event Name (Optional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={mainEventName}
+                                        onChange={(e) => setMainEventName(e.target.value)}
+                                        placeholder="e.g., Kaikoura Earthquake"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">For labeling plots</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -507,16 +514,43 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
                         <div className="mb-4">
-                            <h3 className="text-xl font-bold text-gray-800 mb-1">Omori&apos;s Law Analysis</h3>
-                            <p className="text-sm text-gray-500">Decay rate of aftershock activity</p>
+                            <h3 className="text-lg font-semibold text-gray-900">Omori-Utsu Law Analysis</h3>
+                            <p className="text-sm text-gray-500 mb-4">Decay rate of aftershock activity</p>
+
+                            {/* Reference Model Selector */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-gray-50 p-4 rounded-lg">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Reference Model
+                                    </label>
+                                    <select
+                                        value={selectedReferenceModelId}
+                                        onChange={(e) => setSelectedReferenceModelId(e.target.value)}
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                    >
+                                        <option value="">None</option>
+                                        {REFERENCE_MODELS.map(model => (
+                                            <option key={model.id} value={model.id}>
+                                                {model.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {selectedReferenceModel && (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            {selectedReferenceModel.description}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                         <OmoriLawPlot
-                            earthquakes={earthquakes}
+                            earthquakes={filteredSequenceData}
                             mainEvent={mainEvent}
                             optimizationMethod={optimizationMethod}
-                            magnitudeCompleteness={magnitudeCompleteness}
                             onOptimizationMethodChange={setOptimizationMethod}
+                            magnitudeCompleteness={magnitudeCompleteness}
                             onMagnitudeCompletenessChange={setMagnitudeCompleteness}
+                            referenceModel={selectedReferenceModel}
                         />
                     </div>
 

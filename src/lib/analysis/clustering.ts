@@ -1013,6 +1013,195 @@ function timeMagnitudeClustering(
     return { clusters, noiseIndices };
 }
 
+// ----------------------------------------------------------------------
+// HARDEBECK (2019) CLUSTERING
+// Based on "Updated California Aftershock Parameters" (2019)
+// Uses simple physical windowing:
+// 1. Mainshocks M >= 5 (filtered if within 3yr/5*RL of larger event)
+// 2. Aftershocks within 10 days and 3*RL of mainshock
+// 3. RL from Wells & Coppersmith (1994)
+// ----------------------------------------------------------------------
+
+function hardebeckClustering(
+    earthquakes: EarthquakeData[],
+    minMainMag: number = 5.0,
+    timeWindowDays: number = 10,
+    ruptureMult: number = 3
+): { clusters: number[][], noiseIndices: number[] } {
+    const n = earthquakes.length;
+    const labels = new Array(n).fill(-1); // -1 = unassigned/noise initially
+    const visited = new Array(n).fill(false);
+
+    // Sort by magnitude (descending) to process largest events first as potential mainshocks
+    // This makes it easier to respect the "larger event" exclusion rule
+    const sortedIndices = earthquakes.map((_, i) => i).sort((a, b) =>
+        earthquakes[b].magnitude - earthquakes[a].magnitude
+    );
+
+    // Wells & Coppersmith (1994) Rupture Length (Subsurface, All Slip Types)
+    // log10(RL) = -2.44 + 0.59 * M
+    const calculateRL = (mag: number): number => {
+        return Math.pow(10, -2.44 + 0.59 * mag);
+    };
+
+    // Haversine distance helper
+    const getHaversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371; // Earth radius in km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
+
+    // Helper: Distance in km
+    const dist = (i: number, j: number): number => {
+        return getHaversineDistance(
+            earthquakes[i].latitude, earthquakes[i].longitude,
+            earthquakes[j].latitude, earthquakes[j].longitude
+        );
+    };
+
+    let clusterId = 0;
+    const clusters: number[][] = [];
+    const mainshockIndices: number[] = [];
+
+    // First pass: Identify potential mainshocks
+    // Hardebeck: "M >= 5, excluding events that occur in the 3 years following a 
+    // larger event and within 5 times the rupture length of that larger event."
+    // Since we act on a static catalog, we can process this hierarchically.
+
+    // We strictly follow the definition for "Mainshocks" to start clusters.
+    // However, an event can be an aftershock of a larger event AND a mainshock of its own sub-sequence.
+    // Clarification from paper: "We define mainshocks as all earthquakes M>=5, excluding events..."
+    // This implies exclusive categorization for the purpose of parameter fitting. 
+    // But for CLUSTERING visualization, usually we want to group associated events.
+    // We will form clusters around these valid mainshocks.
+
+    const validMainshocks = new Set<number>();
+
+    // Process from largest to smallest to handle the "larger event" exclusion easily
+    for (const idx of sortedIndices) {
+        const eq = earthquakes[idx];
+        if (eq.magnitude < minMainMag) continue;
+
+        // Check if this event is "suppressed" by a larger, earlier event
+        // We check against all ALREADY ACCEPTED mainshocks that are LARGER
+        // (Since we sort by Mag, all previously processed validMainshocks are >= this mag)
+        // Wait, the rule is "following a LARGER event". The larger event might be later in the array if we sort by time?
+        // No, we need to check against ANY larger event in the catalog that occurred BEFORE this one.
+
+        // Actually, let's optimize:
+        // For each candidate M>=5:
+        //   Check if there exists any OTHER event j where:
+        //     Mag(j) > Mag(i)
+        //     Time(j) < Time(i) AND Time(i) - Time(j) < 3 years
+        //     Dist(i, j) < 5 * RL(j)
+
+        // This check could be O(N^2) worst case.
+        // Given we only care about M>=5 candidates, N is small enough for typical catalogs.
+
+        // Time in ms
+        const t_i = new Date(eq.time).getTime();
+        const threeYearsMs = 3 * 365.25 * 24 * 60 * 60 * 1000;
+
+        let isSuppressed = false;
+
+        // Check against all other events that are larger and earlier
+        // We can just iterate through sortedIndices upwards (larger mags) 
+        // effectively, but we need time check.
+        // Let's just iterate all earthquakes M > eq.magnitude
+        // Optimize: verify against sortedIndices until we hit current mag
+
+        for (const j of sortedIndices) {
+            if (earthquakes[j].magnitude <= eq.magnitude) break; // Reached smaller/equal mags
+
+            const t_j = new Date(earthquakes[j].time).getTime();
+
+            // "Following a larger event"
+            if (t_i > t_j && (t_i - t_j) < threeYearsMs) {
+                const RL_j = calculateRL(earthquakes[j].magnitude);
+                const distance = dist(idx, j);
+                if (distance < 5 * RL_j) {
+                    isSuppressed = true;
+                    break;
+                }
+            }
+        }
+
+        if (!isSuppressed) {
+            validMainshocks.add(idx);
+        }
+    }
+
+    // Second Pass: Form clusters around valid mainshocks
+    // "Aftershocks are defined as all events within 10 days after a mainshock 
+    // and 3 times the rupture length... The smallest radius... is 10 km."
+
+    // We process Valid Mainshocks, maybe sorted by Time or Mag?
+    // A single event could theoretically be in multiple windows. 
+    // Standard clustering assigns to the strongest link or first link. 
+    // Hardebeck (2019) doesn't specify declustering for the whole catalog, 
+    // just identifying sequences for specific mainshocks.
+    // For this generic clustering tool, we will assign to the LARGEST eligible mainshock (most dominant).
+    // So we iterate validMainshocks by Magnitude descending.
+
+    const sortedMainshocks = Array.from(validMainshocks).sort((a, b) =>
+        earthquakes[b].magnitude - earthquakes[a].magnitude
+    );
+
+    for (const mIdx of sortedMainshocks) {
+        if (labels[mIdx] !== -1) continue; // Already assigned to a larger cluster?
+
+        // Start a new cluster
+        clusterId++;
+        const currentCluster: number[] = [mIdx];
+        labels[mIdx] = clusterId;
+
+        const mainshock = earthquakes[mIdx];
+        const t_m = new Date(mainshock.time).getTime();
+        const RL = calculateRL(mainshock.magnitude);
+        const radius = Math.max(10, ruptureMult * RL); // Minimum 10km constraint from paper
+        const windowMs = timeWindowDays * 24 * 60 * 60 * 1000;
+
+        // Find aftershocks
+        // Optimization: Use R-tree if available, but for now simple loop is safe
+        // Check all unassigned events (or reassignment allowed? usually no for simple partition)
+        for (let i = 0; i < n; i++) {
+            if (i === mIdx) continue;
+            if (labels[i] !== -1) continue; // Already clustered
+
+            const candidate = earthquakes[i];
+            const t_c = new Date(candidate.time).getTime();
+
+            // "Within 10 days AFTER"
+            if (t_c > t_m && (t_c - t_m) <= windowMs) {
+                const d = dist(mIdx, i);
+                if (d <= radius) {
+                    labels[i] = clusterId;
+                    currentCluster.push(i);
+                }
+            }
+        }
+
+        if (currentCluster.length > 0) {
+            clusters.push(currentCluster);
+        }
+    }
+
+    // Collect noise
+    const noiseIndices: number[] = [];
+    for (let i = 0; i < n; i++) {
+        if (labels[i] === -1) noiseIndices.push(i);
+    }
+
+    return { clusters, noiseIndices };
+}
+
+
 // Get algorithm description for metadata
 
 function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
@@ -1029,7 +1218,8 @@ function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
         'step-time': 'STEP Time Clustering - Clusters earthquakes in temporal order, extending clusters based on magnitude-dependent spatial windows',
         'nearest-neighbor': 'Nearest-Neighbor Clustering (Zaliapin-Ben-Zion) - Identifies clusters based on space-time-magnitude nearest-neighbor distances',
         'st-dbscan': 'ST-DBSCAN - Density-based clustering with both spatial and temporal thresholds',
-        'tmc': 'Time Magnitude Clustering (TMC) - Reasenberg style clustering with magnitude-dependent time windows'
+        'tmc': 'Time-Magnitude Clustering (Reasenberg)',
+        'hardebeck-2019': 'Hardebeck (2019) Rupture-Window Clustering'
     };
     return descriptions[algorithm] || 'Unknown algorithm';
 }
@@ -1123,6 +1313,10 @@ export function calculateSpatialClustering(
     let tmcP1 = 0.99;
     let tmcXk = 0.5;
     let tmcMinMag = 1.5;
+    // Hardebeck variables
+    let hardebeckMinMag = 5.0;
+    let hardebeckTimeWindow = 10;
+    let hardebeckRuptureMult = 3;
 
     if (typeof optionsOrEpsilon !== 'number') {
         const opts = optionsOrEpsilon || {};
@@ -1133,6 +1327,9 @@ export function calculateSpatialClustering(
         tmcP1 = opts.tmcP1 ?? 0.99;
         tmcXk = opts.tmcXk ?? 0.5;
         tmcMinMag = opts.tmcMinMag ?? 1.5;
+        hardebeckMinMag = opts.hardebeckMinMag ?? 5.0;
+        hardebeckTimeWindow = opts.hardebeckTimeWindow ?? 10;
+        hardebeckRuptureMult = opts.hardebeckRuptureMult ?? 3;
     }
 
     // Prepare data for clustering (longitude, latitude)
@@ -1216,6 +1413,10 @@ export function calculateSpatialClustering(
         noiseIndices = result.noiseIndices;
     } else if (algorithm === 'tmc') {
         const result = timeMagnitudeClustering(earthquakes, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, tmcMinMag);
+        clusters = result.clusters;
+        noiseIndices = result.noiseIndices;
+    } else if (algorithm === 'hardebeck-2019') {
+        const result = hardebeckClustering(earthquakes, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult);
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
     } else {

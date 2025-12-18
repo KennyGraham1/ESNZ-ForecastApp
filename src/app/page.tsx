@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useCachedEarthquakes, refreshEarthquakeCache } from '@/hooks/useCachedEarthquakes';
 import { useQueryClient } from '@tanstack/react-query';
 import FilterControls, { FilterOptions } from '@/components/FilterControls';
@@ -14,7 +14,8 @@ import CacheIndicator from '@/components/CacheIndicator';
 import { PerformanceDebugPanel } from '@/components/PerformanceDebugPanel';
 import CatalogUpload from '@/components/CatalogUpload';
 import { EarthquakeData } from '@/types/earthquake';
-import { Upload } from 'lucide-react';
+import { Upload, CalendarDays } from 'lucide-react';
+import { format } from 'date-fns';
 
 const TABS = [
   { id: 'basic', label: 'Basic Dashboard' },
@@ -37,8 +38,48 @@ export default function Home() {
   const [uploadedFilename, setUploadedFilename] = useState<string>('');
   const [showUploadDialog, setShowUploadDialog] = useState(false);
 
+  // Refs for custom date pickers
+  const startPickerRef = useRef<HTMLInputElement>(null);
+  const endPickerRef = useRef<HTMLInputElement>(null);
+
+  // Local text input state for manual typing (DD/MM/YYYY)
+  const [startInputVal, setStartInputVal] = useState('');
+  const [endInputVal, setEndInputVal] = useState('');
+
+  // Helper to format ISO YYYY-MM-DD to DD/MM/YYYY
+  const toDisplayDate = (isoDate?: string) => {
+    if (!isoDate) return '';
+    const [y, m, d] = isoDate.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  // Helper to parse DD/MM/YYYY to ISO YYYY-MM-DD
+  const parseDisplayDate = (displayDate: string) => {
+    const parts = displayDate.split('/');
+    if (parts.length !== 3) return null;
+    const [d, m, y] = parts;
+    if (d.length > 2 || m.length > 2 || y.length !== 4) return null;
+
+    const numD = parseInt(d);
+    const numM = parseInt(m);
+    const numY = parseInt(y);
+
+    if (isNaN(numD) || isNaN(numM) || isNaN(numY)) return null;
+    if (numM < 1 || numM > 12) return null;
+    if (numD < 1 || numD > 31) return null; // Basic checks
+
+    // Pad with zeros
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${numY}-${pad(numM)}-${pad(numD)}`;
+  };
+
   // Filter options - now used for server-side filtering
-  const [filterOptions, setFilterOptions] = useState({
+  const [filterOptions, setFilterOptions] = useState<{
+    daysBack?: number;
+    minMagnitude: number;
+    startDate?: string;
+    endDate?: string;
+  }>({
     daysBack: 365,
     minMagnitude: 3
   });
@@ -46,6 +87,8 @@ export default function Home() {
   // Fetch the cached catalog with server-side filtering for better performance
   const { data: response, isLoading, error, refetch } = useCachedEarthquakes({
     daysBack: filterOptions.daysBack,
+    startDate: filterOptions.startDate,
+    endDate: filterOptions.endDate,
     minMagnitude: filterOptions.minMagnitude
   });
 
@@ -187,7 +230,47 @@ export default function Home() {
   }, [earthquakes, filters]);
 
   // Local state for the filter inputs (changed via dropdowns)
-  const [tempOptions, setTempOptions] = useState(filterOptions);
+  const [tempOptions, setTempOptions] = useState<{
+    daysBack?: number;
+    minMagnitude: number;
+    startDate?: string;
+    endDate?: string;
+    mode: 'preset' | 'custom';
+  }>({
+    ...filterOptions,
+    mode: filterOptions.daysBack ? 'preset' : 'custom',
+    // Initialize dates with defaults if not present
+    startDate: filterOptions.startDate,
+    endDate: filterOptions.endDate
+  });
+
+  // Sync text inputs with tempOptions when tempOptions changes (e.g. via picker or preset load)
+  // We only update if the parsed input value doesn't match the new iso value (to avoid overwriting active typing if logic overlaps, though here we prioritize the prop source of truth for simplicity)
+  useEffect(() => {
+    if (tempOptions.mode === 'custom') {
+      // Only update if the converted input value is different from the truth, 
+      // or if the input is empty (initial load).
+      // Actually, safe bet is to simple sync always unless focused? 
+      // For now, let's just sync. The user types -> updates tempOptions -> this effect runs.
+      // To prevent cursor jumping/reformatting while typing "01/01", we need to be careful.
+      // However, toDisplayDate converts "2023-01-01" to "01/01/2023".
+      // If user types "01/01/2023", it matches.
+      // If user types "1/1/2023" and we format to "01/01/2023", it changes.
+
+      // Better approach: Derived state or only sync on "external" change?
+      // Let's rely on checking if the *parsed* input matches current state before overwriting.
+
+      const currentParsedStart = parseDisplayDate(startInputVal);
+      if (currentParsedStart !== tempOptions.startDate) {
+        setStartInputVal(toDisplayDate(tempOptions.startDate));
+      }
+
+      const currentParsedEnd = parseDisplayDate(endInputVal);
+      if (currentParsedEnd !== tempOptions.endDate) {
+        setEndInputVal(toDisplayDate(tempOptions.endDate));
+      }
+    }
+  }, [tempOptions.startDate, tempOptions.endDate, tempOptions.mode]);
 
   // Handle manual refresh (incremental update - fetch only new events)
   const handleRefresh = async () => {
@@ -209,7 +292,21 @@ export default function Home() {
   // Handle "Load" button - just updates filter options (no API call)
   const handleLoad = () => {
     console.log('📊 Applying filters:', tempOptions);
-    setFilterOptions(tempOptions);
+    if (tempOptions.mode === 'preset') {
+      setFilterOptions({
+        daysBack: tempOptions.daysBack,
+        minMagnitude: tempOptions.minMagnitude,
+        startDate: undefined,
+        endDate: undefined
+      });
+    } else {
+      setFilterOptions({
+        daysBack: undefined,
+        minMagnitude: tempOptions.minMagnitude,
+        startDate: tempOptions.startDate,
+        endDate: tempOptions.endDate
+      });
+    }
   };
 
   if (isLoading) {
@@ -329,24 +426,106 @@ export default function Home() {
               )}
 
               {dataSource === 'geonet' && (
-                <div className="flex items-center gap-3 bg-slate-800 p-1.5 rounded-lg border border-slate-700">
-                  <span className="text-xs font-medium text-slate-400 pl-2 uppercase tracking-wider">GeoNet Data</span>
-                  <div className="h-4 w-px bg-slate-700 mx-1"></div>
-                  <select
-                    className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
-                    value={tempOptions.daysBack}
-                    onChange={(e) => setTempOptions(prev => ({ ...prev, daysBack: parseInt(e.target.value) }))}
-                  >
-                    <option value="30">Last 30 Days</option>
-                    <option value="90">Last 3 Months</option>
-                    <option value="180">Last 6 Months</option>
-                    <option value="365">Last Year</option>
-                    <option value="730">Last 2 Years</option>
-                    <option value="1825">Last 5 Years</option>
-                    <option value="3650">Last 10 Years</option>
-                    <option value="7300">Last 20 Years</option>
-                    <option value="10950">Last 30 Years</option>
-                  </select>
+                <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-800 p-1.5 rounded-lg border border-slate-700">
+                  <span className="text-xs font-medium text-slate-400 pl-2 uppercase tracking-wider hidden md:inline">GeoNet Data</span>
+                  <div className="h-4 w-px bg-slate-700 mx-1 hidden md:block"></div>
+
+                  {tempOptions.mode === 'preset' ? (
+                    <select
+                      className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
+                      value={tempOptions.daysBack || 'custom'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'custom') {
+                          setTempOptions(prev => ({ ...prev, mode: 'custom' }));
+                        } else {
+                          setTempOptions(prev => ({ ...prev, daysBack: parseInt(val), mode: 'preset' }));
+                        }
+                      }}
+                    >
+                      <option value="custom">Custom Range...</option>
+                      <option value="30">Last 30 Days</option>
+                      <option value="90">Last 3 Months</option>
+                      <option value="180">Last 6 Months</option>
+                      <option value="365">Last Year</option>
+                      <option value="730">Last 2 Years</option>
+                      <option value="1825">Last 5 Years</option>
+                      <option value="3650">Last 10 Years</option>
+                      <option value="7300">Last 20 Years</option>
+                      <option value="10950">Last 30 Years</option>
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {/* Start Date Custom Input */}
+                      <div className="relative group">
+                        <input
+                          type="text"
+                          className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1 pl-2 pr-8 w-28 placeholder-slate-500"
+                          value={startInputVal}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setStartInputVal(val); // Always allow typing
+                            const parsed = parseDisplayDate(val);
+                            if (parsed) {
+                              setTempOptions(prev => ({ ...prev, startDate: parsed }));
+                            }
+                          }}
+                          placeholder="DD/MM/YYYY"
+                        />
+                        <CalendarDays
+                          className="absolute right-2 top-1.5 w-4 h-4 text-slate-400 hover:text-white cursor-pointer"
+                          onClick={() => startPickerRef.current?.showPicker()}
+                        />
+                        <input
+                          ref={startPickerRef}
+                          type="date"
+                          className="sr-only" // Visually hidden but accessible via showPicker
+                          value={tempOptions.startDate || ''}
+                          onChange={(e) => setTempOptions(prev => ({ ...prev, startDate: e.target.value }))}
+                        />
+                      </div>
+
+                      <span className="text-slate-400">-</span>
+
+                      {/* End Date Custom Input */}
+                      <div className="relative group">
+                        <input
+                          type="text"
+                          className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1 pl-2 pr-8 w-28 placeholder-slate-500"
+                          value={endInputVal}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEndInputVal(val);
+                            const parsed = parseDisplayDate(val);
+                            if (parsed) {
+                              setTempOptions(prev => ({ ...prev, endDate: parsed }));
+                            }
+                          }}
+                          placeholder="DD/MM/YYYY"
+                        />
+                        <CalendarDays
+                          className="absolute right-2 top-1.5 w-4 h-4 text-slate-400 hover:text-white cursor-pointer"
+                          onClick={() => endPickerRef.current?.showPicker()}
+                        />
+                        <input
+                          ref={endPickerRef}
+                          type="date"
+                          className="sr-only"
+                          value={tempOptions.endDate || ''}
+                          onChange={(e) => setTempOptions(prev => ({ ...prev, endDate: e.target.value }))}
+                        />
+                      </div>
+
+                      <button
+                        onClick={() => setTempOptions(prev => ({ ...prev, mode: 'preset', daysBack: 365 }))}
+                        className="text-slate-400 hover:text-white"
+                        title="Back to presets"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+
                   <select
                     className="bg-slate-900 text-white text-sm border-slate-700 rounded focus:ring-blue-500 focus:border-blue-500 py-1"
                     value={tempOptions.minMagnitude}
@@ -426,16 +605,26 @@ export default function Home() {
                 <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-md border border-blue-200">
                   <span className="text-xs text-slate-600">Time Range:</span>
                   <span className="text-sm font-bold text-blue-700">
-                    {filterOptions.daysBack === 30 ? 'Last 30 Days' :
-                      filterOptions.daysBack === 90 ? 'Last 3 Months' :
-                        filterOptions.daysBack === 180 ? 'Last 6 Months' :
-                          filterOptions.daysBack === 365 ? 'Last Year' :
-                            filterOptions.daysBack === 730 ? 'Last 2 Years' :
-                              filterOptions.daysBack === 1825 ? 'Last 5 Years' :
-                                filterOptions.daysBack === 3650 ? 'Last 10 Years' :
-                                  filterOptions.daysBack === 7300 ? 'Last 20 Years' :
-                                    filterOptions.daysBack === 10950 ? 'Last 30 Years' :
-                                      `Last ${filterOptions.daysBack} Days`}
+                    {filterOptions.daysBack ? (
+                      filterOptions.daysBack === 30 ? 'Last 30 Days' :
+                        filterOptions.daysBack === 90 ? 'Last 3 Months' :
+                          filterOptions.daysBack === 180 ? 'Last 6 Months' :
+                            filterOptions.daysBack === 365 ? 'Last Year' :
+                              filterOptions.daysBack === 730 ? 'Last 2 Years' :
+                                filterOptions.daysBack === 1825 ? 'Last 5 Years' :
+                                  filterOptions.daysBack === 3650 ? 'Last 10 Years' :
+                                    filterOptions.daysBack === 7300 ? 'Last 20 Years' :
+                                      filterOptions.daysBack === 10950 ? 'Last 30 Years' :
+                                        `Last ${filterOptions.daysBack} Days`
+                    ) : (
+                      filterOptions.startDate && filterOptions.endDate ?
+                        (() => {
+                          const [y1, m1, d1] = filterOptions.startDate.split('-');
+                          const [y2, m2, d2] = filterOptions.endDate.split('-');
+                          return `${d1}/${m1}/${y1} - ${d2}/${m2}/${y2}`;
+                        })() :
+                        'Custom Range'
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-purple-50 rounded-md border border-purple-200">

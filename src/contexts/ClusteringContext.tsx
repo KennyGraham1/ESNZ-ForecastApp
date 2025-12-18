@@ -22,6 +22,10 @@ export interface ClusteringState {
     tmcTauMax: number;
     tmcP1: number;
     tmcXk: number;
+    // Hardebeck (2019) parameters
+    hardebeckMinMag: number;
+    hardebeckTimeWindow: number;
+    hardebeckRuptureMult: number;
 
     // Visualization Options
     includeNoise: boolean; // Whether to include noise points (cluster -1) in visualization
@@ -44,6 +48,9 @@ export interface ClusteringState {
     setTmcTauMax: (val: number) => void;
     setTmcP1: (val: number) => void;
     setTmcXk: (val: number) => void;
+    setHardebeckMinMag: (val: number) => void;
+    setHardebeckTimeWindow: (val: number) => void;
+    setHardebeckRuptureMult: (val: number) => void;
     setIncludeNoise: (include: boolean) => void;
     setSelectedIndices: (indices: Set<number>) => void;
     toggleSelection: (index: number) => void;
@@ -72,6 +79,10 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     const [tmcTauMax, setTmcTauMax] = useState(10);
     const [tmcP1, setTmcP1] = useState(0.99);
     const [tmcXk, setTmcXk] = useState(0.5);
+    // Hardebeck (2019) parameters
+    const [hardebeckMinMag, setHardebeckMinMag] = useState(5.0);
+    const [hardebeckTimeWindow, setHardebeckTimeWindow] = useState(10);
+    const [hardebeckRuptureMult, setHardebeckRuptureMult] = useState(3);
 
     // Visualization Options
     const [includeNoise, setIncludeNoise] = useState(true);
@@ -131,6 +142,9 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         tmcTauMax,
         tmcP1,
         tmcXk,
+        hardebeckMinMag,
+        hardebeckTimeWindow,
+        hardebeckRuptureMult,
         includeNoise,
         selectedIndices,
         setAlgorithm,
@@ -147,6 +161,9 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         setTmcTauMax,
         setTmcP1,
         setTmcXk,
+        setHardebeckMinMag,
+        setHardebeckTimeWindow,
+        setHardebeckRuptureMult,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -167,6 +184,9 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         tmcTauMax,
         tmcP1,
         tmcXk,
+        hardebeckMinMag,
+        hardebeckTimeWindow,
+        hardebeckRuptureMult,
         includeNoise,
         selectedIndicesKey,
         toggleSelection,

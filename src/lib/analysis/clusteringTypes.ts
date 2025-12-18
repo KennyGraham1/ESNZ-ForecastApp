@@ -11,7 +11,8 @@ export type ClusteringAlgorithm =
     | 'step-time'   // STEP Time clustering (seismology)
     | 'nearest-neighbor'
     | 'st-dbscan'   // Spatio-Temporal DBSCAN
-    | 'tmc';        // Time Magnitude Clustering (Reasenberg-style)
+    | 'tmc'         // Time Magnitude Clustering (Reasenberg-style)
+    | 'hardebeck-2019'; // Hardebeck (2019) updated window method
 
 export interface ClusterResult {
     labels: number[]; // Cluster label per event, -1 for noise/unassigned
@@ -51,4 +52,8 @@ export interface SpatialClusteringOptions {
     tmcP1?: number;          // Probability threshold (default: 0.99)
     tmcXk?: number;          // Magnitude scaling factor (default: 0.5)
     tmcMinMag?: number;      // Effective minimum magnitude (default: 1.5)
+    // Hardebeck (2019) parameters
+    hardebeckMinMag?: number; // Minimum mainshock magnitude (default: 5.0)
+    hardebeckTimeWindow?: number; // Aftershock time window in days (default: 10)
+    hardebeckRuptureMult?: number; // Multiplier for rupture length (default: 3)
 }

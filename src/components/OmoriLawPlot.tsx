@@ -3,6 +3,7 @@
 import { EarthquakeData } from '@/types/earthquake';
 import { useMemo, useRef, useState, memo, useEffect } from 'react';
 import { MainEventInfo, calculateOmoriParameters, OptimizationMethod, OmoriParameters } from '@/lib/analysis/omori';
+import { ReferenceModel, calculateReferenceRate, generateReferenceSeries } from '@/lib/analysis/referenceModels';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
@@ -16,6 +17,7 @@ interface OmoriLawPlotProps {
     magnitudeCompleteness?: number;
     onOptimizationMethodChange?: (method: OptimizationMethod) => void;
     onMagnitudeCompletenessChange?: (mc: number | undefined) => void;
+    referenceModel?: ReferenceModel | null;
 }
 
 const OmoriLawPlot = memo(function OmoriLawPlot({
@@ -24,7 +26,8 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
     optimizationMethod: externalOptimizationMethod,
     magnitudeCompleteness: externalMagnitudeCompleteness,
     onOptimizationMethodChange,
-    onMagnitudeCompletenessChange
+    onMagnitudeCompletenessChange,
+    referenceModel
 }: OmoriLawPlotProps) {
     const chartRef1 = useRef<HighchartsReact.RefObject>(null);
     const chartRef2 = useRef<HighchartsReact.RefObject>(null);
@@ -121,6 +124,24 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 credits: { enabled: false },
                 series: []
             };
+        }
+
+        // Calculate reference model series if selected
+        let referenceSeries: [number, number][] = [];
+        if (referenceModel && mainEvent) {
+            const days = dailyCounts.map(d => d.day);
+            const Mc = appliedMagnitudeCompleteness ? parseFloat(appliedMagnitudeCompleteness) :
+                (earthquakes.length > 0 ? Math.min(...earthquakes.map(e => e.magnitude)) : 0);
+
+            if (!isNaN(Mc) && mainEvent.magnitude) {
+                const refData = generateReferenceSeries(
+                    referenceModel,
+                    days,
+                    mainEvent.magnitude,
+                    Mc
+                );
+                referenceSeries = refData.map(d => [d.day, d.count]);
+            }
         }
 
         return {
@@ -231,14 +252,25 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     marker: {
                         enabled: false
                     }
-                }
+                },
+                ...(referenceSeries.length > 0 ? [{
+                    type: 'line',
+                    name: referenceModel?.name || 'Reference Model',
+                    data: referenceSeries,
+                    color: '#32CD32', // Lime Green
+                    dashStyle: 'ShortDash',
+                    lineWidth: 2,
+                    marker: {
+                        enabled: false
+                    }
+                } as any] : [])
             ],
             accessibility: {
                 enabled: true,
                 description: 'Log-log plot of daily aftershock rate with Omori-Utsu law fit'
             }
         };
-    }, [omoriParams]);
+    }, [omoriParams, referenceModel, mainEvent, appliedMagnitudeCompleteness, earthquakes]);
 
     // -------------------------
     // Chart 2: Cumulative Counts - Observed vs Expected (Q-Q style) - Matplotlib-style

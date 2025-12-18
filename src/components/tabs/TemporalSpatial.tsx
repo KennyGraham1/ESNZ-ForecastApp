@@ -31,6 +31,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         tmcTauMax,
         tmcP1,
         tmcXk,
+        hardebeckMinMag,
+        hardebeckTimeWindow,
+        hardebeckRuptureMult,
         includeNoise,
         selectedIndices,
         setAlgorithm: setClusteringAlgorithm,
@@ -47,6 +50,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setTmcTauMax,
         setTmcP1,
         setTmcXk,
+        setHardebeckMinMag,
+        setHardebeckTimeWindow,
+        setHardebeckRuptureMult,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -355,6 +361,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     tmcTauMax,
                     tmcP1,
                     tmcXk,
+                    hardebeckMinMag,
+                    hardebeckTimeWindow,
+                    hardebeckRuptureMult,
                 });
                 setClusteringResult(result);
             } catch (error) {
@@ -366,7 +375,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         }, 50); // Small delay to allow loading indicator to render
 
         return () => clearTimeout(timeoutId);
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk]);
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
@@ -969,6 +978,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     <option value="nearest-neighbor">Nearest-Neighbor - Seismology</option>
                                     <option value="st-dbscan">ST-DBSCAN - Spatio-Temporal Density</option>
                                     <option value="tmc">TMC - Reasenberg Style</option>
+                                    <option value="hardebeck-2019">Hardebeck (2019)</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -1158,6 +1168,46 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                         value={tmcP1}
                                         onChange={(e) => setTmcP1(parseFloat(e.target.value))}
                                         title="Probability of observing next event in sequence"
+                                    />
+                                </div>
+                            </>
+                        )}
+                        {(clusteringAlgorithm === 'hardebeck-2019') && (
+                            <>
+                                <div className="flex flex-col">
+                                    <span>Min Mag: <span className="font-semibold">{hardebeckMinMag.toFixed(1)}</span></span>
+                                    <input
+                                        type="range"
+                                        min={4.0}
+                                        max={8.0}
+                                        step={0.1}
+                                        value={hardebeckMinMag}
+                                        onChange={(e) => setHardebeckMinMag(parseFloat(e.target.value))}
+                                        title="Minimum mainshock magnitude to identifying clusters"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Time Window: <span className="font-semibold">{hardebeckTimeWindow} days</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={60}
+                                        step={1}
+                                        value={hardebeckTimeWindow}
+                                        onChange={(e) => setHardebeckTimeWindow(parseInt(e.target.value))}
+                                        title="Duration after mainshock to associate events"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Rupture Mult: <span className="font-semibold">{hardebeckRuptureMult}x</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={10}
+                                        step={0.5}
+                                        value={hardebeckRuptureMult}
+                                        onChange={(e) => setHardebeckRuptureMult(parseFloat(e.target.value))}
+                                        title="Multiplier for Wells & Coppersmith rupture length"
                                     />
                                 </div>
                             </>

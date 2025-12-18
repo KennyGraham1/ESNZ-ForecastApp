@@ -32,6 +32,9 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         tmcTauMax,
         tmcP1,
         tmcXk,
+        hardebeckMinMag,
+        hardebeckTimeWindow,
+        hardebeckRuptureMult,
         selectedIndices,
         setAlgorithm,
         setEpsilon,
@@ -47,6 +50,9 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         setTmcTauMax,
         setTmcP1,
         setTmcXk,
+        setHardebeckMinMag,
+        setHardebeckTimeWindow,
+        setHardebeckRuptureMult,
         toggleSelection,
     } = useClusteringContext();
 
@@ -96,8 +102,11 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                         tmcTauMax,
                         tmcP1,
                         tmcXk,
+                        hardebeckMinMag,
+                        hardebeckTimeWindow,
+                        hardebeckRuptureMult,
                     }),
-                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk }
+                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult }
                 );
 
                 setClusteringResult(result);
@@ -108,7 +117,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                 trackError(
                     error instanceof Error ? error : new Error('Unknown clustering error'),
                     { component: 'SpatialClusteringPlot', operation: 'clustering-sync' },
-                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, dataSize: earthquakes.length },
+                    { algorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, dataSize: earthquakes.length },
                     'high'
                 );
 
@@ -199,7 +208,10 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                     tmcTau0,
                     tmcTauMax,
                     tmcP1,
-                    tmcXk
+                    tmcXk,
+                    hardebeckMinMag,
+                    hardebeckTimeWindow,
+                    hardebeckRuptureMult,
                 },
                 requestId: currentRequestId
             });
@@ -230,6 +242,9 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
         tmcTauMax,
         tmcP1,
         tmcXk,
+        hardebeckMinMag,
+        hardebeckTimeWindow,
+        hardebeckRuptureMult,
         useWebWorker
     ]);
 
@@ -479,6 +494,7 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                                 <option value="step-mag">STEP (Magnitude Sorted)</option>
                                 <option value="step-time">STEP (Time Sorted)</option>
                                 <option value="tmc">TMC (Reasenberg-like)</option>
+                                <option value="hardebeck-2019">Hardebeck (2019)</option>
                                 <option value="nearest-neighbor">Nearest Neighbor</option>
                             </optgroup>
                             <optgroup label="Partitional">
@@ -669,6 +685,48 @@ const SpatialClusteringPlot = memo(function SpatialClusteringPlot({ earthquakes 
                                         <span className="float-right text-blue-600 font-bold">{tmcP1}</span>
                                     </label>
                                     <input type="range" min="0.5" max="0.99" step="0.01" value={tmcP1} onChange={(e) => setTmcP1(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                                </div>
+                            </>
+                        )}
+
+                        {/* Hardebeck (2019) Clustering Parameters */}
+                        {algorithm === 'hardebeck-2019' && (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Min Magnitude (Mainshock)
+                                        <span className="float-right text-blue-600 font-bold">M{hardebeckMinMag.toFixed(1)}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="4.0" max="8.0" step="0.1"
+                                        value={hardebeckMinMag}
+                                        onChange={(e) => setHardebeckMinMag(parseFloat(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Time Window
+                                        <span className="float-right text-blue-600 font-bold">{hardebeckTimeWindow} days</span>
+                                    </label>
+                                    <input
+                                        type="range" min="1" max="60" step="1"
+                                        value={hardebeckTimeWindow}
+                                        onChange={(e) => setHardebeckTimeWindow(parseInt(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Rupture Multiplier
+                                        <span className="float-right text-blue-600 font-bold">{hardebeckRuptureMult}x</span>
+                                    </label>
+                                    <input
+                                        type="range" min="1" max="10" step="0.5"
+                                        value={hardebeckRuptureMult}
+                                        onChange={(e) => setHardebeckRuptureMult(parseFloat(e.target.value))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
                                 </div>
                             </>
                         )}
