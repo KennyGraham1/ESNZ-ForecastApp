@@ -2,7 +2,7 @@
 
 import { EarthquakeData } from '@/types/earthquake';
 import { useMemo, useRef, memo } from 'react';
-import { calculateGutenbergRichter } from '@/lib/analysis/gutenbergRichter';
+import { GutenbergRichterResult, calculateGutenbergRichter } from '@/lib/analysis/gutenbergRichter';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
@@ -12,12 +12,16 @@ interface GutenbergRichterPlotProps {
     earthquakes: EarthquakeData[];
     binWidth?: number;
     completenessMethod?: 'maximum_curvature' | 'goodness_of_fit';
+    analysisType?: 'cumulative' | 'interval';
+    magnitudeCompleteness?: number;
 }
 
 const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
     earthquakes,
     binWidth = 0.1,
-    completenessMethod = 'maximum_curvature'
+    completenessMethod = 'maximum_curvature',
+    analysisType = 'cumulative',
+    magnitudeCompleteness
 }: GutenbergRichterPlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -51,50 +55,48 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
             };
         }
 
-        // Ensure all arrays have the same length
-        if (binCenters.length !== cumulativeCounts.length || binCenters.length !== fittedLine.length) {
-            console.error('G-R Plot: Array length mismatch', {
-                binCenters: binCenters.length,
-                cumulativeCounts: cumulativeCounts.length,
-                fittedLine: fittedLine.length
-            });
-            return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
-                title: { text: '' },
-                credits: { enabled: false },
-                exporting: { enabled: false },
-                series: []
-            };
-        }
-
-        // FIXED: Use iterative approach to avoid stack overflow on large datasets
-        let minY = Infinity;
-        let maxY = -Infinity;
-        for (const count of cumulativeCounts) {
-            if (count > 0 && count < minY) minY = count;
-            if (count > maxY) maxY = count;
-        }
+        const observedData = binCenters.map((m, i) => ({ magnitude: m, count: cumulativeCounts[i] }));
+        const fittedLineData = binCenters.map((m, i) => ({ magnitude: m, count: fittedLine[i] }));
 
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
-                height: 400
+                backgroundColor: '#FFFFFF',
+                height: 500,
+                style: {
+                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                }
             },
             title: {
-                text: ''
+                text: analysisType === 'cumulative'
+                    ? 'Gutenberg-Richter Law (Cumulative)'
+                    : 'Magnitude Frequency Distribution (Interval)',
+                style: {
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#333'
+                }
             },
-            credits: {
-                enabled: false
+            subtitle: {
+                text: `b-value: ${bValue.toFixed(2)}, a-value: ${aValue.toFixed(2)}, Mc: ${magnitudeOfCompleteness.toFixed(1)}`,
+                style: {
+                    fontSize: '11px',
+                    color: '#666'
+                }
             },
-            // Disable Highcharts built-in export menu - use custom export buttons
-            exporting: {
-                enabled: false
-            },
+            credits: { enabled: false },
             xAxis: {
                 title: {
-                    text: 'Magnitude'
+                    text: 'Magnitude (M)',
+                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
                 },
+                gridLineWidth: 1,
+                gridLineColor: '#E0E0E0',
+                lineColor: '#000',
+                lineWidth: 1.5,
+                tickColor: '#000',
+                tickWidth: 1.5,
+                labels: { style: { fontSize: '11px', color: '#333' } },
                 plotLines: [{
                     color: 'green',
                     width: 2,
@@ -111,16 +113,36 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 }]
             },
             yAxis: {
-                type: 'logarithmic',
                 title: {
-                    text: 'Cumulative Number'
-                }
+                    text: analysisType === 'cumulative' ? 'Cumulative Count (N ≥ M)' : 'Count (N)',
+                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
+                },
+                type: 'logarithmic',
+                gridLineWidth: 1,
+                gridLineColor: '#E0E0E0',
+                lineColor: '#000',
+                lineWidth: 1.5,
+                tickColor: '#000',
+                tickWidth: 1.5,
+                labels: { style: { fontSize: '11px', color: '#333' } }
             },
             legend: {
-                enabled: true
+                enabled: true,
+                align: 'right',
+                verticalAlign: 'top',
+                layout: 'vertical',
+                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                borderColor: '#CCC',
+                borderWidth: 1,
+                itemStyle: { fontSize: '11px', fontWeight: 'normal', color: '#333' }
             },
             tooltip: {
                 shared: false,
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                borderColor: '#999',
+                borderWidth: 1,
+                style: { fontSize: '11px' },
+                headerFormat: '<b>Magnitude {point.x}</b><br/>',
                 formatter: function (this: any) {
                     return `<b>${this.series.name}</b><br/>Magnitude: ${this.x?.toFixed(2)}<br/>Count: ${this.y?.toFixed(0)}`;
                 }
@@ -131,51 +153,40 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
             },
             plotOptions: {
                 series: {
-                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    turboThreshold: 50000,
                     boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
-                },
-                scatter: {
-                    marker: {
-                        radius: 4
-                    }
-                },
-                line: {
-                    marker: {
-                        enabled: false
-                    }
                 }
             },
             series: [
                 {
                     type: 'scatter',
-                    name: 'Observed',
-                    data: binCenters.map((x, i) => {
-                        const y = cumulativeCounts[i];
-                        // Ensure both values are valid numbers
-                        if (typeof x !== 'number' || typeof y !== 'number' || !isFinite(x) || !isFinite(y)) {
-                            return null;
-                        }
-                        return [x, y];
-                    }).filter((point): point is [number, number] => point !== null),
+                    name: 'Observed Data',
+                    data: observedData.map(d => [d.magnitude, d.count]).filter((point): point is [number, number] => point[1] > 0), // Filter out zero counts for log scale
                     color: 'steelblue',
                     marker: {
-                        radius: 6
-                    }
+                        symbol: 'circle',
+                        radius: 3,
+                        fillColor: 'steelblue',
+                        lineWidth: 0
+                    },
+                    tooltip: {
+                        pointFormat: 'Count: {point.y}'
+                    },
+                    zIndex: 1
                 },
                 {
                     type: 'line',
-                    name: 'Fitted (G-R Law)',
-                    data: binCenters.map((x, i) => {
-                        const y = fittedLine[i];
-                        // Ensure both values are valid numbers
-                        if (typeof x !== 'number' || typeof y !== 'number' || !isFinite(x) || !isFinite(y)) {
-                            return null;
-                        }
-                        return [x, y];
-                    }).filter((point): point is [number, number] => point !== null),
+                    name: `G-R Fit (b=${bValue.toFixed(2)})`,
+                    data: fittedLineData.map(d => [d.magnitude, d.count]),
                     color: 'red',
-                    dashStyle: 'Dash',
-                    lineWidth: 2
+                    lineWidth: 2.5,
+                    dashStyle: 'Solid',
+                    marker: { enabled: false },
+                    enableMouseTracking: true,
+                    tooltip: {
+                        pointFormat: 'Fit: {point.y:.1f}'
+                    },
+                    zIndex: 2
                 }
             ],
             accessibility: {
@@ -183,7 +194,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 description: 'Gutenberg-Richter plot showing observed vs fitted earthquake frequency-magnitude distribution'
             }
         };
-    }, [result]);
+    }, [result, analysisType]);
 
     if (!result) {
         return (

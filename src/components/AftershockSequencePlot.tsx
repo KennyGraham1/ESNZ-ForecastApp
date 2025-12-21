@@ -9,14 +9,23 @@ import ChartExportButtons from './ChartExportButtons';
 import RBush from 'rbush';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { formatDate } from '@/utils/dateFormat';
+import { getColorStops, getColorForValue, ColorPaletteName } from '@/utils/colorPalette';
 
 interface AftershockSequencePlotProps {
     earthquakes: EarthquakeData[];
     mainEvent: MainEventInfo;
     onSequenceDataChange?: (filteredEarthquakes: EarthquakeData[]) => void;
+    colorPalette?: string;
+    onColorPaletteChange?: (palette: string) => void;
 }
 
-const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquakes, mainEvent, onSequenceDataChange }: AftershockSequencePlotProps) {
+const AftershockSequencePlot = memo(function AftershockSequencePlot({
+    earthquakes,
+    mainEvent,
+    onSequenceDataChange,
+    colorPalette = 'default',
+    onColorPaletteChange
+}: AftershockSequencePlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
     const depthChartRef = useRef<HighchartsReact.RefObject>(null);
     const mapChartRef = useRef<HighchartsReact.RefObject>(null);
@@ -525,13 +534,9 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
         const largestEvents = sortedByMag.slice(0, 6);
         const largestEventIds = new Set(largestEvents.map(eq => eq.eventID));
 
-        // Helper function to map days to color
+        // Helper function to map days to color based on selected palette
         const getColorForDays = (days: number) => {
-            const normalized = (days - minDays) / (maxDays - minDays); // Dynamic normalization
-            if (normalized < 0.25) return 'rgba(100, 100, 255, 0.7)'; // Blue for early
-            if (normalized < 0.5) return 'rgba(50, 200, 255, 0.7)'; // Light blue
-            if (normalized < 0.75) return 'rgba(50, 255, 200, 0.7)'; // Teal
-            return 'rgba(50, 255, 50, 0.7)'; // Green for later
+            return getColorForValue(days, minDays, maxDays, colorPalette as ColorPaletteName);
         };
 
         const data = sequenceData.map((eq, index) => {
@@ -686,13 +691,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             colorAxis: {
                 min: minDays,
                 max: maxDays,
-                stops: [
-                    [0, 'rgba(100, 100, 255, 0.7)'],
-                    [0.25, 'rgba(50, 200, 255, 0.7)'],
-                    [0.5, 'rgba(50, 255, 200, 0.7)'],
-                    [0.75, 'rgba(50, 255, 50, 0.7)'],
-                    [1, 'rgba(50, 255, 50, 0.7)']
-                ],
+                stops: getColorStops(colorPalette as ColorPaletteName),
                 labels: {
                     format: '{value:.0f} days'
                 },
@@ -873,7 +872,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 description: 'Aftershock sequence plot showing magnitude vs time since main event'
             }
         };
-    }, [sequenceData, mainEvent, setHighlightedIndex, selectedIndices, setSelectedIndices]);
+    }, [sequenceData, mainEvent, setHighlightedIndex, selectedIndices, setSelectedIndices, colorPalette]);
 
     // Magnitude vs Depth Chart Options
     const depthChartOptions: Highcharts.Options = useMemo(() => {
@@ -1003,13 +1002,37 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
             colorAxis: {
                 min: minDays,
                 max: maxDays,
-                stops: [
-                    [0, 'rgba(100, 100, 255, 0.7)'],
-                    [0.25, 'rgba(50, 200, 255, 0.7)'],
-                    [0.5, 'rgba(50, 255, 200, 0.7)'],
-                    [0.75, 'rgba(50, 255, 50, 0.7)'],
-                    [1, 'rgba(50, 255, 50, 0.7)']
-                ],
+                stops: (() => {
+                    if (colorPalette === 'magma') {
+                        return [
+                            [0, 'rgba(0, 0, 0, 0.7)'],
+                            [0.33, 'rgba(128, 0, 128, 0.7)'],
+                            [0.66, 'rgba(220, 20, 60, 0.7)'],
+                            [1, 'rgba(255, 255, 0, 0.7)']
+                        ];
+                    } else if (colorPalette === 'viridis') {
+                        return [
+                            [0, 'rgba(75, 0, 130, 0.7)'],
+                            [0.33, 'rgba(0, 128, 128, 0.7)'],
+                            [0.66, 'rgba(50, 205, 50, 0.7)'],
+                            [1, 'rgba(255, 215, 0, 0.7)']
+                        ];
+                    } else if (colorPalette === 'plasma') {
+                        return [
+                            [0, 'rgba(13, 8, 135, 0.7)'],
+                            [0.33, 'rgba(204, 71, 120, 0.7)'],
+                            [0.66, 'rgba(248, 149, 64, 0.7)'],
+                            [1, 'rgba(240, 249, 33, 0.7)']
+                        ];
+                    }
+                    return [
+                        [0, 'rgba(100, 100, 255, 0.7)'],
+                        [0.25, 'rgba(50, 200, 255, 0.7)'],
+                        [0.5, 'rgba(50, 255, 200, 0.7)'],
+                        [0.75, 'rgba(50, 255, 50, 0.7)'],
+                        [1, 'rgba(50, 255, 50, 0.7)']
+                    ];
+                })(),
                 labels: { format: '{value:.0f} days' },
                 title: { text: 'Days Since Main Event' }
             },
@@ -1139,7 +1162,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 description: 'Magnitude vs depth scatter plot for aftershocks'
             }
         };
-    }, [sequenceData, setHighlightedIndex, selectedIndices, setSelectedIndices]);
+    }, [sequenceData, setHighlightedIndex, selectedIndices, setSelectedIndices, colorPalette]);
 
     // Aftershock Map Chart Options
     const mapChartOptions: Highcharts.Options = useMemo(() => {
@@ -1531,7 +1554,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 description: 'Map showing aftershock locations color-coded by time since main event'
             }
         };
-    }, [sequenceData, nzMapGeometry, setHighlightedIndex, selectedIndices, setSelectedIndices, isDrawingPolygon, polygonPoints, polygonSeries, mainEvent.latitude, mainEvent.longitude, mainEvent.magnitude, mainEvent.name, timelineZoomRange]);
+    }, [sequenceData, nzMapGeometry, setHighlightedIndex, selectedIndices, setSelectedIndices, isDrawingPolygon, polygonPoints, polygonSeries, mainEvent.latitude, mainEvent.longitude, mainEvent.magnitude, mainEvent.name, timelineZoomRange, colorPalette]);
 
     if (sequenceData.length === 0) {
         return (
@@ -1591,6 +1614,21 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({ earthquake
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <h3 className="text-md font-semibold text-gray-800">Spatial Filter</h3>
+                        {/* Color Palette Dropdown */}
+                        <div className="flex items-center gap-2 ml-4">
+                            <label htmlFor="palette-select" className="text-sm text-gray-600 font-medium">Color Palette:</label>
+                            <select
+                                id="palette-select"
+                                value={colorPalette}
+                                onChange={(e) => onColorPaletteChange && onColorPaletteChange(e.target.value)}
+                                className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="default">Default (Blue-Green)</option>
+                                <option value="magma">Magma (Black-Red-Yellow)</option>
+                                <option value="viridis">Viridis (Purple-Blue-Green)</option>
+                                <option value="plasma">Plasma (Purple-Orange-Yellow)</option>
+                            </select>
+                        </div>
                         {/* 
                         <h3 className="text-md font-semibold text-gray-800">Polygon Selection Tool</h3>
                         {isDrawingPolygon && (

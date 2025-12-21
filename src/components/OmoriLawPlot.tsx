@@ -4,6 +4,7 @@ import { EarthquakeData } from '@/types/earthquake';
 import { useMemo, useRef, useState, memo, useEffect } from 'react';
 import { MainEventInfo, calculateOmoriParameters, OptimizationMethod, OmoriParameters } from '@/lib/analysis/omori';
 import { ReferenceModel, calculateReferenceRate, generateReferenceSeries } from '@/lib/analysis/referenceModels';
+import { getPaletteThemeColors, ColorPaletteName } from '@/utils/colorPalette';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
@@ -18,6 +19,7 @@ interface OmoriLawPlotProps {
     onOptimizationMethodChange?: (method: OptimizationMethod) => void;
     onMagnitudeCompletenessChange?: (mc: number | undefined) => void;
     referenceModel?: ReferenceModel | null;
+    colorPalette?: ColorPaletteName;
 }
 
 const OmoriLawPlot = memo(function OmoriLawPlot({
@@ -25,10 +27,11 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
     mainEvent,
     optimizationMethod: externalOptimizationMethod,
     magnitudeCompleteness: externalMagnitudeCompleteness,
-    onOptimizationMethodChange,
     onMagnitudeCompletenessChange,
-    referenceModel
-}: OmoriLawPlotProps) {
+    referenceModel,
+    onCalculationComplete,
+    colorPalette = 'default'
+}: OmoriLawPlotProps & { onCalculationComplete?: (params: OmoriParameters | null) => void }) {
     const chartRef1 = useRef<HighchartsReact.RefObject>(null);
     const chartRef2 = useRef<HighchartsReact.RefObject>(null);
     const chartRef3 = useRef<HighchartsReact.RefObject>(null);
@@ -37,8 +40,9 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
     const [activeTab, setActiveTab] = useState<'fit' | 'residuals' | 'stats'>('fit');
 
     // Input state (controlled inputs)
+    // DEFAULT CHANGED TO MLE AS REQUESTED
     const [inputOptimizationMethod, setInputOptimizationMethod] = useState<OptimizationMethod>(
-        externalOptimizationMethod || 'hybrid'
+        externalOptimizationMethod || 'mle'
     );
     const [inputMagnitudeCompleteness, setInputMagnitudeCompleteness] = useState<string>(
         externalMagnitudeCompleteness?.toString() || ''
@@ -46,7 +50,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
 
     // Applied state (used for calculations)
     const [appliedOptimizationMethod, setAppliedOptimizationMethod] = useState<OptimizationMethod>(
-        externalOptimizationMethod || 'hybrid'
+        externalOptimizationMethod || 'mle'
     );
     const [appliedMagnitudeCompleteness, setAppliedMagnitudeCompleteness] = useState<string>(
         externalMagnitudeCompleteness?.toString() || ''
@@ -62,9 +66,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         setAppliedMagnitudeCompleteness(inputMagnitudeCompleteness);
 
         // Notify parent component of changes
-        if (onOptimizationMethodChange) {
-            onOptimizationMethodChange(inputOptimizationMethod);
-        }
+        // onOptimizationMethodChange removed in favor of onCalculationComplete flow
         if (onMagnitudeCompletenessChange) {
             const mc = inputMagnitudeCompleteness ? parseFloat(inputMagnitudeCompleteness) : undefined;
             onMagnitudeCompletenessChange(mc);
@@ -90,6 +92,10 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 const result = calculateOmoriParameters(earthquakes, mainEvent, 365, appliedOptimizationMethod, mc);
 
                 setOmoriParams(result);
+                // NOTIFY PARENT COMPONENT
+                if (onCalculationComplete) {
+                    onCalculationComplete(result);
+                }
                 setCalculationProgress(100);
             } catch (error) {
                 console.error('Omori calculation error:', error);
@@ -125,6 +131,8 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 series: []
             };
         }
+
+        const themeColors = getPaletteThemeColors(colorPalette);
 
         // Calculate reference model series if selected
         let referenceSeries: [number, number][] = [];
@@ -229,11 +237,11 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                         }
                         return [d.day, d.count];
                     }).filter((point): point is [number, number] => point !== null),
-                    color: '#4682B4', // Steel blue
+                    color: themeColors.mainColor, // Palette color
                     marker: {
                         symbol: 'circle',
                         radius: 3,
-                        fillColor: '#4682B4',
+                        fillColor: themeColors.mainColor,
                         lineWidth: 0
                     }
                 },
@@ -247,7 +255,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                         }
                         return [d.day, d.count];
                     }).filter((point): point is [number, number] => point !== null),
-                    color: '#DC143C', // Crimson red
+                    color: themeColors.secondaryColor, // Palette color
                     lineWidth: 2.5,
                     marker: {
                         enabled: false
@@ -285,6 +293,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             };
         }
 
+        const themeColors = getPaletteThemeColors(colorPalette);
         const { cumulativeCounts, expectedCumulativeCounts } = omoriParams;
 
         // Create observed vs expected data points
@@ -377,7 +386,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     type: 'line',
                     name: '1:1 Reference',
                     data: [[0, 0], [maxVal, maxVal]],
-                    color: '#DC143C', // Crimson red
+                    color: themeColors.secondaryColor, // Palette color
                     dashStyle: 'Dash',
                     lineWidth: 2,
                     marker: { enabled: false },
@@ -388,7 +397,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     type: 'line',
                     name: 'Observed vs Expected',
                     data: qqData,
-                    color: '#4682B4', // Steel blue
+                    color: themeColors.mainColor, // Palette color
                     lineWidth: 2.5,
                     marker: { enabled: false },
                     zIndex: 2
@@ -399,7 +408,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 description: 'Q-Q plot comparing observed vs expected cumulative counts'
             }
         };
-    }, [omoriParams]);
+    }, [omoriParams, colorPalette]);
 
     // -------------------------
     // Chart 1: Counts vs OU expected (Bar chart with fitted line overlay)
@@ -408,6 +417,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
     const countsVsExpectedOptions: Highcharts.Options = useMemo(() => {
         if (!omoriParams?.dailyCounts) return {};
 
+        const themeColors = getPaletteThemeColors(colorPalette);
         const { dailyCounts, fittedCounts } = omoriParams;
 
         // Dynamic binning: Target ~40 bars for optimal visibility
@@ -512,21 +522,21 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     type: 'column',
                     name: 'Observed counts',
                     data: displayDataObserved,
-                    color: 'rgba(70, 130, 180, 0.75)', // Steel blue with transparency
+                    color: themeColors.mainColor + 'BF', // Transparent (BF is approx 0.75 alpha)
                     zIndex: 1
                 },
                 {
                     type: 'line',
                     name: 'Omori-Utsu fit',
                     data: displayDataExpected,
-                    color: '#DC143C', // Crimson red
+                    color: themeColors.secondaryColor, // Palette color
                     lineWidth: 2.5,
                     marker: { enabled: false },
                     zIndex: 2
                 }
             ]
         };
-    }, [omoriParams]);
+    }, [omoriParams, colorPalette]);
 
     // -------------------------
     // 1. Residual Plots Options - Matplotlib-style
@@ -534,6 +544,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
     const residualOptions: Highcharts.Options = useMemo(() => {
         if (!omoriParams?.standardizedResiduals) return {};
 
+        const themeColors = getPaletteThemeColors(colorPalette);
         const { standardizedResiduals, residualProcess } = omoriParams;
 
         return {
@@ -597,8 +608,8 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     labels: { style: { fontSize: '11px', color: '#333' } },
                     plotLines: [
                         { value: 0, width: 2, color: '#000', zIndex: 5 },
-                        { value: 2, width: 1.5, color: '#DC143C', dashStyle: 'Dash', zIndex: 4, label: { text: '+2σ', style: { color: '#DC143C', fontSize: '10px' } } },
-                        { value: -2, width: 1.5, color: '#DC143C', dashStyle: 'Dash', zIndex: 4, label: { text: '-2σ', style: { color: '#DC143C', fontSize: '10px' } } }
+                        { value: 2, width: 1.5, color: themeColors.secondaryColor, dashStyle: 'Dash', zIndex: 4, label: { text: '+2σ', style: { color: themeColors.secondaryColor, fontSize: '10px' } } },
+                        { value: -2, width: 1.5, color: themeColors.secondaryColor, dashStyle: 'Dash', zIndex: 4, label: { text: '-2σ', style: { color: themeColors.secondaryColor, fontSize: '10px' } } }
                     ]
                 },
                 {
@@ -654,11 +665,11 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     data: standardizedResiduals.map(r => [r.day, r.residual]),
                     yAxis: 0,
                     xAxis: 0,
-                    color: '#4682B4', // Steel blue - matplotlib default
+                    color: themeColors.mainColor, // Palette color
                     marker: {
                         symbol: 'circle',
                         radius: 3,
-                        fillColor: '#4682B4',
+                        fillColor: themeColors.mainColor,
                         lineWidth: 0
                     },
                     tooltip: {
@@ -671,7 +682,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     data: residualProcess.map(r => [r.t, r.residual]),
                     yAxis: 1,
                     xAxis: 1,
-                    color: '#D62728', // Matplotlib red
+                    color: themeColors.secondaryColor, // Palette color
                     lineWidth: 2,
                     marker: { enabled: false },
                     tooltip: {
@@ -680,13 +691,14 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 }
             ]
         };
-    }, [omoriParams]);
+    }, [omoriParams, colorPalette]);
 
     // -------------------------
     // 2. Q-Q Plot Options - Matplotlib-style
     // -------------------------
     const qqOptions: Highcharts.Options = useMemo(() => {
         if (!omoriParams?.qqPlotData) return {};
+        const themeColors = getPaletteThemeColors(colorPalette);
         const { qqPlotData } = omoriParams;
 
         // Find max value for 1:1 line reference
@@ -764,7 +776,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     type: 'line',
                     name: '1:1 Reference Line',
                     data: [[0, 0], [maxVal, maxVal]],
-                    color: '#DC143C', // Crimson red for reference line
+                    color: themeColors.secondaryColor, // Palette color
                     lineWidth: 2,
                     dashStyle: 'Dash',
                     marker: { enabled: false },
@@ -775,11 +787,11 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                     type: 'scatter',
                     name: 'Sample Quantiles',
                     data: qqPlotData.map(d => [d.x, d.y]),
-                    color: '#4682B4', // Steel blue - matplotlib default
+                    color: themeColors.mainColor, // Palette color
                     marker: {
                         symbol: 'circle',
                         radius: 3,
-                        fillColor: '#4682B4',
+                        fillColor: themeColors.mainColor,
                         lineWidth: 0
                     },
                     zIndex: 2,
@@ -789,7 +801,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 }
             ]
         };
-    }, [omoriParams]);
+    }, [omoriParams, colorPalette]);
 
     // Show loading progress while calculating
     if (isCalculating) {

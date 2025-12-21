@@ -12,6 +12,7 @@ interface ChartExportButtonsProps {
     filename?: string;
     clusteringMetadata?: ClusteringMetadata; // Clustering metadata for exports
     clusterLabels?: number[]; // Cluster labels for each data point
+    metadata?: Record<string, any>; // General metadata for exports
 }
 
 export default function ChartExportButtons({
@@ -19,7 +20,8 @@ export default function ChartExportButtons({
     data,
     filename = 'chart-data',
     clusteringMetadata,
-    clusterLabels
+    clusterLabels,
+    metadata
 }: ChartExportButtonsProps) {
     const exportImage = (format: 'png' | 'jpeg' | 'svg') => {
         if (chartRef.current && chartRef.current.chart) {
@@ -160,6 +162,20 @@ export default function ChartExportButtons({
             csvContent += `#\n`;
         }
 
+        // Add generic metadata as comments
+        if (metadata) {
+            csvContent += `# Analysis Metadata\n`;
+            for (const [key, value] of Object.entries(metadata)) {
+                // Determine how to format the value
+                let valueStr = value;
+                if (typeof value === 'object' && value !== null) {
+                    valueStr = JSON.stringify(value);
+                }
+                csvContent += `# ${key}: ${valueStr}\n`;
+            }
+            csvContent += `#\n`;
+        }
+
         // Convert data to CSV
         if (enrichedData.length === 0) {
             console.warn('No data to export');
@@ -255,6 +271,10 @@ export default function ChartExportButtons({
         const exportData: any = {
             data: enrichedData
         };
+
+        if (metadata) {
+            exportData.metadata = metadata;
+        }
 
         // Add clustering metadata if available
         if (clusteringMetadata && clusterLabels && clusterSizes) {

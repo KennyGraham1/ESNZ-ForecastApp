@@ -4,22 +4,24 @@ import { EarthquakeData } from '@/types/earthquake';
 import { useMemo, useRef, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
-import ChartExportButtons from './ChartExportButtons';
-import { MainEventInfo, calculateOmoriParameters, OptimizationMethod } from '@/lib/analysis/omori';
+import { MainEventInfo, calculateOmoriParameters, OptimizationMethod, OmoriParameters } from '@/lib/analysis/omori';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
+import ChartExportButtons from './ChartExportButtons';
 
 interface CumulativeAftershockPlotProps {
     earthquakes: EarthquakeData[];
     mainEvent?: MainEventInfo;
     optimizationMethod?: OptimizationMethod;
     magnitudeCompleteness?: number;
+    omoriParams?: OmoriParameters | null; // SHARED PARAMS
 }
 
 const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
     earthquakes,
     mainEvent: providedMainEvent,
     optimizationMethod = 'hybrid',
-    magnitudeCompleteness
+    magnitudeCompleteness,
+    omoriParams: providedOmoriParams // SHARED PARAMS
 }: CumulativeAftershockPlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -95,7 +97,11 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
         const count = aftershocks.length;
 
         // Calculate Omori parameters using the proper method
-        const omoriResult = calculateOmoriParameters(earthquakes, mainEventInfo, 365, optimizationMethod, magnitudeCompleteness);
+        // USE PROVIDED PARAMS IF AVAILABLE, OTHERWISE CALCULATE
+        let omoriResult = providedOmoriParams;
+        if (!omoriResult) {
+            omoriResult = calculateOmoriParameters(earthquakes, mainEventInfo, 365, optimizationMethod, magnitudeCompleteness);
+        }
 
         // Generate fitted curve using Omori parameters
         const fitted: [number, number][] = [];
@@ -129,7 +135,7 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
             omoriParams: omoriResult ? { K: omoriResult.K, c: omoriResult.c, p: omoriResult.p } : null,
             fittedData: fitted
         };
-    }, [earthquakes, providedMainEvent, optimizationMethod, magnitudeCompleteness]);
+    }, [earthquakes, providedMainEvent, optimizationMethod, magnitudeCompleteness, providedOmoriParams]);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         if (!Array.isArray(cumulativeData) || cumulativeData.length === 0 || !Array.isArray(fittedData)) {
@@ -151,7 +157,12 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 }
             },
             title: {
-                text: ''
+                text: 'Cumulative Aftershock Rate',
+                style: {
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#333'
+                }
             },
             credits: {
                 enabled: false
@@ -186,6 +197,7 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 enabled: true,
                 align: 'right',
                 verticalAlign: 'top',
+                layout: 'vertical',
                 backgroundColor: 'rgba(255, 255, 255, 0.9)',
                 borderColor: '#CCC',
                 borderWidth: 1,
@@ -198,7 +210,7 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 borderWidth: 1,
                 style: { fontSize: '11px' },
                 formatter: function (this: any) {
-                    return `<b>Days:</b> ${this.x?.toFixed(1)}<br/><b>Events:</b> ${this.y?.toFixed(0)}`;
+                    return `<b>${this.series.name}</b><br/>Days: ${this.x?.toFixed(1)}<br/>Events: ${this.y?.toFixed(0)}`;
                 }
             },
             boost: {
@@ -266,12 +278,12 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
             </div>
 
             <div className="mt-4 text-sm text-gray-600">
-                {/* <p>
+                <p>
                     Cumulative number of observed aftershocks versus time (in days) elapsed from the main shock
                     {mainEvent.latitude !== undefined && mainEvent.longitude !== undefined &&
                         ` at (${mainEvent.latitude.toFixed(2)}°, ${mainEvent.longitude.toFixed(2)}°)`
                     }.
-                </p> */}
+                </p>
                 {omoriParams && (
                     <div className="mt-3 bg-gray-50 p-3 rounded border border-gray-200">
                         <p className="font-semibold mb-2">Fitted Modified Omori Law Parameters:</p>
@@ -291,6 +303,14 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 chartRef={chartRef}
                 data={earthquakes}
                 filename="cumulative-aftershocks"
+                metadata={omoriParams ? {
+                    'Main Event': mainEvent.name,
+                    'Main Event Magnitude': mainEvent.magnitude,
+                    'Main Event Date': mainEvent.time.toISOString(),
+                    'Omori K': omoriParams.K,
+                    'Omori c': omoriParams.c,
+                    'Omori p': omoriParams.p
+                } : undefined}
             />
         </div>
     );

@@ -60,6 +60,61 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         addToSelection,
     } = useClusteringContext();
 
+    // Local state for parameters (to allow "Apply" behavior)
+    const [localEpsilon, setLocalEpsilon] = useState(epsilon);
+    const [localMinSamples, setLocalMinSamples] = useState(minSamples);
+    const [localK, setLocalK] = useState(k);
+    const [localNnThreshold, setLocalNnThreshold] = useState(nnThreshold);
+    const [localStepMinMag, setLocalStepMinMag] = useState(stepMinMag);
+    const [localStepT1, setLocalStepT1] = useState(stepT1);
+    const [localStepT2, setLocalStepT2] = useState(stepT2);
+    const [localEpsilonTemporal, setLocalEpsilonTemporal] = useState(epsilonTemporal);
+    const [localTmcRfact, setLocalTmcRfact] = useState(tmcRfact);
+    const [localTmcTau0, setLocalTmcTau0] = useState(tmcTau0);
+    const [localTmcTauMax, setLocalTmcTauMax] = useState(tmcTauMax);
+    const [localTmcP1, setLocalTmcP1] = useState(tmcP1);
+    const [localHardebeckMinMag, setLocalHardebeckMinMag] = useState(hardebeckMinMag);
+    const [localHardebeckTimeWindow, setLocalHardebeckTimeWindow] = useState(hardebeckTimeWindow);
+    const [localHardebeckRuptureMult, setLocalHardebeckRuptureMult] = useState(hardebeckRuptureMult);
+
+    // Sync local state when context values change (e.g. initial load or external update)
+    useEffect(() => {
+        setLocalEpsilon(epsilon);
+        setLocalMinSamples(minSamples);
+        setLocalK(k);
+        setLocalNnThreshold(nnThreshold);
+        setLocalStepMinMag(stepMinMag);
+        setLocalStepT1(stepT1);
+        setLocalStepT2(stepT2);
+        setLocalEpsilonTemporal(epsilonTemporal);
+        setLocalTmcRfact(tmcRfact);
+        setLocalTmcTau0(tmcTau0);
+        setLocalTmcTauMax(tmcTauMax);
+        setLocalTmcP1(tmcP1);
+        setLocalHardebeckMinMag(hardebeckMinMag);
+        setLocalHardebeckTimeWindow(hardebeckTimeWindow);
+        setLocalHardebeckRuptureMult(hardebeckRuptureMult);
+    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult]);
+
+    // Apply handler
+    const handleApplyParameters = () => {
+        setEpsilon(localEpsilon);
+        setMinSamples(localMinSamples);
+        setK(localK);
+        setNnThreshold(localNnThreshold);
+        setStepMinMag(localStepMinMag);
+        setStepT1(localStepT1);
+        setStepT2(localStepT2);
+        setEpsilonTemporal(localEpsilonTemporal);
+        setTmcRfact(localTmcRfact);
+        setTmcTau0(localTmcTau0);
+        setTmcTauMax(localTmcTauMax);
+        setTmcP1(localTmcP1);
+        setHardebeckMinMag(localHardebeckMinMag);
+        setHardebeckTimeWindow(localHardebeckTimeWindow);
+        setHardebeckRuptureMult(localHardebeckRuptureMult);
+    };
+
     // Performance optimization: Sample data for large datasets
     const SAMPLE_THRESHOLD = 3000;
     const processedEarthquakes = useMemo(() => {
@@ -986,26 +1041,26 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             {(clusteringAlgorithm === 'dbscan' || clusteringAlgorithm === 'optics') && (
                                 <>
                                     <div className="flex flex-col">
-                                        <span>Epsilon: <span className="font-semibold">{epsilon} km</span></span>
+                                        <span>Epsilon: <span className="font-semibold">{localEpsilon} km</span></span>
                                         <input
                                             type="range"
                                             min={5}
                                             max={100}
                                             step={5}
-                                            value={epsilon}
-                                            onChange={(e) => setEpsilon(parseInt(e.target.value))}
+                                            value={localEpsilon}
+                                            onChange={(e) => setLocalEpsilon(parseInt(e.target.value))}
                                             title="Search radius for density-based clustering"
                                         />
                                     </div>
                                     <div className="flex flex-col">
-                                        <span>Min pts: <span className="font-semibold">{minSamples}</span></span>
+                                        <span>Min pts: <span className="font-semibold">{localMinSamples}</span></span>
                                         <input
                                             type="range"
                                             min={3}
                                             max={20}
                                             step={1}
-                                            value={minSamples}
-                                            onChange={(e) => setMinSamples(parseInt(e.target.value))}
+                                            value={localMinSamples}
+                                            onChange={(e) => setLocalMinSamples(parseInt(e.target.value))}
                                             title="Minimum points to form a cluster"
                                         />
                                     </div>
@@ -1013,28 +1068,28 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             )}
                             {(clusteringAlgorithm === 'kmeans' || clusteringAlgorithm.startsWith('hierarchical-')) && (
                                 <div className="flex flex-col">
-                                    <span>Clusters (k): <span className="font-semibold">{k}</span></span>
+                                    <span>Clusters (k): <span className="font-semibold">{localK}</span></span>
                                     <input
                                         type="range"
                                         min={2}
                                         max={15}
                                         step={1}
-                                        value={k}
-                                        onChange={(e) => setK(parseInt(e.target.value))}
+                                        value={localK}
+                                        onChange={(e) => setLocalK(parseInt(e.target.value))}
                                         title="Number of clusters to create"
                                     />
                                 </div>
                             )}
                             {clusteringAlgorithm === 'nearest-neighbor' && (
                                 <div className="flex flex-col">
-                                    <span>NN Threshold: <span className="font-semibold">{nnThreshold.toFixed(2)}</span></span>
+                                    <span>NN Threshold: <span className="font-semibold">{localNnThreshold.toFixed(2)}</span></span>
                                     <input
                                         type="range"
                                         min={0.1}
                                         max={5.0}
                                         step={0.1}
-                                        value={nnThreshold}
-                                        onChange={(e) => setNnThreshold(parseFloat(e.target.value))}
+                                        value={localNnThreshold}
+                                        onChange={(e) => setLocalNnThreshold(parseFloat(e.target.value))}
                                         title="Nearest-neighbor distance threshold (space-time-magnitude)"
                                     />
                                 </div>
@@ -1042,38 +1097,38 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             {(clusteringAlgorithm === 'step-mag' || clusteringAlgorithm === 'step-time') && (
                                 <>
                                     <div className="flex flex-col">
-                                        <span>Min Mag: <span className="font-semibold">{stepMinMag.toFixed(1)}</span></span>
+                                        <span>Min Mag: <span className="font-semibold">{localStepMinMag.toFixed(1)}</span></span>
                                         <input
                                             type="range"
                                             min={1.0}
                                             max={5.0}
                                             step={0.1}
-                                            value={stepMinMag}
-                                            onChange={(e) => setStepMinMag(parseFloat(e.target.value))}
+                                            value={localStepMinMag}
+                                            onChange={(e) => setLocalStepMinMag(parseFloat(e.target.value))}
                                             title="Minimum magnitude for mainshock detection"
                                         />
                                     </div>
                                     <div className="flex flex-col">
-                                        <span>T1 (days): <span className="font-semibold">{stepT1}</span></span>
+                                        <span>T1 (days): <span className="font-semibold">{localStepT1}</span></span>
                                         <input
                                             type="range"
                                             min={1}
                                             max={30}
                                             step={1}
-                                            value={stepT1}
-                                            onChange={(e) => setStepT1(parseInt(e.target.value))}
+                                            value={localStepT1}
+                                            onChange={(e) => setLocalStepT1(parseInt(e.target.value))}
                                             title="Time window before earthquake (days)"
                                         />
                                     </div>
                                     <div className="flex flex-col">
-                                        <span>T2 (days): <span className="font-semibold">{stepT2}</span></span>
+                                        <span>T2 (days): <span className="font-semibold">{localStepT2}</span></span>
                                         <input
                                             type="range"
                                             min={1}
                                             max={365}
                                             step={1}
-                                            value={stepT2}
-                                            onChange={(e) => setStepT2(parseInt(e.target.value))}
+                                            value={localStepT2}
+                                            onChange={(e) => setLocalStepT2(parseInt(e.target.value))}
                                             title="Time window after earthquake (days)"
                                         />
                                     </div>
@@ -1083,38 +1138,38 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         {(clusteringAlgorithm === 'st-dbscan') && (
                             <>
                                 <div className="flex flex-col">
-                                    <span>Spatial Epsilon: <span className="font-semibold">{epsilon} km</span></span>
+                                    <span>Spatial Epsilon: <span className="font-semibold">{localEpsilon} km</span></span>
                                     <input
                                         type="range"
                                         min={5}
                                         max={100}
                                         step={5}
-                                        value={epsilon}
-                                        onChange={(e) => setEpsilon(parseInt(e.target.value))}
+                                        value={localEpsilon}
+                                        onChange={(e) => setLocalEpsilon(parseInt(e.target.value))}
                                         title="Spatial search radius"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Temporal Epsilon: <span className="font-semibold">{epsilonTemporal} days</span></span>
+                                    <span>Temporal Epsilon: <span className="font-semibold">{localEpsilonTemporal} days</span></span>
                                     <input
                                         type="range"
                                         min={1}
                                         max={30}
                                         step={1}
-                                        value={epsilonTemporal}
-                                        onChange={(e) => setEpsilonTemporal(parseInt(e.target.value))}
+                                        value={localEpsilonTemporal}
+                                        onChange={(e) => setLocalEpsilonTemporal(parseInt(e.target.value))}
                                         title="Temporal search window"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Min pts: <span className="font-semibold">{minSamples}</span></span>
+                                    <span>Min pts: <span className="font-semibold">{localMinSamples}</span></span>
                                     <input
                                         type="range"
                                         min={3}
                                         max={20}
                                         step={1}
-                                        value={minSamples}
-                                        onChange={(e) => setMinSamples(parseInt(e.target.value))}
+                                        value={localMinSamples}
+                                        onChange={(e) => setLocalMinSamples(parseInt(e.target.value))}
                                         title="Minimum neighbors (space-time)"
                                     />
                                 </div>
@@ -1123,50 +1178,50 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         {(clusteringAlgorithm === 'tmc') && (
                             <>
                                 <div className="flex flex-col">
-                                    <span>Radius Factor (rfact): <span className="font-semibold">{tmcRfact}</span></span>
+                                    <span>Radius Factor (rfact): <span className="font-semibold">{localTmcRfact}</span></span>
                                     <input
                                         type="range"
                                         min={1}
                                         max={20}
                                         step={1}
-                                        value={tmcRfact}
-                                        onChange={(e) => setTmcRfact(parseInt(e.target.value))}
+                                        value={localTmcRfact}
+                                        onChange={(e) => setLocalTmcRfact(parseInt(e.target.value))}
                                         title="Multiplier for crack radius interaction"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Base Look-ahead (tau0): <span className="font-semibold">{tmcTau0} days</span></span>
+                                    <span>Base Look-ahead (tau0): <span className="font-semibold">{localTmcTau0} days</span></span>
                                     <input
                                         type="range"
                                         min={0.5}
                                         max={10}
                                         step={0.5}
-                                        value={tmcTau0}
-                                        onChange={(e) => setTmcTau0(parseFloat(e.target.value))}
+                                        value={localTmcTau0}
+                                        onChange={(e) => setLocalTmcTau0(parseFloat(e.target.value))}
                                         title="Minimum look-ahead time"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Max Look-ahead: <span className="font-semibold">{tmcTauMax} days</span></span>
+                                    <span>Max Look-ahead: <span className="font-semibold">{localTmcTauMax} days</span></span>
                                     <input
                                         type="range"
                                         min={5}
                                         max={60}
                                         step={1}
-                                        value={tmcTauMax}
-                                        onChange={(e) => setTmcTauMax(parseInt(e.target.value))}
+                                        value={localTmcTauMax}
+                                        onChange={(e) => setLocalTmcTauMax(parseInt(e.target.value))}
                                         title="Maximum look-ahead time"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Probability (p1): <span className="font-semibold">{tmcP1}</span></span>
+                                    <span>Probability (p1): <span className="font-semibold">{localTmcP1}</span></span>
                                     <input
                                         type="range"
                                         min={0.5}
                                         max={0.999}
                                         step={0.001}
-                                        value={tmcP1}
-                                        onChange={(e) => setTmcP1(parseFloat(e.target.value))}
+                                        value={localTmcP1}
+                                        onChange={(e) => setLocalTmcP1(parseFloat(e.target.value))}
                                         title="Probability of observing next event in sequence"
                                     />
                                 </div>
@@ -1175,46 +1230,46 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         {(clusteringAlgorithm === 'hardebeck-2019') && (
                             <>
                                 <div className="flex flex-col">
-                                    <span>Min Mag: <span className="font-semibold">{hardebeckMinMag.toFixed(1)}</span></span>
+                                    <span>Min Mag: <span className="font-semibold">{localHardebeckMinMag.toFixed(1)}</span></span>
                                     <input
                                         type="range"
                                         min={4.0}
                                         max={8.0}
                                         step={0.1}
-                                        value={hardebeckMinMag}
-                                        onChange={(e) => setHardebeckMinMag(parseFloat(e.target.value))}
+                                        value={localHardebeckMinMag}
+                                        onChange={(e) => setLocalHardebeckMinMag(parseFloat(e.target.value))}
                                         title="Minimum mainshock magnitude to identifying clusters"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Time Window: <span className="font-semibold">{hardebeckTimeWindow} days</span></span>
+                                    <span>Time Window: <span className="font-semibold">{localHardebeckTimeWindow} days</span></span>
                                     <input
                                         type="range"
                                         min={1}
                                         max={60}
                                         step={1}
-                                        value={hardebeckTimeWindow}
-                                        onChange={(e) => setHardebeckTimeWindow(parseInt(e.target.value))}
+                                        value={localHardebeckTimeWindow}
+                                        onChange={(e) => setLocalHardebeckTimeWindow(parseInt(e.target.value))}
                                         title="Duration after mainshock to associate events"
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Rupture Mult: <span className="font-semibold">{hardebeckRuptureMult}x</span></span>
+                                    <span>Rupture Mult: <span className="font-semibold">{localHardebeckRuptureMult}x</span></span>
                                     <input
                                         type="range"
                                         min={1}
                                         max={10}
                                         step={0.5}
-                                        value={hardebeckRuptureMult}
-                                        onChange={(e) => setHardebeckRuptureMult(parseFloat(e.target.value))}
+                                        value={localHardebeckRuptureMult}
+                                        onChange={(e) => setLocalHardebeckRuptureMult(parseFloat(e.target.value))}
                                         title="Multiplier for Wells & Coppersmith rupture length"
                                     />
                                 </div>
                             </>
                         )}
                     </div>
-                    <div className="flex items-center">
-                        <div className="flex flex-col bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                    <div className="flex flex-col gap-3 ml-auto items-end">
+                        <div className="flex flex-col bg-gray-50 px-3 py-2 rounded-md border border-gray-200 w-fit">
                             <span className="text-xs font-semibold text-gray-500 mb-1">Display Options</span>
                             <select
                                 className="px-2 py-1 bg-white border border-gray-300 rounded text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1226,9 +1281,25 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 <option value="hide">Hide Noise</option>
                             </select>
                         </div>
+                        <button
+                            onClick={handleApplyParameters}
+                            disabled={isClusteringCalculating}
+                            className={`px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors w-fit ${isClusteringCalculating
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                                }`}
+                        >
+                            {isClusteringCalculating ? (
+                                <span className="flex items-center gap-2">
+                                    <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
+                                    Calculating...
+                                </span>
+                            ) : (
+                                'Apply Parameters'
+                            )}
+                        </button>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                        {/* POLYGON SELECTION FEATURE - UI BUTTONS - COMMENTED OUT FOR FUTURE RESTORATION
+                    {/* POLYGON SELECTION FEATURE - UI BUTTONS - COMMENTED OUT FOR FUTURE RESTORATION
                         {!isDrawingPolygon ? (
                             <button
                                 onClick={() => setIsDrawingPolygon(true)}
@@ -1254,15 +1325,15 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             </>
                         )}
                         END OF POLYGON UI BUTTONS */}
-                        {selectedIndices.size > 0 && (
-                            <button
-                                onClick={handleClearSelection}
-                                className="px-4 py-2 text-sm font-medium bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors shadow-sm hover:shadow-md"
-                            >
-                                Clear Selection
-                            </button>
-                        )}
-                    </div>
+                    {selectedIndices.size > 0 && (
+                        <button
+                            onClick={handleClearSelection}
+                            className="px-4 py-2 text-sm font-medium bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors shadow-sm hover:shadow-md"
+                        >
+                            Clear Selection
+                        </button>
+                    )}
+
                 </div>
                 {/* POLYGON SELECTION FEATURE - DRAWING MODE MESSAGE - COMMENTED OUT FOR FUTURE RESTORATION
                 {isDrawingPolygon && (
@@ -1340,7 +1411,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 });
 

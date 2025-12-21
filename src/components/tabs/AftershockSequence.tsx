@@ -4,12 +4,15 @@ import { EarthquakeData } from '@/types/earthquake';
 import { useState, useMemo } from 'react';
 import OmoriLawPlot from '@/components/OmoriLawPlot';
 import AftershockSequencePlot from '@/components/AftershockSequencePlot';
+import ThreeDVisualization from '@/components/ThreeDVisualization';
 import GutenbergRichterPlot from '@/components/GutenbergRichterPlot';
 import CumulativeAftershockPlot from '@/components/CumulativeAftershockPlot';
 import { MainEventInfo, OptimizationMethod } from '@/lib/analysis/omori';
 import RBush from 'rbush';
 import { getLocalityFromCoordinates } from '@/utils/nzRegions';
 import { REFERENCE_MODELS, ReferenceModel } from '@/lib/analysis/referenceModels';
+
+import { OmoriParameters } from '@/lib/analysis/omori';
 
 const historicalEvents = [
     {
@@ -135,6 +138,18 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
 
     // Filtered aftershock sequence data from AftershockSequencePlot
     const [filteredSequenceData, setFilteredSequenceData] = useState<EarthquakeData[]>([]);
+
+    // SHARED OMORI STATE: Lifted up from OmoriLawPlot to synchronize Cumulative plot
+    const [sharedOmoriParams, setSharedOmoriParams] = useState<OmoriParameters | null>(null);
+
+    // COLOR PALETTE STATE: For consistent coloring across plots
+    const [colorPalette, setColorPalette] = useState<string>('default');
+
+    // Handler for when Omori calculation completes in OmoriLawPlot
+    const handleOmoriCalculationComplete = (params: OmoriParameters | null) => {
+        console.log('Omori calculation completed, syncing parameters to shared state');
+        setSharedOmoriParams(params);
+    };
 
     // Gardner-Knopoff declustering algorithm with spatial indexing optimization
     // Based on Gardner & Knopoff (1974) space-time window method
@@ -510,6 +525,24 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                             earthquakes={earthquakes}
                             mainEvent={mainEvent}
                             onSequenceDataChange={setFilteredSequenceData}
+                            colorPalette={colorPalette}
+                            onColorPaletteChange={setColorPalette}
+                        />
+                    </div>
+
+                    {/* 3D Visualization Section */}
+                    <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                        <div className="mb-4">
+                            <h3 className="text-xl font-bold text-gray-800 mb-1">3D Aftershock Distribution</h3>
+                            <p className="text-sm text-gray-500">Interactive 3D view of the aftershock sequence</p>
+                        </div>
+                        <ThreeDVisualization
+                            earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
+                            xAxisField="longitude"
+                            yAxisField="latitude"
+                            zAxisField="depth"
+                            colorField="daysSince"
+                            colorPalette={colorPalette as any} // Cast if needed, but the type should match
                         />
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
@@ -551,19 +584,25 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                             magnitudeCompleteness={magnitudeCompleteness}
                             onMagnitudeCompletenessChange={setMagnitudeCompleteness}
                             referenceModel={selectedReferenceModel}
+                            onCalculationComplete={handleOmoriCalculationComplete}
                         />
                     </div>
 
                     {/* Frequency-Magnitude and Cumulative Analysis Section - Side by Side */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <GutenbergRichterPlot earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes} />
+                        <GutenbergRichterPlot
+                            earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
+                        />
                         <CumulativeAftershockPlot
                             earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
                             mainEvent={mainEvent}
                             optimizationMethod={optimizationMethod}
                             magnitudeCompleteness={magnitudeCompleteness}
+                            omoriParams={sharedOmoriParams} // Use shared params instead of re-calculating
                         />
                     </div>
+
+
                 </div>
             ) : (
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-8 text-center">

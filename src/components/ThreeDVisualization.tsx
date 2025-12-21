@@ -7,6 +7,7 @@ import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { safeMin, safeMax } from '@/utils/arrayMath';
+import { getColorStops, ColorPaletteName } from '@/utils/colorPalette';
 
 interface ThreeDVisualizationProps {
     earthquakes: EarthquakeData[];
@@ -15,6 +16,7 @@ interface ThreeDVisualizationProps {
     zAxisField?: keyof EarthquakeData;
     colorField?: keyof EarthquakeData;
     fullDataForExport?: EarthquakeData[]; // NEW: Full dataset for high-res export
+    colorPalette?: 'default' | 'magma' | 'viridis' | 'plasma';
 }
 
 const ThreeDVisualization = memo(function ThreeDVisualization({
@@ -23,7 +25,8 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
     yAxisField = 'latitude',
     zAxisField = 'depth',
     colorField = 'magnitude',
-    fullDataForExport
+    fullDataForExport,
+    colorPalette = 'viridis' // Default to viridis for backward compatibility (Sandbox)
 }: ThreeDVisualizationProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -191,11 +194,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                 max: maxColor,
                 type: (isColorTime ? 'datetime' : 'linear') as any,
                 reversed: colorField === 'depth',
-                stops: [
-                    [0, '#440154'], [0.1, '#482878'], [0.2, '#3e4989'], [0.3, '#31688e'],
-                    [0.4, '#26828e'], [0.5, '#1f9e89'], [0.6, '#35b779'], [0.7, '#6ece58'],
-                    [0.8, '#b5de2b'], [1, '#fde724']
-                ],
+                stops: getColorStops(colorPalette as ColorPaletteName),
                 labels: { format: isColorTime ? undefined : '{value}' },
                 title: { text: colorField.toString() }
             },
