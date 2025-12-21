@@ -127,7 +127,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
     const [isMainEventSectionExpanded, setIsMainEventSectionExpanded] = useState(true);
 
     // Shared Omori optimization parameters
-    const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('hybrid');
+    const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('mle');
     const [magnitudeCompleteness, setMagnitudeCompleteness] = useState<number | undefined>(undefined);
     const [selectedReferenceModelId, setSelectedReferenceModelId] = useState<string>('');
 

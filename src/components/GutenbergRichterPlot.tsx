@@ -64,39 +64,24 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 backgroundColor: '#FFFFFF',
                 height: 500,
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }
             },
-            title: {
-                text: analysisType === 'cumulative'
-                    ? 'Gutenberg-Richter Law (Cumulative)'
-                    : 'Magnitude Frequency Distribution (Interval)',
-                style: {
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    color: '#333'
-                }
-            },
-            subtitle: {
-                text: `b-value: ${bValue.toFixed(2)}, a-value: ${aValue.toFixed(2)}, Mc: ${magnitudeOfCompleteness.toFixed(1)}`,
-                style: {
-                    fontSize: '11px',
-                    color: '#666'
-                }
-            },
+            title: { text: '' },
+            subtitle: { text: '' },
             credits: { enabled: false },
             xAxis: {
                 title: {
                     text: 'Magnitude (M)',
-                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
+                    style: { fontSize: '12px', fontWeight: '600', color: '#374151' }
                 },
                 gridLineWidth: 1,
-                gridLineColor: '#E0E0E0',
-                lineColor: '#000',
-                lineWidth: 1.5,
-                tickColor: '#000',
-                tickWidth: 1.5,
-                labels: { style: { fontSize: '11px', color: '#333' } },
+                gridLineColor: '#F3F4F6',
+                lineColor: '#D1D5DB',
+                lineWidth: 1,
+                tickColor: '#D1D5DB',
+                tickWidth: 1,
+                labels: { style: { fontSize: '11px', color: '#6B7280' } },
                 plotLines: [{
                     color: 'green',
                     width: 2,
@@ -115,22 +100,22 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
             yAxis: {
                 title: {
                     text: analysisType === 'cumulative' ? 'Cumulative Count (N ≥ M)' : 'Count (N)',
-                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
+                    style: { fontSize: '12px', fontWeight: '600', color: '#374151' }
                 },
                 type: 'logarithmic',
                 gridLineWidth: 1,
-                gridLineColor: '#E0E0E0',
-                lineColor: '#000',
-                lineWidth: 1.5,
-                tickColor: '#000',
-                tickWidth: 1.5,
-                labels: { style: { fontSize: '11px', color: '#333' } }
+                gridLineColor: '#F3F4F6',
+                lineColor: '#D1D5DB',
+                lineWidth: 1,
+                tickColor: '#D1D5DB',
+                tickWidth: 1,
+                labels: { style: { fontSize: '11px', color: '#6B7280' } }
             },
             legend: {
                 enabled: true,
-                align: 'right',
-                verticalAlign: 'top',
-                layout: 'vertical',
+                align: 'center',
+                verticalAlign: 'bottom',
+                layout: 'horizontal',
                 backgroundColor: 'rgba(255, 255, 255, 0.9)',
                 borderColor: '#CCC',
                 borderWidth: 1,
@@ -230,7 +215,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 </div>
             </div>
 
-            <div className="h-[400px] w-full">
+            <div className="h-[500px] w-full">
                 <HighchartsReact
                     highcharts={Highcharts}
                     options={chartOptions}

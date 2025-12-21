@@ -158,17 +158,10 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }
             },
-            title: {
-                text: 'Daily aftershock rate (log-log scale)',
-                style: {
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    color: '#333'
-                }
-            },
+            title: { text: '' },
             credits: {
                 enabled: false
             },
@@ -324,13 +317,10 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }
             },
-            title: {
-                text: 'Cumulative counts: Observed vs Expected',
-                style: { fontSize: '13px', fontWeight: '600', color: '#333' }
-            },
+            title: { text: '' },
             credits: { enabled: false },
             xAxis: {
                 title: {
@@ -449,13 +439,10 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }
             },
-            title: {
-                text: 'Aftershock counts vs Omori-Utsu expected',
-                style: { fontSize: '13px', fontWeight: '600', color: '#333' }
-            },
+            title: { text: '' },
             credits: { enabled: false },
             xAxis: {
                 title: {
@@ -552,7 +539,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 height: 600,
                 backgroundColor: '#FFFFFF',
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 },
                 marginBottom: 80,
                 spacingBottom: 15
@@ -712,7 +699,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }
             },
             title: { text: '' },
@@ -852,7 +839,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 <h3 className="text-lg font-semibold">Omori&apos;s Law Analysis</h3>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <label htmlFor="mc-input" className="text-sm text-gray-600">Mc:</label>
+                        <label htmlFor="mc-input" className="text-sm text-gray-600">Mc (Optional):</label>
                         <input
                             id="mc-input"
                             type="number"

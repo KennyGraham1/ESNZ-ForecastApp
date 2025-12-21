@@ -1,7 +1,7 @@
 import Highcharts from './highchartsInit';
 
 // Define available palette names
-export type ColorPaletteName = 'default' | 'magma' | 'viridis' | 'plasma';
+export type ColorPaletteName = 'default' | 'magma' | 'viridis' | 'plasma' | 'inferno' | 'cividis' | 'turbo' | 'deut-prot' | 'tritan';
 
 // Define theme colors for non-gradient plots
 export interface PaletteTheme {
@@ -36,6 +36,48 @@ export const getColorStops = (palette: ColorPaletteName): [number, string][] => 
                 [0.33, 'rgba(204, 71, 120, 0.7)'],
                 [0.66, 'rgba(248, 149, 64, 0.7)'],
                 [1, 'rgba(240, 249, 33, 0.7)']
+            ];
+        case 'inferno':
+            return [
+                [0, 'rgba(0, 0, 4, 0.7)'],
+                [0.33, 'rgba(87, 16, 109, 0.7)'],
+                [0.66, 'rgba(211, 67, 46, 0.7)'],
+                [1, 'rgba(252, 255, 164, 0.7)']
+            ];
+        case 'cividis': // Colorblind friendly (Blue-Yellow)
+            return [
+                [0, 'rgba(0, 32, 77, 0.7)'],
+                [0.33, 'rgba(65, 77, 107, 0.7)'],
+                [0.66, 'rgba(124, 123, 120, 0.7)'],
+                [1, 'rgba(255, 234, 70, 0.7)']
+            ];
+        case 'turbo':
+            return [
+                [0, 'rgba(48, 18, 59, 0.7)'],
+                [0.2, 'rgba(70, 134, 250, 0.7)'],
+                [0.4, 'rgba(27, 219, 21, 0.7)'],
+                [0.6, 'rgba(253, 188, 25, 0.7)'],
+                [0.8, 'rgba(209, 41, 5, 0.7)'],
+                [1, 'rgba(122, 4, 3, 0.7)']
+            ];
+        case 'deut-prot': // Deuteranopia/Protanopia Safe (Blue-Orange)
+            return [
+                [0, 'rgba(51, 34, 136, 0.7)'], // Indigo
+                [0.5, 'rgba(255, 255, 255, 0.7)'], // White middle to separate
+                [1, 'rgba(204, 170, 0, 0.7)'] // Gold/Yellow
+            ]; // Simplified divergent, or use linear:
+            /* Better linear: Dark Blue -> Light Blue -> Light Orange -> Dark Orange */
+            return [
+                [0, 'rgba(0, 0, 0, 0.7)'],
+                [0.33, 'rgba(26, 133, 255, 0.7)'],
+                [0.66, 'rgba(212, 17, 89, 0.7)'],
+                [1, 'rgba(255, 194, 10, 0.7)']
+            ];
+        case 'tritan': // Tritanopia Safe (Red-Teal/Blue)
+            return [
+                [0, 'rgba(0, 0, 0, 0.7)'],
+                [0.5, 'rgba(0, 77, 64, 0.7)'], // Teal
+                [1, 'rgba(216, 27, 96, 0.7)'] // Rose Red
             ];
         case 'default':
         default:
@@ -73,6 +115,36 @@ export const getPaletteThemeColors = (palette: ColorPaletteName): PaletteTheme =
                 mainColor: '#CC4778',      // Plasma Red/Pink
                 secondaryColor: '#F89540', // Plasma Orange
                 tertiaryColor: '#0D0887',  // Plasma Dark Blue
+            };
+        case 'inferno':
+            return {
+                mainColor: '#D3432E',      // Orange-Red
+                secondaryColor: '#57106D', // Dark Purple
+                tertiaryColor: '#FCFFA4',  // Light Yellow
+            };
+        case 'cividis':
+            return {
+                mainColor: '#00204D',      // Dark Blue
+                secondaryColor: '#7C7B78', // Grey
+                tertiaryColor: '#FFEA46',  // Yellow
+            };
+        case 'turbo':
+            return {
+                mainColor: '#4686FA',      // Blue
+                secondaryColor: '#D12905', // Red
+                tertiaryColor: '#1BDB15',  // Green
+            };
+        case 'deut-prot':
+            return {
+                mainColor: '#1A85FF',      // Blue
+                secondaryColor: '#D41159', // Magenta
+                tertiaryColor: '#FFC20A',  // Gold
+            };
+        case 'tritan':
+            return {
+                mainColor: '#004D40',      // Teal
+                secondaryColor: '#D81B60', // Rose
+                tertiaryColor: '#1E88E5',  // Blue
             };
         case 'default':
         default:

@@ -153,51 +153,44 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 height: 500,
                 backgroundColor: '#FFFFFF',
                 style: {
-                    fontFamily: '"DejaVu Sans", Arial, sans-serif'
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }
             },
-            title: {
-                text: 'Cumulative Aftershock Rate',
-                style: {
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    color: '#333'
-                }
-            },
+            title: { text: '' },
             credits: {
                 enabled: false
             },
             xAxis: {
                 title: {
                     text: 'Time [Days after mainshock]',
-                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
+                    style: { fontSize: '12px', fontWeight: '600', color: '#374151' }
                 },
                 gridLineWidth: 1,
-                gridLineColor: '#E0E0E0',
-                lineColor: '#000',
-                lineWidth: 1.5,
-                tickColor: '#000',
-                tickWidth: 1.5,
-                labels: { style: { fontSize: '11px', color: '#333' } }
+                gridLineColor: '#F3F4F6',
+                lineColor: '#D1D5DB',
+                lineWidth: 1,
+                tickColor: '#D1D5DB',
+                tickWidth: 1,
+                labels: { style: { fontSize: '11px', color: '#6B7280' } }
             },
             yAxis: {
                 title: {
                     text: 'Number of events',
-                    style: { fontSize: '12px', fontWeight: '500', color: '#333' }
+                    style: { fontSize: '12px', fontWeight: '600', color: '#374151' }
                 },
                 gridLineWidth: 1,
-                gridLineColor: '#E0E0E0',
-                lineColor: '#000',
-                lineWidth: 1.5,
-                tickColor: '#000',
-                tickWidth: 1.5,
-                labels: { style: { fontSize: '11px', color: '#333' } }
+                gridLineColor: '#F3F4F6',
+                lineColor: '#D1D5DB',
+                lineWidth: 1,
+                tickColor: '#D1D5DB',
+                tickWidth: 1,
+                labels: { style: { fontSize: '11px', color: '#6B7280' } }
             },
             legend: {
                 enabled: true,
-                align: 'right',
-                verticalAlign: 'top',
-                layout: 'vertical',
+                align: 'center',
+                verticalAlign: 'bottom',
+                layout: 'horizontal',
                 backgroundColor: 'rgba(255, 255, 255, 0.9)',
                 borderColor: '#CCC',
                 borderWidth: 1,

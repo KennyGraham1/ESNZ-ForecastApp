@@ -16,7 +16,7 @@ interface ThreeDVisualizationProps {
     zAxisField?: keyof EarthquakeData;
     colorField?: keyof EarthquakeData;
     fullDataForExport?: EarthquakeData[]; // NEW: Full dataset for high-res export
-    colorPalette?: 'default' | 'magma' | 'viridis' | 'plasma';
+    colorPalette?: 'default' | 'magma' | 'viridis' | 'plasma' | 'inferno' | 'cividis' | 'turbo' | 'deut-prot' | 'tritan';
 }
 
 const ThreeDVisualization = memo(function ThreeDVisualization({
@@ -125,6 +125,9 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                 height: 500,
                 backgroundColor: 'white',
                 margin: 100,
+                style: {
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                },
                 options3d: {
                     enabled: true,
                     alpha: 10,
@@ -141,7 +144,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                 }
             },
             title: { text: '' },
-            subtitle: { text: 'Drag to rotate • Scroll to zoom', style: { fontSize: '12px', color: '#666' } },
+            subtitle: { text: '' },
             credits: { enabled: false },
             exporting: {
                 enabled: true,
@@ -169,25 +172,35 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                 type: isXTime ? 'datetime' : 'linear',
                 min: minX,
                 max: maxX,
-                title: { text: xAxisField.toString() },
+                title: {
+                    text: xAxisField.toString(),
+                    style: { fontSize: '12px', fontWeight: 'bold', color: '#374151' }
+                },
                 gridLineWidth: 1,
-                labels: { skew3d: true, format: isXTime ? undefined : '{value}' }
+                gridLineColor: '#E5E7EB',
+                labels: { skew3d: true, format: isXTime ? undefined : '{value}', style: { fontSize: '10px', color: '#6B7280' } }
             },
             yAxis: {
                 type: isYTime ? 'datetime' : 'linear',
                 min: minY,
                 max: maxY,
-                title: { text: yAxisField.toString() },
-                labels: { skew3d: true, format: isYTime ? undefined : '{value}' }
+                title: {
+                    text: yAxisField.toString(),
+                    style: { fontSize: '12px', fontWeight: 'bold', color: '#374151' }
+                },
+                labels: { skew3d: true, format: isYTime ? undefined : '{value}', style: { fontSize: '10px', color: '#6B7280' } }
             },
             zAxis: {
                 type: isZTime ? 'datetime' : 'linear',
                 min: minZ,
                 max: maxZ,
-                title: { text: zAxisField.toString() },
+                title: {
+                    text: zAxisField.toString(),
+                    style: { fontSize: '12px', fontWeight: 'bold', color: '#374151' }
+                },
                 reversed: zAxisField === 'depth',
                 showFirstLabel: false,
-                labels: { skew3d: true, format: isZTime ? undefined : '{value}' }
+                labels: { skew3d: true, format: isZTime ? undefined : '{value}', style: { fontSize: '10px', color: '#6B7280' } }
             },
             colorAxis: {
                 min: minColor,
@@ -248,7 +261,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                 description: '3D visualization of earthquake distribution.'
             }
         };
-    }, [earthquakes, xAxisField, yAxisField, zAxisField, colorField, fullDataForExport]);
+    }, [earthquakes, xAxisField, yAxisField, zAxisField, colorField, fullDataForExport, colorPalette]);
     // Dependencies updated
 
     // Add interactive rotation and zoom functionality
@@ -419,7 +432,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
                     <li><strong>Rotate:</strong> Click and drag to rotate the view</li>
                     <li><strong>Zoom:</strong> Mouse wheel to zoom in/out (or pinch on touch devices)</li>
                     <li><strong>Marker Size:</strong> Larger circles = higher magnitude earthquakes (exponential scaling)</li>
-                    <li><strong>Color:</strong> Viridis color scale represents magnitude (purple = low, yellow = high)</li>
+                    <li><strong>Color:</strong> {colorPalette.charAt(0).toUpperCase() + colorPalette.slice(1)} color scale represents {colorField ? colorField.toString() : 'value'}</li>
                     <li><strong>Depth:</strong> Z-axis shows depth (deeper earthquakes appear lower in the plot)</li>
                 </ul>
             </div>

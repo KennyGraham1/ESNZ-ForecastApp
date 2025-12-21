@@ -602,6 +602,9 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 zoomType: 'xy',
                 height: 500,
                 backgroundColor: 'white',
+                style: {
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                },
                 events: {
                     load: function (this: any) {
                         const chart = this;
@@ -635,13 +638,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                     }
                 }
             },
-            title: {
-                text: `Aftershock Sequence: ${mainEvent.name}`,
-                style: {
-                    fontSize: '18px',
-                    fontWeight: 'bold'
-                }
-            },
+            title: { text: '' },
             credits: {
                 enabled: false
             },
@@ -651,12 +648,25 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             },
             xAxis: {
                 title: {
-                    text: 'Days since main event'
+                    text: 'Days since main event',
+                    style: {
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
                 },
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
                 min: minDays - 5,
                 max: maxDays + 5,
                 gridLineWidth: 1,
-                gridLineColor: 'rgba(200, 200, 200, 0.2)',
+                gridLineColor: '#f3f4f6',
                 plotLines: [{
                     color: 'red',
                     width: 2,
@@ -674,8 +684,21 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             },
             yAxis: {
                 title: {
-                    text: 'Magnitude'
+                    text: 'Magnitude',
+                    style: {
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#374151'
+                    }
                 },
+                labels: {
+                    style: {
+                        fontSize: '11px',
+                        color: '#6b7280'
+                    }
+                },
+                lineColor: '#d1d5db',
+                tickColor: '#d1d5db',
                 min: Math.min(1.5, minMag - 0.5),
                 max: maxMag + 0.5,
                 gridLineWidth: 1,
@@ -896,11 +919,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         }
 
         const getColorForDays = (days: number) => {
-            const normalized = (days - minDays) / (maxDays - minDays);
-            if (normalized < 0.25) return 'rgba(100, 100, 255, 0.7)';
-            if (normalized < 0.5) return 'rgba(50, 200, 255, 0.7)';
-            if (normalized < 0.75) return 'rgba(50, 255, 200, 0.7)';
-            return 'rgba(50, 255, 50, 0.7)';
+            return getColorForValue(days, minDays, maxDays, colorPalette as ColorPaletteName);
         };
 
         const data = sequenceData.map((eq, index) => {
@@ -932,16 +951,16 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 zoomType: 'xy',
                 height: 500,
                 backgroundColor: 'white',
+                style: {
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                },
                 events: {
                     load: function (this: any) {
                         (window as any).aftershockDepthChart = this;
                     }
                 }
             },
-            title: {
-                text: 'Magnitude vs Depth',
-                style: { fontSize: '16px', fontWeight: 'bold' }
-            },
+            title: { text: '' },
             credits: { enabled: false },
             // Disable Highcharts built-in export menu - use custom export buttons
             exporting: {
@@ -951,7 +970,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 title: {
                     text: 'Magnitude',
                     style: {
-                        fontSize: '13px',
+                        fontSize: '12px',
                         fontWeight: '600',
                         color: '#374151'
                     }
@@ -975,7 +994,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 title: {
                     text: 'Depth (km)',
                     style: {
-                        fontSize: '13px',
+                        fontSize: '12px',
                         fontWeight: '600',
                         color: '#374151'
                     }
@@ -990,7 +1009,8 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                         color: '#6b7280'
                     }
                 },
-                gridLineWidth: 0,
+                gridLineWidth: 1,
+                gridLineColor: '#f3f4f6',
                 lineColor: '#d1d5db',
                 tickColor: '#d1d5db',
                 crosshair: {
@@ -1002,37 +1022,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             colorAxis: {
                 min: minDays,
                 max: maxDays,
-                stops: (() => {
-                    if (colorPalette === 'magma') {
-                        return [
-                            [0, 'rgba(0, 0, 0, 0.7)'],
-                            [0.33, 'rgba(128, 0, 128, 0.7)'],
-                            [0.66, 'rgba(220, 20, 60, 0.7)'],
-                            [1, 'rgba(255, 255, 0, 0.7)']
-                        ];
-                    } else if (colorPalette === 'viridis') {
-                        return [
-                            [0, 'rgba(75, 0, 130, 0.7)'],
-                            [0.33, 'rgba(0, 128, 128, 0.7)'],
-                            [0.66, 'rgba(50, 205, 50, 0.7)'],
-                            [1, 'rgba(255, 215, 0, 0.7)']
-                        ];
-                    } else if (colorPalette === 'plasma') {
-                        return [
-                            [0, 'rgba(13, 8, 135, 0.7)'],
-                            [0.33, 'rgba(204, 71, 120, 0.7)'],
-                            [0.66, 'rgba(248, 149, 64, 0.7)'],
-                            [1, 'rgba(240, 249, 33, 0.7)']
-                        ];
-                    }
-                    return [
-                        [0, 'rgba(100, 100, 255, 0.7)'],
-                        [0.25, 'rgba(50, 200, 255, 0.7)'],
-                        [0.5, 'rgba(50, 255, 200, 0.7)'],
-                        [0.75, 'rgba(50, 255, 50, 0.7)'],
-                        [1, 'rgba(50, 255, 50, 0.7)']
-                    ];
-                })(),
+                stops: getColorStops(colorPalette as ColorPaletteName),
                 labels: { format: '{value:.0f} days' },
                 title: { text: 'Days Since Main Event' }
             },
@@ -1186,11 +1176,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         }
 
         const getColorForDays = (days: number) => {
-            const normalized = (days - minDays) / (maxDays - minDays);
-            if (normalized < 0.25) return 'rgba(100, 100, 255, 0.7)';
-            if (normalized < 0.5) return 'rgba(50, 200, 255, 0.7)';
-            if (normalized < 0.75) return 'rgba(50, 255, 200, 0.7)';
-            return 'rgba(50, 255, 50, 0.7)';
+            return getColorForValue(days, minDays, maxDays, colorPalette as ColorPaletteName);
         };
 
         // Log timeline zoom range for debugging
@@ -1391,8 +1377,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 }
             },
             title: {
-                text: 'Aftershock Locations',
-                style: { fontSize: '16px', fontWeight: 'bold' }
+                text: ''
             },
             credits: { enabled: false },
             // Disable Highcharts built-in export menu - use custom export buttons
@@ -1408,13 +1393,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             colorAxis: {
                 min: minDays,
                 max: maxDays,
-                stops: [
-                    [0, 'rgba(100, 100, 255, 0.7)'],
-                    [0.25, 'rgba(50, 200, 255, 0.7)'],
-                    [0.5, 'rgba(50, 255, 200, 0.7)'],
-                    [0.75, 'rgba(50, 255, 50, 0.7)'],
-                    [1, 'rgba(50, 255, 50, 0.7)']
-                ],
+                stops: getColorStops(colorPalette as ColorPaletteName),
                 labels: { format: '{value:.0f} days' },
                 title: { text: 'Days Since Main Event' }
             },
@@ -1625,8 +1604,13 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                             >
                                 <option value="default">Default (Blue-Green)</option>
                                 <option value="magma">Magma (Black-Red-Yellow)</option>
-                                <option value="viridis">Viridis (Purple-Blue-Green)</option>
+                                <option value="inferno">Inferno (Black-Red-Yellow)</option>
                                 <option value="plasma">Plasma (Purple-Orange-Yellow)</option>
+                                <option value="viridis">Viridis (Purple-Blue-Green)</option>
+                                <option value="turbo">Turbo (Rainbow High Contrast)</option>
+                                <option value="cividis">Cividis (Colorblind Safe: Blue-Yellow)</option>
+                                <option value="deut-prot">Deut/Prot Safe (Blue-Orange)</option>
+                                <option value="tritan">Tritan Safe (Red-Teal)</option>
                             </select>
                         </div>
                         {/* 
