@@ -694,7 +694,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
 
             {mainEvent ? (
                 <div className="grid grid-cols-1 gap-6">
-                    <div id="report-timeline" className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                    <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
                         <div className="mb-4">
                             <h3 className="text-xl font-bold text-gray-800 mb-1">Aftershock Sequence</h3>
                             <p className="text-sm text-gray-500">Temporal distribution of aftershocks</p>
