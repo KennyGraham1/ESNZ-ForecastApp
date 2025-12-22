@@ -16,6 +16,8 @@ interface ReportData {
         cumulative: string;
         threeD: string;
     };
+    declusteringMethod?: string;
+    declusteringParams?: { [key: string]: any };
 }
 
 export const generateAnalysisReport = async ({
@@ -23,7 +25,9 @@ export const generateAnalysisReport = async ({
     earthquakeCount,
     omoriParams,
     grResult,
-    plotIds
+    plotIds,
+    declusteringMethod,
+    declusteringParams
 }: ReportData) => {
     const doc = new jsPDF({
         orientation: 'portrait',
@@ -37,7 +41,6 @@ export const generateAnalysisReport = async ({
     const contentWidth = pageWidth - (margin * 2);
 
     let currentPage = 1;
-    const totalPagesExp = '{total_pages_count_string}';
 
     // Colors
     const primaryBlue = '#2563eb';
@@ -55,25 +58,7 @@ export const generateAnalysisReport = async ({
         doc.line(margin, 15, pageWidth - margin, 15);
     };
 
-    // Helper: Add footer to page
-    const addFooter = () => {
-        const footerY = pageHeight - 10;
-        doc.setFontSize(8);
-        doc.setTextColor(mediumGray);
-        doc.setFont('helvetica', 'normal');
 
-        // Page number
-        const pageText = `Page ${currentPage} of ${totalPagesExp}`;
-        doc.text(pageText, pageWidth - margin, footerY, { align: 'right' });
-
-        // Generation date
-        const dateText = `Generated: ${new Date().toLocaleDateString()}`;
-        doc.text(dateText, margin, footerY);
-
-        // Line above footer
-        doc.setDrawColor(200, 200, 200);
-        doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
-    };
 
     // Helper: Draw a table
     const drawTable = (headers: string[], rows: string[][], startY: number, columnWidths?: number[]) => {
@@ -117,7 +102,8 @@ export const generateAnalysisReport = async ({
                 doc.addPage();
                 currentPage++;
                 addHeader();
-                addFooter();
+                addHeader();
+                y = 25;
                 y = 25;
 
                 // Re-draw header on new page
@@ -163,7 +149,8 @@ export const generateAnalysisReport = async ({
             doc.addPage();
             currentPage++;
             addHeader();
-            addFooter();
+            addHeader();
+            y = 25;
             y = 25;
         }
         doc.setFillColor(lightGray);
@@ -217,8 +204,8 @@ export const generateAnalysisReport = async ({
             if (y + lineHeight > pageHeight - margin) {
                 doc.addPage();
                 currentPage++;
-                addHeader();
-                addFooter();
+
+
                 y = 25;
                 // Re-apply style after page break
                 doc.setFontSize(fontSize);
@@ -265,7 +252,7 @@ export const generateAnalysisReport = async ({
                 if (!element) {
                     console.warn(`Plot element not found: ${elementId}`);
                     y = addText(`[Plot not available: ${title}]`, y, { color: '#ef4444' });
-                    addFooter();
+                    y = addText(`[Plot not available: ${title}]`, y, { color: '#ef4444' });
                     return;
                 }
 
@@ -305,12 +292,9 @@ export const generateAnalysisReport = async ({
             // Add image centered
             const xOffset = margin + (contentWidth - imgWidth) / 2;
             doc.addImage(imgData, 'PNG', xOffset, y, imgWidth, imgHeight);
-
-            addFooter();
         } catch (err) {
             console.error(`Error adding plot ${elementId}:`, err);
             y = addText(`[Error rendering ${title}]`, y, { color: '#ef4444' });
-            addFooter();
         }
     };
 
@@ -377,8 +361,15 @@ export const generateAnalysisReport = async ({
         ['Analysis Period:', earthquakeCount > 0 ? `${earthquakeCount} aftershock events analyzed` : 'N/A'],
         ['Generated:', new Date().toLocaleString('en-NZ', { dateStyle: 'full', timeStyle: 'long' })],
         ['Software:', 'ESNZ ForecastApp v1.0'],
-        ['Analysis Methods:', 'Gutenberg-Richter, Omori-Utsu Law, Statistical Modeling']
+        ['Analysis Methods:', 'Gutenberg-Richter, Omori-Utsu Law, Statistical Modeling'],
+        ['Declustering:', declusteringMethod || 'N/A']
     ];
+
+    if (declusteringParams && Object.keys(declusteringParams).length > 0) {
+        Object.entries(declusteringParams).forEach(([key, value]) => {
+            metaData.push([`  - ${key}:`, value.toString()]);
+        });
+    }
 
     yPos = drawTable(['Field', 'Value'], metaData, yPos, [70, contentWidth - 70]) + 10;
 
@@ -462,7 +453,7 @@ export const generateAnalysisReport = async ({
         { fontSize: 10, color: mediumGray }
     );
 
-    addFooter();
+
 
     // ===========================================
     // GUTENBERG-RICHTER ANALYSIS
@@ -515,7 +506,7 @@ export const generateAnalysisReport = async ({
             { fontSize: 10 }
         );
 
-        addFooter();
+
 
         // GR Plot on its own page
         await addPlotOnNewPage(
@@ -601,7 +592,7 @@ export const generateAnalysisReport = async ({
             { fontSize: 10 }
         );
 
-        addFooter();
+
 
         // Omori plots on individual pages
         await addPlotOnNewPage(
@@ -633,13 +624,31 @@ export const generateAnalysisReport = async ({
     );
 
     // Replace placeholder with actual page count
-    const totalPages = doc.internal.pages.length - 1;
+    // ===========================================
+    // ADD FOOTERS TO ALL PAGES
+    // ===========================================
+    const totalPages = doc.getNumberOfPages();
+
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
-        const pageContent = (doc.internal.pages as any)[i];
-        if (typeof pageContent === 'string') {
-            // Use a more thorough replacement
-            (doc.internal.pages as any)[i] = pageContent.split(totalPagesExp).join(totalPages.toString());
+
+        const footerY = pageHeight - 10;
+        doc.setFontSize(8);
+        doc.setTextColor(mediumGray);
+        doc.setFont('helvetica', 'normal');
+
+        // Page number
+        const pageText = `Page ${i} of ${totalPages}`;
+        doc.text(pageText, pageWidth - margin, footerY, { align: 'right' });
+
+        // Generation date (skip on cover page if desired)
+        if (i > 1) {
+            const dateText = `Generated: ${new Date().toLocaleDateString()}`;
+            doc.text(dateText, margin, footerY);
+
+            // Line above footer
+            doc.setDrawColor(200, 200, 200);
+            doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
         }
     }
 

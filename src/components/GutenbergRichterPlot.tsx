@@ -41,13 +41,10 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
     }, [result, onCalculationComplete]);
 
     // Register chart for PDF export
+    // Use callback in HighchartsReact for registration to ensure chart is ready
     useEffect(() => {
-        const chart = chartRef.current?.chart;
-        if (chart) {
-            registerChart('gr-plot', chart);
-        }
         return () => unregisterChart('gr-plot');
-    }, [chartRef.current?.chart]);
+    }, []);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
@@ -239,6 +236,9 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                     highcharts={Highcharts}
                     options={chartOptions}
                     ref={chartRef}
+                    callback={(chart: Highcharts.Chart) => {
+                        registerChart('gr-plot', chart);
+                    }}
                 />
             </div>
 

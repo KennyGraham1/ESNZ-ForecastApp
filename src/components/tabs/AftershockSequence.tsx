@@ -119,6 +119,25 @@ interface AftershockSequenceProps {
     earthquakes: EarthquakeData[];
 }
 
+// Haversine distance formula (km)
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+};
+
+// Wells and Coppersmith (1994) Rupture Length (Subsurface Rupture Length - RLD)
+// Log(RL) = -2.44 + 0.59 * M
+const getWellsCoppersmithRuptureLength = (magnitude: number): number => {
+    return Math.pow(10, -2.44 + 0.59 * magnitude);
+};
+
+
 export default function AftershockSequence({ earthquakes }: AftershockSequenceProps) {
     const [mainEventTime, setMainEventTime] = useState('');
     const [mainEventMag, setMainEventMag] = useState(5.0);
@@ -127,6 +146,22 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
     const [mainEventLon, setMainEventLon] = useState<number | undefined>(undefined);
     const [showHistoricalEvents, setShowHistoricalEvents] = useState(false);
     const [isMainEventSectionExpanded, setIsMainEventSectionExpanded] = useState(true);
+    const [useSRLMethod, setUseSRLMethod] = useState(true);
+    const [showDeclusteringHelp, setShowDeclusteringHelp] = useState(false);
+
+    // SRL Configurable Parameters
+    const [srlMainshockTimeWindow, setSrlMainshockTimeWindow] = useState<number>(3); // Years
+    const [srlMainshockSpatialFactor, setSrlMainshockSpatialFactor] = useState<number>(5); // x Rupture Length
+    const [srlAftershockTimeWindow, setSrlAftershockTimeWindow] = useState<number>(10); // Days
+    const [srlAftershockSpatialFactor, setSrlAftershockSpatialFactor] = useState<number>(3); // x Rupture Length
+
+    // Gardner-Knopoff Configurable Parameters
+    // Spatial: 10^(a*M + b)
+    const [gkSpatialA, setGkSpatialA] = useState<number>(0.1238);
+    const [gkSpatialB, setGkSpatialB] = useState<number>(0.983);
+    // Temporal: 10^(c*M + d)
+    const [gkTemporalC, setGkTemporalC] = useState<number>(0.032);
+    const [gkTemporalD, setGkTemporalD] = useState<number>(2.7389);
 
     // Shared Omori optimization parameters
     const [optimizationMethod, setOptimizationMethod] = useState<OptimizationMethod>('mle');
@@ -158,128 +193,110 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
         setSharedOmoriParams(params);
     };
 
-    // Gardner-Knopoff declustering algorithm with spatial indexing optimization
-    // Based on Gardner & Knopoff (1974) space-time window method
-    // OPTIMIZED: Uses RBush spatial index to reduce complexity from O(n²) to O(n log n)
-    const declusterEarthquakes = (events: EarthquakeData[]): EarthquakeData[] => {
+    // Gardner-Knopoff declustering algorithm
+    const declusterGardnerKnopoff = (events: EarthquakeData[]): EarthquakeData[] => {
         if (events.length === 0) return [];
-
-        // Sort by magnitude descending (largest events are mainshocks)
         const sorted = [...events].sort((a, b) => b.magnitude - a.magnitude);
-
-        // Track which events are dependent (aftershocks/foreshocks)
         const isDependentEvent = new Set<number>();
 
-        // Gardner-Knopoff spatial window (km) based on magnitude
-        const spatialWindow = (mag: number): number => {
-            return Math.pow(10, 0.1238 * mag + 0.983);
-        };
+        const spatialWindow = (mag: number) => Math.pow(10, gkSpatialA * mag + gkSpatialB);
+        const temporalWindow = (mag: number) => Math.pow(10, gkTemporalC * mag + gkTemporalD);
 
-        // Gardner-Knopoff temporal window (days) based on magnitude
-        const temporalWindow = (mag: number): number => {
-            return Math.pow(10, 0.032 * mag + 2.7389);
-        };
-
-        // Haversine distance formula (km)
-        const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-            const R = 6371; // Earth's radius in km
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return R * c;
-        };
-
-        // OPTIMIZATION: Build R-tree spatial index for fast neighbor queries
-        interface SpatialPoint {
-            minX: number;
-            minY: number;
-            maxX: number;
-            maxY: number;
-            index: number;
-        }
-
-        const tree = new RBush<SpatialPoint>();
-        const items: SpatialPoint[] = sorted.map((eq, idx) => ({
-            minX: eq.longitude,
-            minY: eq.latitude,
-            maxX: eq.longitude,
-            maxY: eq.latitude,
-            index: idx
-        }));
-        tree.load(items);
-
-        // Convert km to approximate degrees for bounding box queries
-        const kmToDegrees = (km: number, latitude: number): { lat: number; lon: number } => {
-            return {
-                lat: km / 110.57, // 1 degree latitude ≈ 110.57 km
-                lon: km / (111.32 * Math.cos((latitude * Math.PI) / 180)) // 1 degree longitude varies by latitude
-            };
-        };
-
-        // For each event (starting with largest)
         for (let i = 0; i < sorted.length; i++) {
-            const mainEvent = sorted[i];
-
-            // Skip if this event is already marked as dependent
             if (isDependentEvent.has(i)) continue;
+            const mainEvent = sorted[i];
+            const mainTime = new Date(mainEvent.time).getTime();
 
-            const mainTime = mainEvent.time instanceof Date ? mainEvent.time : new Date(mainEvent.time);
-            if (isNaN(mainTime.getTime())) continue;
+            const sWin = spatialWindow(mainEvent.magnitude);
+            const tWin = temporalWindow(mainEvent.magnitude) * 24 * 60 * 60 * 1000; // to ms
 
-            const spatialWindowKm = spatialWindow(mainEvent.magnitude);
-            const temporalWindowDays = temporalWindow(mainEvent.magnitude);
-
-            // OPTIMIZATION: Query R-tree for spatially nearby events only
-            const degreeOffset = kmToDegrees(spatialWindowKm, mainEvent.latitude);
-            const candidates = tree.search({
-                minX: mainEvent.longitude - degreeOffset.lon,
-                minY: mainEvent.latitude - degreeOffset.lat,
-                maxX: mainEvent.longitude + degreeOffset.lon,
-                maxY: mainEvent.latitude + degreeOffset.lat
-            });
-
-            // Check only candidate events (spatially nearby)
-            for (const candidate of candidates) {
-                const j = candidate.index;
+            for (let j = 0; j < sorted.length; j++) {
                 if (i === j || isDependentEvent.has(j)) continue;
+                const other = sorted[j];
 
-                const otherEvent = sorted[j];
-                const otherTime = otherEvent.time instanceof Date ? otherEvent.time : new Date(otherEvent.time);
-                if (isNaN(otherTime.getTime())) continue;
+                const otherTime = new Date(other.time).getTime();
+                const tDiff = Math.abs(otherTime - mainTime);
+                if (tDiff > tWin) continue;
 
-                // Calculate precise spatial distance using Haversine
-                const distance = haversineDistance(
-                    mainEvent.latitude,
-                    mainEvent.longitude,
-                    otherEvent.latitude,
-                    otherEvent.longitude
-                );
-
-                // Calculate temporal distance (in days)
-                const timeDiffMs = Math.abs(otherTime.getTime() - mainTime.getTime());
-                const timeDiffDays = timeDiffMs / (1000 * 60 * 60 * 24);
-
-                // Mark as dependent if within space-time window
-                if (distance <= spatialWindowKm && timeDiffDays <= temporalWindowDays) {
+                const dist = haversineDistance(mainEvent.latitude, mainEvent.longitude, other.latitude, other.longitude);
+                if (dist <= sWin) {
                     isDependentEvent.add(j);
                 }
             }
         }
-
-        // Return only independent events (mainshocks)
         return sorted.filter((_, idx) => !isDependentEvent.has(idx));
     };
+
+    // SRL Paper Method Declustering (Configurable)
+    const declusterSRL = (events: EarthquakeData[]): EarthquakeData[] => {
+        // Configurable implementation of Hardebeck et al. method
+
+        const sorted = [...events].sort((a, b) => b.magnitude - a.magnitude); // Largest first
+        const isDependentEvent = new Set<number>();
+
+        for (let i = 0; i < sorted.length; i++) {
+            const mainEvent = sorted[i];
+            const mainTime = new Date(mainEvent.time).getTime();
+            const rl = getWellsCoppersmithRuptureLength(mainEvent.magnitude);
+
+            // Influence zone defined by user parameters
+            const timeWindow = srlMainshockTimeWindow * 365.25 * 24 * 60 * 60 * 1000; // Years to ms
+            const distLimit = srlMainshockSpatialFactor * rl; // Factor * Rupture Length
+
+            for (let j = 0; j < sorted.length; j++) {
+                if (i === j) continue;
+                const other = sorted[j];
+                if (isDependentEvent.has(j)) continue;
+
+                const otherTime = new Date(other.time).getTime();
+
+                // Logic: "excluding events that occur ... following a larger event"
+                if (otherTime > mainTime && otherTime <= mainTime + timeWindow) {
+                    const dist = haversineDistance(mainEvent.latitude, mainEvent.longitude, other.latitude, other.longitude);
+                    if (dist <= distLimit) {
+                        isDependentEvent.add(j);
+                    }
+                }
+            }
+        }
+
+        return sorted.filter((_, idx) => !isDependentEvent.has(idx));
+    }
+
 
     // Find recent significant earthquakes (M >= 5.5) with declustering
     const recentSignificantEarthquakes = useMemo(() => {
         // First filter by magnitude
         const significantEvents = earthquakes.filter(eq => eq.magnitude >= 5.5);
 
-        // Apply Gardner-Knopoff declustering to get only independent mainshocks
-        const declusteredEvents = declusterEarthquakes(significantEvents);
+        // Apply selected declustering
+        let declusteredEvents = useSRLMethod
+            ? declusterSRL(significantEvents)
+            : declusterGardnerKnopoff(significantEvents);
+
+        // Filter: Number of AFTERSHOCKS > 2
+        declusteredEvents = declusteredEvents.filter(mainEvent => {
+            const mainTime = new Date(mainEvent.time).getTime();
+            let aftershockCount = 0;
+
+            // SRL Paper Aftershock Definition for counting (Configurable)
+            const rl = getWellsCoppersmithRuptureLength(mainEvent.magnitude);
+            const timeWindow = srlAftershockTimeWindow * 24 * 60 * 60 * 1000; // Days to ms
+            const spatialWindow = srlAftershockSpatialFactor * rl;
+
+            for (const eq of earthquakes) {
+                const t = new Date(eq.time).getTime();
+                if (t > mainTime && t <= mainTime + timeWindow) {
+                    const d = haversineDistance(mainEvent.latitude, mainEvent.longitude, eq.latitude, eq.longitude);
+                    if (d <= spatialWindow) {
+                        aftershockCount++;
+                    }
+                }
+                if (aftershockCount > 2) break;
+            }
+
+            return aftershockCount > 2;
+        });
 
         // Sort by magnitude descending and take top 10
         return declusteredEvents
@@ -300,9 +317,8 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                 }
             })
             .filter((eq): eq is typeof earthquakes[0] & { timeString: string; dateString: string } => eq !== null);
-    }, [earthquakes]);
+    }, [earthquakes, useSRLMethod, srlMainshockTimeWindow, srlMainshockSpatialFactor, srlAftershockTimeWindow, srlAftershockSpatialFactor, gkSpatialA, gkSpatialB, gkTemporalC, gkTemporalD]);
 
-    // Create main event info
     const mainEvent: MainEventInfo | null = useMemo(() => {
         if (!mainEventTime || !mainEventMag) return null;
 
@@ -398,18 +414,173 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                     <div className="px-6 pb-6 border-t border-gray-100">
                         <div className="pt-5">
 
+                            {/* Declustering Methodology Toggle & Configuration */}
+                            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-sm font-medium text-gray-700">
+                                            Declustering Method
+                                        </div>
+                                        <button
+                                            onClick={() => setShowDeclusteringHelp(!showDeclusteringHelp)}
+                                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                                            title="About this method"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <label className="flex items-center cursor-pointer">
+                                        <div className="mr-3 text-sm font-medium text-gray-600">
+                                            {useSRLMethod ? 'Hardebeck et al. 2019 (SRL Paper)' : 'Gardner-Knopoff'}
+                                        </div>
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only"
+                                                checked={useSRLMethod}
+                                                onChange={() => setUseSRLMethod(!useSRLMethod)}
+                                            />
+                                            <div className={`block w-10 h-6 rounded-full transition-colors ${useSRLMethod ? 'bg-indigo-600' : 'bg-gray-400'}`}></div>
+                                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${useSRLMethod ? 'transform translate-x-4' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                {showDeclusteringHelp && (
+                                    <div className="mb-4 p-3 bg-blue-50 text-blue-800 text-xs rounded-md border border-blue-100 italic animate-fadeIn">
+                                        {useSRLMethod
+                                            ? "Hardebeck et al. (SRL): Physically motivated method using Wells & Coppersmith rupture lengths to define exclusion zones (typically 3 years, 5x RL for mainshocks)."
+                                            : "Gardner-Knopoff: Standard windowing algorithm where aftershocks are defined by magnitude-dependent spatial (10^(aM+b)) and temporal (10^(cM+d)) zones."}
+                                    </div>
+                                )}
+
+                                {/* SRL Configuration Panel */}
+                                {useSRLMethod && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 pt-3 border-t border-gray-200 animate-fadeIn">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Mainshock Definition</h4>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Window (Years)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={srlMainshockTimeWindow}
+                                                        onChange={(e) => setSrlMainshockTimeWindow(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        min="0.1" step="0.1"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Spatial (x Rupture Len)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={srlMainshockSpatialFactor}
+                                                        onChange={(e) => setSrlMainshockSpatialFactor(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        min="1" step="0.5"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Aftershock Counting</h4>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Window (Days)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={srlAftershockTimeWindow}
+                                                        onChange={(e) => setSrlAftershockTimeWindow(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        min="1" step="1"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Spatial (x Rupture Len)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={srlAftershockSpatialFactor}
+                                                        onChange={(e) => setSrlAftershockSpatialFactor(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        min="1" step="0.5"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Gardner-Knopoff Configuration Panel */}
+                                {!useSRLMethod && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 pt-3 border-t border-gray-200 animate-fadeIn">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Spatial Window: 10^(aM + b)</h4>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Coeff a</label>
+                                                    <input
+                                                        type="number"
+                                                        value={gkSpatialA}
+                                                        onChange={(e) => setGkSpatialA(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        step="0.001"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Coeff b</label>
+                                                    <input
+                                                        type="number"
+                                                        value={gkSpatialB}
+                                                        onChange={(e) => setGkSpatialB(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        step="0.001"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Temporal Window: 10^(cM + d)</h4>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Coeff c</label>
+                                                    <input
+                                                        type="number"
+                                                        value={gkTemporalC}
+                                                        onChange={(e) => setGkTemporalC(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        step="0.001"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Coeff d</label>
+                                                    <input
+                                                        type="number"
+                                                        value={gkTemporalD}
+                                                        onChange={(e) => setGkTemporalD(Number(e.target.value))}
+                                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                        step="0.001"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             {recentSignificantEarthquakes.length > 0 ? (
                                 <div className="mb-6">
                                     <div className="flex items-center gap-2 mb-3">
                                         <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
                                             Recent Significant Earthquakes (M ≥ 5.5)
                                         </label>
-                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-300">
+                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${useSRLMethod ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-green-100 text-green-800 border-green-300'}`}>
                                             Declustered
                                         </span>
                                     </div>
                                     <p className="text-xs text-gray-600 mb-3 italic">
-                                        Independent mainshocks only (Gardner-Knopoff declustering applied)
+                                        Independent mainshocks with {'>'}2 aftershocks ({useSRLMethod ? 'Hardebeck et al. 2019' : 'Gardner-Knopoff'} applied)
                                     </p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         {recentSignificantEarthquakes.map((eq, idx) => (
@@ -432,7 +603,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                             ) : (
                                 <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
                                     <p className="text-sm text-yellow-800 font-medium">
-                                        ⚠️ No significant earthquakes (M ≥ 5.5) found in the current dataset.
+                                        ⚠️ No significant earthquakes (M ≥ 5.5) with {'>'}2 aftershocks found.
                                     </p>
                                 </div>
                             )}
@@ -632,6 +803,16 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                                             omori: 'report-omori',
                                             cumulative: 'report-cumulative',
                                             threeD: 'report-3d'
+                                        },
+                                        declusteringMethod: useSRLMethod ? 'Hardebeck et al. 2019 (SRL Paper)' : 'Gardner-Knopoff',
+                                        declusteringParams: useSRLMethod ? {
+                                            'Mainshock Window': `${srlMainshockTimeWindow} years`,
+                                            'Mainshock Zone': `${srlMainshockSpatialFactor}x Rupture Len`,
+                                            'Aftershock Window': `${srlAftershockTimeWindow} days`,
+                                            'Aftershock Zone': `${srlAftershockSpatialFactor}x Rupture Len`
+                                        } : {
+                                            'Spatial Window': `10^(${gkSpatialA}M + ${gkSpatialB})`,
+                                            'Temporal Window': `10^(${gkTemporalC}M + ${gkTemporalD})`
                                         }
                                     });
                                 } catch (error) {
