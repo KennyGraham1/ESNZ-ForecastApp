@@ -28,7 +28,7 @@ export default function ChartExportButtons({
             const chart = chartRef.current.chart as any; // Type assertion for exporting module
             const mimeType = format === 'svg' ? 'image/svg+xml' : `image/${format}`;
 
-            // Professional export settings with proper dimensions and quality
+            // Export settings with proper dimensions and quality
             const exportOptions = {
                 type: mimeType,
                 filename: filename,

@@ -1,12 +1,13 @@
 'use client';
 
 import { EarthquakeData } from '@/types/earthquake';
-import { useMemo, useRef, memo } from 'react';
+import { useMemo, useRef, memo, useEffect } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import { MainEventInfo, calculateOmoriParameters, OptimizationMethod, OmoriParameters } from '@/lib/analysis/omori';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import ChartExportButtons from './ChartExportButtons';
+import { registerChart, unregisterChart } from '@/utils/chartRegistry';
 
 interface CumulativeAftershockPlotProps {
     earthquakes: EarthquakeData[];
@@ -136,6 +137,15 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
             fittedData: fitted
         };
     }, [earthquakes, providedMainEvent, optimizationMethod, magnitudeCompleteness, providedOmoriParams]);
+
+    // Register chart for PDF export
+    useEffect(() => {
+        const chart = chartRef.current?.chart;
+        if (chart) {
+            registerChart('cumulative-plot', chart);
+        }
+        return () => unregisterChart('cumulative-plot');
+    }, [cumulativeData]);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         if (!Array.isArray(cumulativeData) || cumulativeData.length === 0 || !Array.isArray(fittedData)) {

@@ -10,6 +10,7 @@ import RBush from 'rbush';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { formatDate } from '@/utils/dateFormat';
 import { getColorStops, getColorForValue, ColorPaletteName } from '@/utils/colorPalette';
+import { registerChart, unregisterChart } from '@/utils/chartRegistry';
 
 interface AftershockSequencePlotProps {
     earthquakes: EarthquakeData[];
@@ -64,6 +65,36 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             // Round to nearest integer for cleaner UI
             setAftershockRadius(Math.round(calculatedRadius));
         }
+    }, [mainEvent]);
+
+    // Register charts for PDF export
+    // Note: Using a delay to ensure charts are fully rendered
+    useEffect(() => {
+        // Use a small delay to ensure charts are rendered after data updates
+        const timer = setTimeout(() => {
+            // Register timeline chart
+            const timelineChart = chartRef.current?.chart;
+            if (timelineChart) {
+                registerChart('timeline-plot', timelineChart);
+            }
+            // Register depth profile chart
+            const depthChart = depthChartRef.current?.chart;
+            if (depthChart) {
+                registerChart('depth-plot', depthChart);
+            }
+            // Register map chart (if available)
+            const mapChart = mapChartRef.current?.chart;
+            if (mapChart) {
+                registerChart('map-plot', mapChart);
+            }
+        }, 200);
+
+        return () => {
+            clearTimeout(timer);
+            unregisterChart('timeline-plot');
+            unregisterChart('depth-plot');
+            unregisterChart('map-plot');
+        };
     }, [mainEvent]);
 
     // Load New Zealand map data
@@ -1717,7 +1748,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             </div>
 
             {/* Main Aftershock Sequence Plot - Full Width */}
-            <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+            <div id="report-timeline" className="bg-white p-6 rounded-lg shadow border border-gray-200">
                 <h3 className="text-xl font-bold text-gray-800 mb-4">Aftershock Sequence Timeline</h3>
                 <div className="h-[500px]">
                     <HighchartsReact
@@ -1735,7 +1766,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             </div>
 
             {/* Magnitude vs Depth Scatter Plot - Full Width */}
-            <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+            <div id="report-depth" className="bg-white p-6 rounded-lg shadow border border-gray-200">
                 <h3 className="text-xl font-bold text-gray-800 mb-4">Magnitude vs Depth</h3>
                 <div className="h-[500px]">
                     <HighchartsReact
@@ -1753,7 +1784,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             </div>
 
             {/* Aftershock Map - Full Width */}
-            <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+            <div id="report-map" className="bg-white p-6 rounded-lg shadow border border-gray-200">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-xl font-bold text-gray-800">Aftershock Locations</h3>
                     <div className="flex items-center gap-2">

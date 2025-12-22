@@ -11,6 +11,8 @@ import { MainEventInfo, OptimizationMethod } from '@/lib/analysis/omori';
 import RBush from 'rbush';
 import { getLocalityFromCoordinates } from '@/utils/nzRegions';
 import { REFERENCE_MODELS, ReferenceModel } from '@/lib/analysis/referenceModels';
+import { generateAnalysisReport } from '@/utils/generateAnalysisReport';
+import { GutenbergRichterResult } from '@/lib/analysis/gutenbergRichter';
 
 import { OmoriParameters } from '@/lib/analysis/omori';
 
@@ -141,9 +143,14 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
 
     // SHARED OMORI STATE: Lifted up from OmoriLawPlot to synchronize Cumulative plot
     const [sharedOmoriParams, setSharedOmoriParams] = useState<OmoriParameters | null>(null);
+    // SHARED GR STATE: Lifted up for Report Generation
+    const [grResult, setGrResult] = useState<GutenbergRichterResult | null>(null);
 
     // COLOR PALETTE STATE: For consistent coloring across plots
     const [colorPalette, setColorPalette] = useState<string>('default');
+
+    // REPORT GENERATION STATE
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
     // Handler for when Omori calculation completes in OmoriLawPlot
     const handleOmoriCalculationComplete = (params: OmoriParameters | null) => {
@@ -516,7 +523,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
 
             {mainEvent ? (
                 <div className="grid grid-cols-1 gap-6">
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                    <div id="report-timeline" className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
                         <div className="mb-4">
                             <h3 className="text-xl font-bold text-gray-800 mb-1">Aftershock Sequence</h3>
                             <p className="text-sm text-gray-500">Temporal distribution of aftershocks</p>
@@ -531,7 +538,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                     </div>
 
                     {/* 3D Visualization Section */}
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                    <div id="report-3d" className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
                         <div className="mb-4">
                             <h3 className="text-xl font-bold text-gray-800 mb-1">3D Aftershock Distribution</h3>
                             <p className="text-sm text-gray-500">Interactive 3D view of the aftershock sequence</p>
@@ -545,7 +552,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                             colorPalette={colorPalette as any} // Cast if needed, but the type should match
                         />
                     </div>
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                    <div id="report-omori" className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
                         <div className="mb-4">
                             <h3 className="text-lg font-semibold text-gray-900">Omori-Utsu Law Analysis</h3>
                             <p className="text-sm text-gray-500 mb-4">Decay rate of aftershock activity</p>
@@ -590,16 +597,78 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
 
                     {/* Frequency-Magnitude and Cumulative Analysis Section - Side by Side */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <GutenbergRichterPlot
-                            earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
-                        />
-                        <CumulativeAftershockPlot
-                            earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
-                            mainEvent={mainEvent}
-                            optimizationMethod={optimizationMethod}
-                            magnitudeCompleteness={magnitudeCompleteness}
-                            omoriParams={sharedOmoriParams} // Use shared params instead of re-calculating
-                        />
+                        <div id="report-gr">
+                            <GutenbergRichterPlot
+                                earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
+                                onCalculationComplete={setGrResult}
+                            />
+                        </div>
+                        <div id="report-cumulative">
+                            <CumulativeAftershockPlot
+                                earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
+                                mainEvent={mainEvent}
+                                optimizationMethod={optimizationMethod}
+                                magnitudeCompleteness={magnitudeCompleteness}
+                                omoriParams={sharedOmoriParams} // Use shared params instead of re-calculating
+                            />
+                        </div>
+                    </div>
+
+                    {/* Report Generation Button */}
+                    <div className="flex flex-col items-center gap-4 pt-6 pb-12">
+                        <button
+                            onClick={async () => {
+                                if (!mainEvent) return;
+                                setIsGeneratingReport(true);
+                                try {
+                                    await generateAnalysisReport({
+                                        mainEvent,
+                                        earthquakeCount: filteredSequenceData.length > 0 ? filteredSequenceData.length : earthquakes.length,
+                                        omoriParams: sharedOmoriParams,
+                                        grResult: grResult,
+                                        plotIds: {
+                                            timeline: 'report-timeline',
+                                            gr: 'report-gr',
+                                            omori: 'report-omori',
+                                            cumulative: 'report-cumulative',
+                                            threeD: 'report-3d'
+                                        }
+                                    });
+                                } catch (error) {
+                                    console.error('Report generation failed:', error);
+                                    alert('Failed to generate report. Please try again.');
+                                } finally {
+                                    setIsGeneratingReport(false);
+                                }
+                            }}
+                            disabled={isGeneratingReport}
+                            className={`${isGeneratingReport
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 hover:scale-105'
+                                } text-white font-bold py-3 px-8 rounded-full shadow-lg flex items-center gap-3 transition-all`}
+                        >
+                            {isGeneratingReport ? (
+                                <>
+                                    <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Generating Report...
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Generate Analysis Report (PDF)
+                                </>
+                            )}
+                        </button>
+                        {isGeneratingReport && (
+                            <p className="text-sm text-gray-600 animate-pulse">
+                                Please wait while we capture plots and compile your report...
+                            </p>
+                        )}
                     </div>
 
 

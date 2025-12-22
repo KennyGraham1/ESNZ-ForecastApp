@@ -10,6 +10,7 @@ import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import LoadingProgress from './LoadingProgress';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
+import { registerChart, unregisterChart } from '@/utils/chartRegistry';
 
 interface OmoriLawPlotProps {
     earthquakes: EarthquakeData[];
@@ -108,6 +109,44 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
 
         calculateWithProgress();
     }, [earthquakes, mainEvent, appliedOptimizationMethod, appliedMagnitudeCompleteness]);
+
+    // Register charts for PDF export
+    // Use a delay to ensure Highcharts has fully rendered all charts
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // Register Daily Rate chart as the main 'omori-plot' for PDF report
+            const dailyRateChart = chartRef3.current?.chart;
+            if (dailyRateChart) {
+                registerChart('omori-plot', dailyRateChart);
+            }
+            // Register additional charts for PDF export
+            const countsChart = chartRef1.current?.chart;
+            if (countsChart) {
+                registerChart('omori-counts-plot', countsChart);
+            }
+            const cumulativeChart = chartRef2.current?.chart;
+            if (cumulativeChart) {
+                registerChart('omori-cumulative-plot', cumulativeChart);
+            }
+            const residualChart = chartRef4.current?.chart;
+            if (residualChart) {
+                registerChart('omori-residual-plot', residualChart);
+            }
+            const qqChart = chartRef5.current?.chart;
+            if (qqChart) {
+                registerChart('omori-qq-plot', qqChart);
+            }
+        }, 300); // Allow time for Highcharts to fully render
+
+        return () => {
+            clearTimeout(timer);
+            unregisterChart('omori-plot');
+            unregisterChart('omori-counts-plot');
+            unregisterChart('omori-cumulative-plot');
+            unregisterChart('omori-residual-plot');
+            unregisterChart('omori-qq-plot');
+        };
+    }, [omoriParams]);
 
     const dailyRateOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
@@ -963,45 +1002,45 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
             </div>
 
             <div className="space-y-6">
-                {activeTab === 'fit' && (
-                    <>
-                        <div className="bg-white rounded-lg border border-gray-100 p-4">
-                            <div className="h-[500px]">
-                                <HighchartsReact highcharts={Highcharts} options={countsVsExpectedOptions} ref={chartRef1} />
-                            </div>
+                {/* Model Fit Charts - Always render but hide when not active for PDF export */}
+                <div style={{ display: activeTab === 'fit' ? 'block' : 'none' }}>
+                    <div className="bg-white rounded-lg border border-gray-100 p-4">
+                        <div className="h-[500px]">
+                            <HighchartsReact highcharts={Highcharts} options={countsVsExpectedOptions} ref={chartRef1} />
+                        </div>
+                        <ChartExportButtons
+                            chartRef={chartRef1}
+                            data={earthquakes}
+                            filename="omori-counts-vs-expected"
+                        />
+                    </div>
+                    <div className="bg-white rounded-lg border border-gray-100 p-4 mt-6">
+                        <div className="h-[500px]">
+                            <HighchartsReact highcharts={Highcharts} options={cumulativeOptions} ref={chartRef2} />
+                        </div>
+                        <ChartExportButtons
+                            chartRef={chartRef2}
+                            data={earthquakes}
+                            filename="omori-cumulative"
+                        />
+                    </div>
+                    <div className="bg-white rounded-lg border border-gray-100 mt-6">
+                        <h4 className="text-md font-semibold text-gray-700 mb-3 px-4 pt-4">Daily Aftershock Rate (Log-Log)</h4>
+                        <div className="h-[500px] px-4">
+                            <HighchartsReact highcharts={Highcharts} options={dailyRateOptions} ref={chartRef3} />
+                        </div>
+                        <div className="px-4 pb-4">
                             <ChartExportButtons
-                                chartRef={chartRef1}
+                                chartRef={chartRef3}
                                 data={earthquakes}
-                                filename="omori-counts-vs-expected"
+                                filename="omori-daily-rate"
                             />
                         </div>
-                        <div className="bg-white rounded-lg border border-gray-100 p-4">
-                            <div className="h-[500px]">
-                                <HighchartsReact highcharts={Highcharts} options={cumulativeOptions} ref={chartRef2} />
-                            </div>
-                            <ChartExportButtons
-                                chartRef={chartRef2}
-                                data={earthquakes}
-                                filename="omori-cumulative"
-                            />
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-100">
-                            <h4 className="text-md font-semibold text-gray-700 mb-3 px-4 pt-4">Daily Aftershock Rate (Log-Log)</h4>
-                            <div className="h-[500px] px-4">
-                                <HighchartsReact highcharts={Highcharts} options={dailyRateOptions} ref={chartRef3} />
-                            </div>
-                            <div className="px-4 pb-4">
-                                <ChartExportButtons
-                                    chartRef={chartRef3}
-                                    data={earthquakes}
-                                    filename="omori-daily-rate"
-                                />
-                            </div>
-                        </div>
-                    </>
-                )}
+                    </div>
+                </div>
 
-                {activeTab === 'residuals' && (
+                {/* Residuals Chart - Always render but hide when not active for PDF export */}
+                <div style={{ display: activeTab === 'residuals' ? 'block' : 'none' }}>
                     <div className="bg-white rounded-lg border border-gray-100 p-4">
                         <h4 className="text-md font-semibold text-gray-700 mb-3">Residual Analysis</h4>
                         <p className="text-xs text-gray-500 mb-2">Top: Standardized residuals (should be within ±2). Bottom: Cumulative residual process.</p>
@@ -1014,9 +1053,10 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                             filename="omori-residual-analysis"
                         />
                     </div>
-                )}
+                </div>
 
-                {activeTab === 'stats' && (
+                {/* Q-Q Plot - Always render but hide when not active for PDF export */}
+                <div style={{ display: activeTab === 'stats' ? 'block' : 'none' }}>
                     <div className="bg-white rounded-lg border border-gray-100 p-4">
                         <h4 className="text-md font-semibold text-gray-700 mb-3">Time-Rescaling Q-Q Plot</h4>
                         <p className="text-xs text-gray-500 mb-2">Transformed inter-event times vs Exponential(1). Deviations from 1:1 line indicate model misfit.</p>
@@ -1029,7 +1069,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                             filename="omori-qq-plot"
                         />
                     </div>
-                )}
+                </div>
             </div>
 
             <div className="mt-4 text-sm text-gray-600">

@@ -1,12 +1,13 @@
 'use client';
 
 import { EarthquakeData } from '@/types/earthquake';
-import { useMemo, useRef, memo } from 'react';
+import { useMemo, useRef, memo, useEffect } from 'react';
 import { GutenbergRichterResult, calculateGutenbergRichter } from '@/lib/analysis/gutenbergRichter';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
+import { registerChart, unregisterChart } from '@/utils/chartRegistry';
 
 interface GutenbergRichterPlotProps {
     earthquakes: EarthquakeData[];
@@ -14,6 +15,7 @@ interface GutenbergRichterPlotProps {
     completenessMethod?: 'maximum_curvature' | 'goodness_of_fit';
     analysisType?: 'cumulative' | 'interval';
     magnitudeCompleteness?: number;
+    onCalculationComplete?: (result: GutenbergRichterResult | null) => void;
 }
 
 const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
@@ -21,7 +23,8 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
     binWidth = 0.1,
     completenessMethod = 'maximum_curvature',
     analysisType = 'cumulative',
-    magnitudeCompleteness
+    magnitudeCompleteness,
+    onCalculationComplete
 }: GutenbergRichterPlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -29,6 +32,22 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
     const result = useMemo(() => {
         return calculateGutenbergRichter(earthquakes, { binWidth, completenessMethod });
     }, [earthquakes, binWidth, completenessMethod]);
+
+    // Lift state up
+    useMemo(() => {
+        if (onCalculationComplete) {
+            onCalculationComplete(result);
+        }
+    }, [result, onCalculationComplete]);
+
+    // Register chart for PDF export
+    useEffect(() => {
+        const chart = chartRef.current?.chart;
+        if (chart) {
+            registerChart('gr-plot', chart);
+        }
+        return () => unregisterChart('gr-plot');
+    }, [chartRef.current?.chart]);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
