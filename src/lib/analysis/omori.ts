@@ -2,7 +2,7 @@ import { EarthquakeData } from '@/types/earthquake';
 import { levenbergMarquardt } from 'ml-levenberg-marquardt';
 import { safeMin, safeMax } from '@/utils/arrayMath';
 
-export type OptimizationMethod = 'grid-search' | 'levenberg-marquardt' | 'nelder-mead' | 'hybrid' | 'mle';
+export type OptimizationMethod = 'grid-search' | 'levenberg-marquardt' | 'nelder-mead' | 'hybrid' | 'mle' | 'mle-sa' | 'mle-em';
 
 export interface ParameterUncertainty {
     K_se?: number;  // Standard error
@@ -569,6 +569,347 @@ function fitOmoriLawMLE(
 }
 
 /**
+ * Maximum Likelihood Estimation for Omori's Law using Simulated Annealing
+ * Simulated Annealing is a probabilistic technique for global optimization
+ * that allows uphill moves to escape local minima with probability based on temperature
+ */
+function fitOmoriLawMLE_SA(
+    eventTimes: number[],
+    T_max: number
+): { K: number; c: number; p: number; rSquared: number; iterations: number; logLikelihood: number } {
+    const MIN_TIME = 0.001;
+    const sortedTimes = [...eventTimes]
+        .filter(t => t >= MIN_TIME)
+        .sort((a, b) => a - b);
+    const N = sortedTimes.length;
+
+    // Negative log-likelihood function (same as standard MLE)
+    const negLogLikelihood = (params: number[]): number => {
+        const [K, c, p] = params;
+        if (K <= 0 || K > 1e6 || c <= 0.005 || c > 5.0 || p <= 0.6 || p >= 1.8) {
+            return 1e10;
+        }
+
+        let sumLogRates = 0;
+        for (const t of sortedTimes) {
+            const rate = K / Math.pow(t + c, p);
+            if (rate <= 0) return 1e10;
+            sumLogRates += Math.log(rate);
+        }
+
+        let integral;
+        if (Math.abs(p - 1.0) < 1e-6) {
+            integral = K * (Math.log(T_max + c) - Math.log(c));
+        } else {
+            const oneMinusP = 1 - p;
+            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP));
+        }
+
+        return -(sumLogRates - integral);
+    };
+
+    // Initial guess (same heuristics as standard MLE)
+    const maxTime = safeMax(sortedTimes);
+    const earlyWindow = Math.min(1.0, maxTime * 0.1);
+    const lateStart = Math.min(10.0, maxTime * 0.5);
+    const lateEnd = Math.min(20.0, maxTime * 0.7);
+    const earlyEvents = sortedTimes.filter(t => t < earlyWindow);
+    const lateEvents = sortedTimes.filter(t => t >= lateStart && t < lateEnd);
+    const earlyRate = earlyEvents.length / earlyWindow;
+    const lateRate = lateEvents.length / (lateEnd - lateStart);
+    const earlyTime = earlyWindow / 2;
+    const lateTime = (lateStart + lateEnd) / 2;
+
+    let initialP = 1.1;
+    if (earlyRate > 0 && lateRate > 0 && lateTime > earlyTime) {
+        const estimatedP = Math.log(earlyRate / lateRate) / Math.log(lateTime / earlyTime);
+        initialP = Math.max(0.9, Math.min(1.3, estimatedP));
+    }
+    const initialC = 0.1;
+    let integralTerm;
+    if (Math.abs(initialP - 1.0) < 1e-6) {
+        integralTerm = Math.log(T_max + initialC) - Math.log(initialC);
+    } else {
+        const oneMinusP = 1 - initialP;
+        integralTerm = (Math.pow(T_max + initialC, oneMinusP) - Math.pow(initialC, oneMinusP)) / oneMinusP;
+    }
+    const initialK = N / integralTerm;
+
+    // Simulated Annealing parameters
+    let temperature = 1.0;
+    const coolingRate = 0.995;
+    const minTemperature = 1e-8;
+    const maxIterations = 5000;
+
+    // Current and best solutions
+    let current = [initialK, initialC, initialP];
+    let currentEnergy = negLogLikelihood(current);
+    let best = [...current];
+    let bestEnergy = currentEnergy;
+    let iterations = 0;
+
+    // Step sizes for perturbations (proportional to parameter scale)
+    const stepSizes = [initialK * 0.1, 0.05, 0.05];
+
+    while (temperature > minTemperature && iterations < maxIterations) {
+        iterations++;
+
+        // Generate neighbor by perturbing current solution
+        const neighbor = current.map((val, i) => {
+            const perturbation = (Math.random() - 0.5) * 2 * stepSizes[i] * temperature;
+            return val + perturbation;
+        });
+
+        // Clamp to valid ranges
+        neighbor[0] = Math.max(1, Math.min(1e6, neighbor[0]));  // K
+        neighbor[1] = Math.max(0.01, Math.min(5.0, neighbor[1])); // c
+        neighbor[2] = Math.max(0.7, Math.min(1.7, neighbor[2]));  // p
+
+        const neighborEnergy = negLogLikelihood(neighbor);
+
+        // Accept if better, or with probability exp(-ΔE/T) if worse
+        const deltaEnergy = neighborEnergy - currentEnergy;
+        if (deltaEnergy < 0 || Math.random() < Math.exp(-deltaEnergy / (temperature * 100))) {
+            current = neighbor;
+            currentEnergy = neighborEnergy;
+
+            if (currentEnergy < bestEnergy) {
+                best = [...current];
+                bestEnergy = currentEnergy;
+            }
+        }
+
+        // Cool down
+        temperature *= coolingRate;
+    }
+
+    const [K, c, p] = best;
+    const logLikelihood = -bestEnergy;
+
+    // Calculate R-squared
+    const maxDay = Math.ceil(safeMax(sortedTimes));
+    const dailyCounts = new Array(maxDay).fill(0);
+    for (const t of sortedTimes) {
+        const day = Math.floor(t);
+        if (day < maxDay) dailyCounts[day]++;
+    }
+
+    const nonZeroDays = dailyCounts
+        .map((count, day) => ({ day: day + 1, count }))
+        .filter(d => d.count > 0);
+
+    if (nonZeroDays.length > 0) {
+        const counts = nonZeroDays.map(d => d.count);
+        const days = nonZeroDays.map(d => d.day);
+        const meanCount = counts.reduce((sum, c) => sum + c, 0) / counts.length;
+        const ssTot = counts.reduce((sum, c) => sum + Math.pow(c - meanCount, 2), 0);
+        const ssRes = days.reduce((sum, t, i) => {
+            const predicted = omoriLaw(t, K, c, p);
+            return sum + Math.pow(counts[i] - predicted, 2);
+        }, 0);
+        const rSquared = 1 - (ssRes / ssTot);
+        return { K, c, p, rSquared, iterations, logLikelihood };
+    }
+
+    return { K, c, p, rSquared: 0, iterations, logLikelihood };
+}
+
+/**
+ * Maximum Likelihood Estimation for Omori's Law using Expectation-Maximization
+ * EM algorithm iteratively optimizes parameters by treating the expected event count
+ * as latent variables. For point processes, this involves alternating between
+ * computing expected rates and updating parameters.
+ */
+function fitOmoriLawMLE_EM(
+    eventTimes: number[],
+    T_max: number
+): { K: number; c: number; p: number; rSquared: number; iterations: number; logLikelihood: number } {
+    const MIN_TIME = 0.001;
+    const sortedTimes = [...eventTimes]
+        .filter(t => t >= MIN_TIME)
+        .sort((a, b) => a - b);
+    const N = sortedTimes.length;
+
+    // Initialize parameters (same heuristics as standard MLE)
+    const maxTime = safeMax(sortedTimes);
+    const earlyWindow = Math.min(1.0, maxTime * 0.1);
+    const lateStart = Math.min(10.0, maxTime * 0.5);
+    const lateEnd = Math.min(20.0, maxTime * 0.7);
+    const earlyEvents = sortedTimes.filter(t => t < earlyWindow);
+    const lateEvents = sortedTimes.filter(t => t >= lateStart && t < lateEnd);
+    const earlyRate = earlyEvents.length / earlyWindow;
+    const lateRate = lateEvents.length / (lateEnd - lateStart);
+    const earlyTime = earlyWindow / 2;
+    const lateTime = (lateStart + lateEnd) / 2;
+
+    let p = 1.1;
+    if (earlyRate > 0 && lateRate > 0 && lateTime > earlyTime) {
+        p = Math.max(0.8, Math.min(1.4, Math.log(earlyRate / lateRate) / Math.log(lateTime / earlyTime)));
+    }
+    let c = 0.1;
+    let integralTerm;
+    if (Math.abs(p - 1.0) < 1e-6) {
+        integralTerm = Math.log(T_max + c) - Math.log(c);
+    } else {
+        const oneMinusP = 1 - p;
+        integralTerm = (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP)) / oneMinusP;
+    }
+    let K = N / integralTerm;
+
+    // EM iteration parameters
+    const maxIterations = 200;
+    const tolerance = 1e-6;
+    let iterations = 0;
+    let prevLogL = -Infinity;
+
+    // Compute log-likelihood
+    const computeLogLikelihood = (K: number, c: number, p: number): number => {
+        if (K <= 0 || c <= 0 || p <= 0) return -Infinity;
+
+        let sumLogRates = 0;
+        for (const t of sortedTimes) {
+            const rate = K / Math.pow(t + c, p);
+            if (rate <= 0) return -Infinity;
+            sumLogRates += Math.log(rate);
+        }
+
+        let integral;
+        if (Math.abs(p - 1.0) < 1e-6) {
+            integral = K * (Math.log(T_max + c) - Math.log(c));
+        } else {
+            const oneMinusP = 1 - p;
+            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP));
+        }
+
+        return sumLogRates - integral;
+    };
+
+    // EM iterations
+    for (iterations = 0; iterations < maxIterations; iterations++) {
+        // E-step: Compute weights (normalized rates at each event time)
+        // For Omori point process, this is proportional to λ(t_i)
+        const rates: number[] = [];
+        let totalRate = 0;
+        for (const t of sortedTimes) {
+            const rate = 1 / Math.pow(t + c, p);
+            rates.push(rate);
+            totalRate += rate;
+        }
+        const weights = rates.map(r => r / totalRate);
+
+        // M-step: Update parameters to maximize expected log-likelihood
+        // Update c using weighted mean of time + c
+        let weightedSumLogTplusC = 0;
+        let weightedSumInvTplusC = 0;
+        for (let i = 0; i < N; i++) {
+            weightedSumLogTplusC += weights[i] * Math.log(sortedTimes[i] + c);
+            weightedSumInvTplusC += weights[i] / (sortedTimes[i] + c);
+        }
+
+        // Update p: For Omori law, p relates to the decay rate
+        // Using weighted average of log-derivatives
+        let sumLogT = 0;
+        for (const t of sortedTimes) {
+            sumLogT += Math.log(t + c);
+        }
+        const avgLogT = sumLogT / N;
+
+        // Compute integral derivatives for p update
+        let dIntegral_dp = 0;
+        if (Math.abs(p - 1.0) < 1e-6) {
+            const logRatio = Math.log(T_max + c) - Math.log(c);
+            dIntegral_dp = -K * (
+                Math.pow(T_max + c, 0) * Math.log(T_max + c) -
+                Math.pow(c, 0) * Math.log(c)
+            );
+        } else {
+            const oneMinusP = 1 - p;
+            const term1 = Math.pow(T_max + c, oneMinusP);
+            const term2 = Math.pow(c, oneMinusP);
+            dIntegral_dp = (K / (oneMinusP * oneMinusP)) * (term1 - term2) +
+                (K / oneMinusP) * (-term1 * Math.log(T_max + c) + term2 * Math.log(c));
+        }
+
+        // Gradient-based p update
+        const grad_p = -N * avgLogT + dIntegral_dp / K;
+        const p_new = Math.max(0.7, Math.min(1.6, p - 0.01 * grad_p));
+
+        // Update c using bisection search
+        const cSearchRange = [0.01, 2.0];
+        let c_new = c;
+        let bestC_logL = -Infinity;
+        for (let cTest = cSearchRange[0]; cTest <= cSearchRange[1]; cTest += 0.01) {
+            // With p_new, compute K analytically
+            let intTerm;
+            if (Math.abs(p_new - 1.0) < 1e-6) {
+                intTerm = Math.log(T_max + cTest) - Math.log(cTest);
+            } else {
+                const oneMinusP = 1 - p_new;
+                intTerm = (Math.pow(T_max + cTest, oneMinusP) - Math.pow(cTest, oneMinusP)) / oneMinusP;
+            }
+            const K_test = N / intTerm;
+            const logL = computeLogLikelihood(K_test, cTest, p_new);
+            if (logL > bestC_logL) {
+                bestC_logL = logL;
+                c_new = cTest;
+            }
+        }
+
+        // Update K analytically given (c_new, p_new)
+        if (Math.abs(p_new - 1.0) < 1e-6) {
+            integralTerm = Math.log(T_max + c_new) - Math.log(c_new);
+        } else {
+            const oneMinusP = 1 - p_new;
+            integralTerm = (Math.pow(T_max + c_new, oneMinusP) - Math.pow(c_new, oneMinusP)) / oneMinusP;
+        }
+        const K_new = N / integralTerm;
+
+        // Check convergence
+        const currentLogL = computeLogLikelihood(K_new, c_new, p_new);
+        if (Math.abs(currentLogL - prevLogL) < tolerance) {
+            K = K_new;
+            c = c_new;
+            p = p_new;
+            break;
+        }
+
+        K = K_new;
+        c = c_new;
+        p = p_new;
+        prevLogL = currentLogL;
+    }
+
+    const logLikelihood = computeLogLikelihood(K, c, p);
+
+    // Calculate R-squared
+    const maxDay = Math.ceil(safeMax(sortedTimes));
+    const dailyCounts = new Array(maxDay).fill(0);
+    for (const t of sortedTimes) {
+        const day = Math.floor(t);
+        if (day < maxDay) dailyCounts[day]++;
+    }
+
+    const nonZeroDays = dailyCounts
+        .map((count, day) => ({ day: day + 1, count }))
+        .filter(d => d.count > 0);
+
+    if (nonZeroDays.length > 0) {
+        const counts = nonZeroDays.map(d => d.count);
+        const days = nonZeroDays.map(d => d.day);
+        const meanCount = counts.reduce((sum, c) => sum + c, 0) / counts.length;
+        const ssTot = counts.reduce((sum, c) => sum + Math.pow(c - meanCount, 2), 0);
+        const ssRes = days.reduce((sum, t, i) => {
+            const predicted = omoriLaw(t, K, c, p);
+            return sum + Math.pow(counts[i] - predicted, 2);
+        }, 0);
+        const rSquared = 1 - (ssRes / ssTot);
+        return { K, c, p, rSquared, iterations, logLikelihood };
+    }
+
+    return { K, c, p, rSquared: 0, iterations, logLikelihood };
+}
+
+/**
  * Calculate uncertainty using Hessian approximation (more reliable than bootstrap)
  * Uses finite differences to approximate the Hessian matrix at the MLE
  * Then uses Fisher Information to calculate standard errors and CIs
@@ -1008,9 +1349,16 @@ export function calculateOmoriParameters(
     // Extract event times for MLE
     const eventTimes = aftershocksWithDays.map(a => a.daysSince);
 
-    if (optimizationMethod === 'mle') {
+    if (optimizationMethod === 'mle' || optimizationMethod === 'mle-sa' || optimizationMethod === 'mle-em') {
         // Use Maximum Likelihood Estimation with event times
-        const mleResult = fitOmoriLawMLE(eventTimes, daysAfter);
+        let mleResult;
+        if (optimizationMethod === 'mle-sa') {
+            mleResult = fitOmoriLawMLE_SA(eventTimes, daysAfter);
+        } else if (optimizationMethod === 'mle-em') {
+            mleResult = fitOmoriLawMLE_EM(eventTimes, daysAfter);
+        } else {
+            mleResult = fitOmoriLawMLE(eventTimes, daysAfter);
+        }
         K = mleResult.K;
         c = mleResult.c;
         p = mleResult.p;

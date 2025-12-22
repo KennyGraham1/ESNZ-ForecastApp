@@ -837,7 +837,9 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                 'levenberg-marquardt': 'Levenberg-Marquardt',
                 'nelder-mead': 'Nelder-Mead Simplex',
                 'grid-search': 'Grid Search',
-                'mle': 'Maximum Likelihood Estimation'
+                'mle': 'Maximum Likelihood Estimation',
+                'mle-sa': 'MLE + Simulated Annealing',
+                'mle-em': 'MLE + Expectation Maximization'
             };
             return names[method] || method;
         };
@@ -900,6 +902,8 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
                         >
                             <option value="hybrid">Hybrid (Grid + LM)</option>
                             <option value="mle">MLE (with CI)</option>
+                            <option value="mle-sa">MLE-SA (Simulated Annealing)</option>
+                            <option value="mle-em">MLE-EM (Expectation Maximization)</option>
                             <option value="levenberg-marquardt">Levenberg-Marquardt</option>
                             <option value="nelder-mead">Nelder-Mead</option>
                             <option value="grid-search">Grid Search</option>
