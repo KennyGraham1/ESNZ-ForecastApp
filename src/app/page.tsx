@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useCachedEarthquakes, refreshEarthquakeCache } from '@/hooks/useCachedEarthquakes';
 import { useQueryClient } from '@tanstack/react-query';
 import FilterControls, { FilterOptions } from '@/components/FilterControls';
+import { parsePolygonString, isPointInPolygon } from '@/lib/polygonUtils';
 import TabNavigation from '@/components/TabNavigation';
 import BasicDashboard from '@/components/tabs/BasicDashboard';
 import AdvancedStatistics from '@/components/tabs/AdvancedStatistics';
@@ -190,6 +191,9 @@ export default function Home() {
       endDateObj.setHours(23, 59, 59, 999); // Include entire end date
     }
 
+    // Pre-parse polygon filter if present
+    const { polygon } = filters.polygon ? parsePolygonString(filters.polygon) : { polygon: null };
+
     // Use array filter with optimized checks
     return earthquakes.filter(eq => {
       // Safety check for valid earthquake object
@@ -223,6 +227,13 @@ export default function Home() {
         const endTimeMs = endDateObj ? endDateObj.getTime() : Infinity;
 
         if (eqTime < startTimeMs || eqTime > endTimeMs) return false;
+      }
+
+      // Polygon filter
+      if (polygon) {
+        if (!isPointInPolygon([eq.longitude, eq.latitude], polygon)) {
+          return false;
+        }
       }
 
       return true;
@@ -648,6 +659,14 @@ export default function Home() {
                 onFilterChange={handleFilterChange}
                 dataDateRange={dataDateRange}
               />
+              {filters.polygon && (
+                <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+                  <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    Polygon filter active: {parsePolygonString(filters.polygon).polygon ? 'Valid Polygon' : 'Invalid Polygon'}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[600px]">

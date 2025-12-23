@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Filter, X, Check } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Filter, X, Check, AlertTriangle } from 'lucide-react';
+import { parsePolygonString } from '@/lib/polygonUtils';
 
 export interface FilterOptions {
     minMagnitude: number;
@@ -9,6 +10,7 @@ export interface FilterOptions {
     depthCategory: 'all' | 'shallow' | 'intermediate' | 'deep';
     startDate: string;
     endDate: string;
+    polygon?: string;
 }
 
 interface FilterControlsProps {
@@ -26,6 +28,13 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
     // Track if there are unapplied changes
     const hasUnappliedChanges = JSON.stringify(pendingFilters) !== JSON.stringify(filters);
 
+    // Validation state
+    const polygonValidation = useMemo(() => {
+        if (!pendingFilters.polygon) return { isValid: true, error: null };
+        const result = parsePolygonString(pendingFilters.polygon);
+        return { isValid: !!result.polygon, error: result.error };
+    }, [pendingFilters.polygon]);
+
     // Sync pending filters when applied filters change externally
     useEffect(() => {
         setPendingFilters(filters);
@@ -41,7 +50,8 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
             maxMagnitude: 10,
             depthCategory: 'all' as const,
             startDate: dataDateRange.min,
-            endDate: dataDateRange.max
+            endDate: dataDateRange.max,
+            polygon: ''
         };
         setPendingFilters(resetFilters);
         onFilterChange(resetFilters);
@@ -55,7 +65,7 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
     ];
 
     return (
-        <div className="bg-white rounded-lg shadow border border-gray-200 mb-6">
+        <div className="bg-white rounded-lg shadow border border-gray-200 mb-6 font-sans text-slate-900">
             <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
                 onClick={() => setIsExpanded(!isExpanded)}
@@ -148,6 +158,58 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                         </div>
                     </div>
 
+                    {/* Polygon Filter */}
+                    <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Polygon Filter
+                        </label>
+                        <div className="flex flex-col gap-2">
+                            <textarea
+                                value={pendingFilters.polygon || ''}
+                                onChange={(e) => setPendingFilters({ ...pendingFilters, polygon: e.target.value })}
+                                placeholder="POLYGON((166 -46, 179 -46, 179 -34, 166 -34, 166 -46))"
+                                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono h-24"
+                            />
+                            <div className="flex items-center gap-2">
+                                <label className="cursor-pointer px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded transition-colors border border-gray-300">
+                                    <span>Upload Polygon File</span>
+                                    <input
+                                        type="file"
+                                        accept=".txt,.wkt,.dat"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (event) => {
+                                                    const text = event.target?.result as string;
+                                                    if (text) {
+                                                        setPendingFilters({ ...pendingFilters, polygon: text });
+                                                    }
+                                                };
+                                                reader.readAsText(file);
+                                            }
+                                        }}
+                                    />
+                                </label>
+                                <span className="text-xs text-gray-500">
+                                    Supported: .txt, .dat
+                                </span>
+                            </div>
+                        </div>
+                        <div className="mt-2 text-xs text-gray-500 space-y-1">
+                            <p><strong>Option 1 (POLYGON Format):</strong> <code>POLYGON((166 -46, 179 -46, 179 -34, 166 -34, 166 -46))</code></p>
+                            <p><strong>Option 2 (Simple):</strong> Line-separated <code>lon lat</code> (supports common delimiters)</p>
+                        </div>
+
+                        {!polygonValidation.isValid && pendingFilters.polygon && (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-600 text-xs flex items-start gap-1">
+                                <AlertTriangle className="w-4 h-4 shrink-0" />
+                                <span>{polygonValidation.error || 'Invalid Polygon'}</span>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="mt-4 flex justify-between items-center">
                         <button
                             onClick={handleReset}
@@ -160,11 +222,10 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                         <button
                             onClick={handleApply}
                             disabled={!hasUnappliedChanges}
-                            className={`flex items-center gap-2 px-6 py-2 text-sm font-medium rounded transition-colors ${
-                                hasUnappliedChanges
-                                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            }`}
+                            className={`flex items-center gap-2 px-6 py-2 text-sm font-medium rounded transition-colors ${hasUnappliedChanges
+                                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
                         >
                             <Check className="w-4 h-4" />
                             Apply Filters
