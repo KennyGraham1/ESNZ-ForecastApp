@@ -15,6 +15,7 @@ export interface GutenbergRichterResult {
 export interface GROptions {
     binWidth?: number;
     completenessMethod?: 'maximum_curvature' | 'goodness_of_fit';
+    magnitudeCompleteness?: number;
 }
 
 /**
@@ -25,7 +26,7 @@ export function calculateGutenbergRichter(
     earthquakes: EarthquakeData[],
     options: GROptions = {}
 ): GutenbergRichterResult | null {
-    const { binWidth = 0.1, completenessMethod = 'maximum_curvature' } = options;
+    const { binWidth = 0.1, completenessMethod = 'maximum_curvature', magnitudeCompleteness } = options;
 
     if (earthquakes.length === 0) {
         return null;
@@ -70,7 +71,22 @@ export function calculateGutenbergRichter(
     let mc: number;
     let mcIndex: number;
 
-    if (completenessMethod === 'maximum_curvature') {
+    if (magnitudeCompleteness !== undefined) {
+        // Use user-provided Mc
+        mc = magnitudeCompleteness;
+        // Find nearest bin index
+        let minDiff = Infinity;
+        mcIndex = 0;
+        binCenters.forEach((center, idx) => {
+            const diff = Math.abs(center - mc);
+            if (diff < minDiff) {
+                minDiff = diff;
+                mcIndex = idx;
+            }
+        });
+        // Ensure mc matches a bin center strictly if needed, but for now closest bin is fine
+        // Actually, let's just trust the user provided value but we need an index for the loop below
+    } else if (completenessMethod === 'maximum_curvature') {
         // Mc is the magnitude bin with the maximum count
         // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
         // Use reduce with first element as initial value to avoid -Infinity

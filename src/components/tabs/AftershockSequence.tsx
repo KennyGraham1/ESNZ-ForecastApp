@@ -771,6 +771,7 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
                         <div id="report-gr">
                             <GutenbergRichterPlot
                                 earthquakes={filteredSequenceData.length > 0 ? filteredSequenceData : earthquakes}
+                                magnitudeCompleteness={magnitudeCompleteness}
                                 onCalculationComplete={setGrResult}
                             />
                         </div>

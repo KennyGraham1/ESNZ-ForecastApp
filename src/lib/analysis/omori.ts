@@ -1463,11 +1463,13 @@ export function calculateOmoriParameters(
     }));
 
     // Calculate cumulative counts
+    // Start with day 0, count 0 so the cumulative line begins at the origin
     let cumulative = 0;
-    const cumulativeCounts = dailyCounts.map(({ day, count }) => {
+    const cumulativeCounts: { day: number; count: number }[] = [{ day: 0, count: 0 }];
+    for (const { day, count } of dailyCounts) {
         cumulative += count;
-        return { day, count: cumulative };
-    });
+        cumulativeCounts.push({ day, count: cumulative });
+    }
 
     // ------------------------------------------------------------
     // DIAGNOSTICS CALCULATION
@@ -1484,10 +1486,11 @@ export function calculateOmoriParameters(
     };
 
     // Calculate expected cumulative counts for visualization (smooth curve)
-    const expectedCumulativeCounts = dailyCounts.map(({ day }) => ({
-        day,
-        count: integrateOmori(day, K, c, p)
-    }));
+    // Start with day 0, count 0 so the expected line begins at the origin
+    const expectedCumulativeCounts: { day: number; count: number }[] = [{ day: 0, count: 0 }];
+    for (const { day } of dailyCounts) {
+        expectedCumulativeCounts.push({ day, count: integrateOmori(day, K, c, p) });
+    }
 
     // 2. Transformed Times for Q-Q Plot
     // Transform event times t_i to tau_i = Lambda(t_i).

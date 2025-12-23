@@ -30,8 +30,8 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
 
     // Memoize expensive G-R calculation
     const result = useMemo(() => {
-        return calculateGutenbergRichter(earthquakes, { binWidth, completenessMethod });
-    }, [earthquakes, binWidth, completenessMethod]);
+        return calculateGutenbergRichter(earthquakes, { binWidth, completenessMethod, magnitudeCompleteness });
+    }, [earthquakes, binWidth, completenessMethod, magnitudeCompleteness]);
 
     // Lift state up
     useMemo(() => {

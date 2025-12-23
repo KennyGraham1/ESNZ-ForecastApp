@@ -73,7 +73,12 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
         // Filter and collect aftershocks (events after mainshock)
         const aftershocks: { day: number }[] = [];
 
-        earthquakes.forEach(eq => {
+        // Apply magnitude completeness filter if provided
+        const filteredEarthquakes = magnitudeCompleteness !== undefined
+            ? earthquakes.filter(eq => eq.magnitude >= magnitudeCompleteness)
+            : earthquakes;
+
+        filteredEarthquakes.forEach(eq => {
             const eqTime = eq.timeMs ?? eq.time.getTime();
             const daysSinceMain = (eqTime - mainEventTime) / (1000 * 60 * 60 * 24);
 

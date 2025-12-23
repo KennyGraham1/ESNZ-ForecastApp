@@ -87,8 +87,6 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
             color: getColor(eq.depth)
         }));
 
-
-
         // Prepare series data by depth
         const shallowData = earthquakePoints.filter(d => d.depth < 35);
         const intermediateData = earthquakePoints.filter(d => d.depth >= 35 && d.depth < 70);
