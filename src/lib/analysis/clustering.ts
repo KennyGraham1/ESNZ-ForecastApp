@@ -1026,7 +1026,8 @@ function hardebeckClustering(
     earthquakes: EarthquakeData[],
     minMainMag: number = 5.0,
     timeWindowDays: number = 10,
-    ruptureMult: number = 3
+    ruptureMult: number = 3,
+    mainshockTimeYears: number = 3
 ): { clusters: number[][], noiseIndices: number[] } {
     const n = earthquakes.length;
     const labels = new Array(n).fill(-1); // -1 = unassigned/noise initially
@@ -1106,7 +1107,7 @@ function hardebeckClustering(
 
         // Time in ms
         const t_i = new Date(eq.time).getTime();
-        const threeYearsMs = 3 * 365.25 * 24 * 60 * 60 * 1000;
+        const exclusionWindowMs = mainshockTimeYears * 365.25 * 24 * 60 * 60 * 1000;
 
         let isSuppressed = false;
 
@@ -1122,7 +1123,7 @@ function hardebeckClustering(
             const t_j = new Date(earthquakes[j].time).getTime();
 
             // "Following a larger event"
-            if (t_i > t_j && (t_i - t_j) < threeYearsMs) {
+            if (t_i > t_j && (t_i - t_j) < exclusionWindowMs) {
                 const RL_j = calculateRL(earthquakes[j].magnitude);
                 const distance = dist(idx, j);
                 if (distance < 5 * RL_j) {
@@ -1317,6 +1318,7 @@ export function calculateSpatialClustering(
     let hardebeckMinMag = 5.0;
     let hardebeckTimeWindow = 10;
     let hardebeckRuptureMult = 3;
+    let hardebeckMainshockTimeYears = 3;
 
     if (typeof optionsOrEpsilon !== 'number') {
         const opts = optionsOrEpsilon || {};
@@ -1330,6 +1332,7 @@ export function calculateSpatialClustering(
         hardebeckMinMag = opts.hardebeckMinMag ?? 5.0;
         hardebeckTimeWindow = opts.hardebeckTimeWindow ?? 10;
         hardebeckRuptureMult = opts.hardebeckRuptureMult ?? 3;
+        hardebeckMainshockTimeYears = opts.hardebeckMainshockTimeYears ?? 3;
     }
 
     // Prepare data for clustering (longitude, latitude)
@@ -1416,7 +1419,7 @@ export function calculateSpatialClustering(
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
     } else if (algorithm === 'hardebeck-2019') {
-        const result = hardebeckClustering(earthquakes, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult);
+        const result = hardebeckClustering(earthquakes, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears);
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
     } else {

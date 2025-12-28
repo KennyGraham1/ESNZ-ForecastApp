@@ -34,6 +34,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         hardebeckMinMag,
         hardebeckTimeWindow,
         hardebeckRuptureMult,
+        hardebeckMainshockTimeYears,
         includeNoise,
         selectedIndices,
         setAlgorithm: setClusteringAlgorithm,
@@ -53,6 +54,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHardebeckMinMag,
         setHardebeckTimeWindow,
         setHardebeckRuptureMult,
+        setHardebeckMainshockTimeYears,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -76,6 +78,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const [localHardebeckMinMag, setLocalHardebeckMinMag] = useState(hardebeckMinMag);
     const [localHardebeckTimeWindow, setLocalHardebeckTimeWindow] = useState(hardebeckTimeWindow);
     const [localHardebeckRuptureMult, setLocalHardebeckRuptureMult] = useState(hardebeckRuptureMult);
+    const [localHardebeckMainshockTimeYears, setLocalHardebeckMainshockTimeYears] = useState(hardebeckMainshockTimeYears);
 
     // Sync local state when context values change (e.g. initial load or external update)
     useEffect(() => {
@@ -94,7 +97,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setLocalHardebeckMinMag(hardebeckMinMag);
         setLocalHardebeckTimeWindow(hardebeckTimeWindow);
         setLocalHardebeckRuptureMult(hardebeckRuptureMult);
-    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult]);
+        setLocalHardebeckMainshockTimeYears(hardebeckMainshockTimeYears);
+    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears]);
 
     // Apply handler
     const handleApplyParameters = () => {
@@ -113,6 +117,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHardebeckMinMag(localHardebeckMinMag);
         setHardebeckTimeWindow(localHardebeckTimeWindow);
         setHardebeckRuptureMult(localHardebeckRuptureMult);
+        setHardebeckMainshockTimeYears(localHardebeckMainshockTimeYears);
     };
 
     // Performance optimization: Sample data for large datasets
@@ -419,6 +424,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     hardebeckMinMag,
                     hardebeckTimeWindow,
                     hardebeckRuptureMult,
+                    hardebeckMainshockTimeYears,
                 });
                 setClusteringResult(result);
             } catch (error) {
@@ -430,7 +436,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         }, 50); // Small delay to allow loading indicator to render
 
         return () => clearTimeout(timeoutId);
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult]);
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
@@ -1242,7 +1248,19 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span>Time Window: <span className="font-semibold">{localHardebeckTimeWindow} days</span></span>
+                                    <span>Mainshock Exclusion: <span className="font-semibold">{localHardebeckMainshockTimeYears} years</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={10}
+                                        step={0.5}
+                                        value={localHardebeckMainshockTimeYears}
+                                        onChange={(e) => setLocalHardebeckMainshockTimeYears(parseFloat(e.target.value))}
+                                        title="Time window to exclude events near larger mainshocks"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Aftershock Window: <span className="font-semibold">{localHardebeckTimeWindow} days</span></span>
                                     <input
                                         type="range"
                                         min={1}

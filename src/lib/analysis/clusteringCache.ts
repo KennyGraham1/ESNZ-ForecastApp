@@ -44,6 +44,11 @@ class ClusteringCache {
             tmcP1: options.tmcP1,
             tmcXk: options.tmcXk,
             tmcMinMag: options.tmcMinMag,
+            // Hardebeck (2019) parameters
+            hardebeckMinMag: options.hardebeckMinMag,
+            hardebeckTimeWindow: options.hardebeckTimeWindow,
+            hardebeckRuptureMult: options.hardebeckRuptureMult,
+            hardebeckMainshockTimeYears: options.hardebeckMainshockTimeYears,
         });
         return `${dataHash}:${paramsKey}`;
     }

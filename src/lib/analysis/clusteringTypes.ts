@@ -56,4 +56,5 @@ export interface SpatialClusteringOptions {
     hardebeckMinMag?: number; // Minimum mainshock magnitude (default: 5.0)
     hardebeckTimeWindow?: number; // Aftershock time window in days (default: 10)
     hardebeckRuptureMult?: number; // Multiplier for rupture length (default: 3)
+    hardebeckMainshockTimeYears?: number; // Mainshock exclusion time window in years (default: 3)
 }

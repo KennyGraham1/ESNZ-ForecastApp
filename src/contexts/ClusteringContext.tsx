@@ -26,6 +26,7 @@ export interface ClusteringState {
     hardebeckMinMag: number;
     hardebeckTimeWindow: number;
     hardebeckRuptureMult: number;
+    hardebeckMainshockTimeYears: number;
 
     // Visualization Options
     includeNoise: boolean; // Whether to include noise points (cluster -1) in visualization
@@ -51,6 +52,7 @@ export interface ClusteringState {
     setHardebeckMinMag: (val: number) => void;
     setHardebeckTimeWindow: (val: number) => void;
     setHardebeckRuptureMult: (val: number) => void;
+    setHardebeckMainshockTimeYears: (val: number) => void;
     setIncludeNoise: (include: boolean) => void;
     setSelectedIndices: (indices: Set<number>) => void;
     toggleSelection: (index: number) => void;
@@ -83,6 +85,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     const [hardebeckMinMag, setHardebeckMinMag] = useState(5.0);
     const [hardebeckTimeWindow, setHardebeckTimeWindow] = useState(10);
     const [hardebeckRuptureMult, setHardebeckRuptureMult] = useState(3);
+    const [hardebeckMainshockTimeYears, setHardebeckMainshockTimeYears] = useState(3); // Years
 
     // Visualization Options
     const [includeNoise, setIncludeNoise] = useState(true);
@@ -145,6 +148,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         hardebeckMinMag,
         hardebeckTimeWindow,
         hardebeckRuptureMult,
+        hardebeckMainshockTimeYears,
         includeNoise,
         selectedIndices,
         setAlgorithm,
@@ -164,6 +168,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         setHardebeckMinMag,
         setHardebeckTimeWindow,
         setHardebeckRuptureMult,
+        setHardebeckMainshockTimeYears,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -187,6 +192,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         hardebeckMinMag,
         hardebeckTimeWindow,
         hardebeckRuptureMult,
+        hardebeckMainshockTimeYears,
         includeNoise,
         selectedIndicesKey,
         toggleSelection,
