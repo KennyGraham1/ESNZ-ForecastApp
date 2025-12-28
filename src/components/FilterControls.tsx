@@ -1,8 +1,14 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Filter, X, Check, AlertTriangle } from 'lucide-react';
+import { Filter, X, Check, AlertTriangle, Map as MapIcon } from 'lucide-react';
 import { parsePolygonString } from '@/lib/polygonUtils';
+import dynamic from 'next/dynamic';
+
+const PolygonDrawer = dynamic(() => import('./PolygonDrawer'), {
+    ssr: false,
+    loading: () => null
+});
 
 export interface FilterOptions {
     minMagnitude: number;
@@ -27,6 +33,9 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
 
     // Track if there are unapplied changes
     const hasUnappliedChanges = JSON.stringify(pendingFilters) !== JSON.stringify(filters);
+
+    // Modal state
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
     // Validation state
     const polygonValidation = useMemo(() => {
@@ -198,8 +207,19 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                             </div>
                         </div>
                         <div className="mt-2 text-xs text-gray-500 space-y-1">
-                            <p><strong>Option 1 (POLYGON Format):</strong> <code>POLYGON((166 -46, 179 -46, 179 -34, 166 -34, 166 -46))</code></p>
-                            <p><strong>Option 2 (Simple):</strong> Line-separated <code>lon lat</code> (supports common delimiters)</p>
+                            <p><strong>Option 1 (WKT):</strong> Paste a standard WKT string, e.g. <code>POLYGON((...))</code></p>
+                            <p><strong>Option 2 (File/List):</strong> Upload a file with polygon coordinates, or paste a list (lon lat)</p>
+                            <p><strong>Option 3 (Interactive):</strong> Click <strong>Draw on Map</strong> to define the area visually</p>
+                        </div>
+
+                        <div className="mt-3">
+                            <button
+                                onClick={() => setIsDrawerOpen(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium rounded border border-blue-200 transition-colors"
+                            >
+                                <MapIcon className="w-4 h-4" />
+                                Draw on Map
+                            </button>
                         </div>
 
                         {!polygonValidation.isValid && pendingFilters.polygon && (
@@ -237,6 +257,17 @@ export default function FilterControls({ filters, onFilterChange, dataDateRange 
                         </button>
                     </div>
                 </div>
+            )}
+
+            {isDrawerOpen && (
+                <PolygonDrawer
+                    isOpen={isDrawerOpen}
+                    onClose={() => setIsDrawerOpen(false)}
+                    onSave={(wkt) => {
+                        setPendingFilters({ ...pendingFilters, polygon: wkt });
+                    }}
+                    initialWkt={pendingFilters.polygon}
+                />
             )}
         </div>
     );

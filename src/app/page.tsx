@@ -390,7 +390,7 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">ESNZ-ForecastApp</h1>
-                <p className="text-slate-400 text-sm mt-1">NZ Statistical Seismology Visualization and Analysis App</p>
+                <p className="text-slate-400 text-sm mt-1">ESNZ Statistical Seismology Visualization and Analysis App</p>
               </div>
               {earthquakes && filteredEarthquakes.length > 0 && (
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg border border-blue-500">

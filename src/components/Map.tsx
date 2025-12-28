@@ -291,11 +291,11 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         <div className="w-full">
             <div className="h-[600px] w-full rounded-lg overflow-hidden border border-gray-300 bg-white">
                 <HighchartsReact
-                    key={`map-${earthquakes.length}`}
                     highcharts={Highcharts}
                     options={options}
                     ref={chartRef}
                     constructorType={'mapChart'}
+                    immutable={true}
                 />
             </div>
             <ChartExportButtons
