@@ -188,6 +188,8 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                                 <p style="margin: 4px 0;"><strong style="color: #374151;">Time:</strong> ${timeStr}</p>
                                 <p style="margin: 4px 0;"><strong style="color: #374151;">Depth:</strong> ${point.depth.toFixed(1)} km</p>
                                 <p style="margin: 4px 0;"><strong style="color: #374151;">Location:</strong> ${point.locality}</p>
+                                <p style="margin: 4px 0;"><strong style="color: #374151;">Lat:</strong> ${point.lat.toFixed(4)}°</p>
+                                <p style="margin: 4px 0;"><strong style="color: #374151;">Lon:</strong> ${point.lon.toFixed(4)}°</p>
                             </div>
                         </div>
                     `;

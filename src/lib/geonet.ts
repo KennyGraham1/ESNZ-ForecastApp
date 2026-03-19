@@ -4,14 +4,14 @@ import { addMonths, format } from 'date-fns';
 const BASE_URL = 'https://quakesearch.geonet.org.nz/geojson';
 
 // New Zealand Bounding Box (minLon, minLat, maxLon, maxLat)
-// Covers New Zealand mainland and surrounding seismic zones
-const NZ_BBOX = [163.0, -49.0, 179.0, -32.0];
+// Covers New Zealand mainland, surrounding seismic zones, and the Kermadec Islands/Arc (~-25°S)
+const NZ_BBOX = [163.0, -49.0, 179.9, -30.0];
 
 // Bounding box validation constants
 const MIN_LONGITUDE = 163.0;
-const MAX_LONGITUDE = 179.0;
+const MAX_LONGITUDE = 179.9;
 const MIN_LATITUDE = -49.0;
-const MAX_LATITUDE = -32.0;
+const MAX_LATITUDE = -30.0;
 
 // Maximum number of concurrent requests to GeoNet API
 const MAX_CONCURRENT_REQUESTS = 5;

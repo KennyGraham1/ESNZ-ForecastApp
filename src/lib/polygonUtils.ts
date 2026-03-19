@@ -91,29 +91,37 @@ function parsePoint(lonStr: string, latStr: string, index: number): { point: Poi
 
     if (isNaN(lon) || isNaN(lat)) return { point: null, error: "Invalid numbers" };
 
-    // Bounds check
     if (lat < -90 || lat > 90) return { point: null, error: `Lat ${lat} out of bounds` };
-    if (lon < -180 || lon > 180) return { point: null, error: `Lon ${lon} out of bounds` };
+    // Allow extended Leaflet coordinates (> 180°) that occur when drawing near the antimeridian.
+    // The ray-casting test handles these correctly without normalisation.
+    if (lon < -360 || lon > 360) return { point: null, error: `Lon ${lon} out of bounds` };
 
     return { point: [lon, lat], error: null };
 }
 
-// Ray-casting algorithm for point in polygon
-export function isPointInPolygon(point: Point, polygon: Polygon): boolean {
-    const x = point[0]; // lon
-    const y = point[1]; // lat
-
+// Ray-casting algorithm for point in polygon (single reference frame)
+function raycast(point: Point, polygon: Polygon): boolean {
+    const x = point[0];
+    const y = point[1];
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
         const xi = polygon[i][0], yi = polygon[i][1];
         const xj = polygon[j][0], yj = polygon[j][1];
-
-        // Check intersection
         const intersect = ((yi > y) !== (yj > y))
             && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-
         if (intersect) inside = !inside;
     }
-
     return inside;
+}
+
+// Point-in-polygon test that handles Leaflet's extended longitude coordinates.
+// When drawing near 180° Leaflet emits vertices > 180° (or < -180°). Earthquake
+// coordinates from GeoNet are in the standard [-180, 180] range. Testing with
+// lon ± 360° covers any mismatch between the two reference frames.
+export function isPointInPolygon(point: Point, polygon: Polygon): boolean {
+    const lon = point[0];
+    const lat = point[1];
+    return raycast([lon, lat], polygon)
+        || raycast([lon + 360, lat], polygon)
+        || raycast([lon - 360, lat], polygon);
 }

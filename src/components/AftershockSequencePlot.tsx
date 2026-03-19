@@ -771,7 +771,9 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                             Event ID: ${custom.eventID || 'N/A'}<br/>
                             ${custom.date || 'N/A'}<br/>
                             Depth: ${custom.depth?.toFixed(1) || 'N/A'} km<br/>
-                            Days since main event: ${custom.daysSince?.toFixed(1) || 'N/A'}
+                            Days since main event: ${custom.daysSince?.toFixed(1) || 'N/A'}<br/>
+                            Lat: ${custom.latitude?.toFixed(4) || 'N/A'}°<br/>
+                            Lon: ${custom.longitude?.toFixed(4) || 'N/A'}°
                         </div>
                     `;
                 }
@@ -971,7 +973,9 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                     daysSince: eq.daysSince,
                     date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
                     index,
-                    eventID: eq.eventID
+                    eventID: eq.eventID,
+                    latitude: eq.latitude,
+                    longitude: eq.longitude
                 }
             };
         });
@@ -1084,6 +1088,14 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                                 <div style="display: flex; justify-content: space-between;">
                                     <span style="color: #6b7280;">Days since:</span>
                                     <span style="font-weight: 500;">${custom.daysSince?.toFixed(1) || 'N/A'} days</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Lat:</span>
+                                    <span style="font-weight: 500;">${custom.latitude?.toFixed(4) || 'N/A'}°</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Lon:</span>
+                                    <span style="font-weight: 500;">${custom.longitude?.toFixed(4) || 'N/A'}°</span>
                                 </div>
                                 <div style="border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 4px; font-size: 11px; color: #6b7280;">
                                     ${custom.date || 'N/A'}
@@ -1439,6 +1451,8 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                             Event ID: ${point.eventID || 'N/A'}<br/>
                             Depth: ${point.depth?.toFixed(1) || 'N/A'} km<br/>
                             Days since main event: ${point.daysSince?.toFixed(1) || 'N/A'}<br/>
+                            Lat: ${point.lat?.toFixed(4) || 'N/A'}°<br/>
+                            Lon: ${point.lon?.toFixed(4) || 'N/A'}°<br/>
                             ${point.date || 'N/A'}
                         </div>
                     `;
@@ -1549,7 +1563,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                     showInLegend: true,
                     zIndex: 60,
                     tooltip: {
-                        pointFormat: '<b>{point.name}</b><br/>Event ID: {point.eventID}<br/>M{point.magnitude}<br/>Main Event'
+                        pointFormat: '<b>{point.name}</b><br/>Event ID: {point.eventID}<br/>M{point.magnitude}<br/>Lat: {point.lat:.4f}°<br/>Lon: {point.lon:.4f}°<br/>Main Event'
                     }
                 },
                 {

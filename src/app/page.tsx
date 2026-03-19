@@ -327,7 +327,15 @@ export default function Home() {
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
           <p className="text-gray-800 text-xl font-bold mb-2">Loading Earthquake Catalog...</p>
           <p className="text-gray-600 text-base mb-4">
-            Fetching 1 year of historical data from GeoNet
+            Fetching {
+              filterOptions.daysBack
+                ? filterOptions.daysBack >= 365
+                  ? `${Math.round(filterOptions.daysBack / 365)} year${Math.round(filterOptions.daysBack / 365) !== 1 ? 's' : ''}`
+                  : `${filterOptions.daysBack} days`
+                : filterOptions.startDate && filterOptions.endDate
+                  ? `${filterOptions.startDate} to ${filterOptions.endDate}`
+                  : 'selected period'
+            } of historical data from GeoNet
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
             <p className="text-sm text-gray-700 mb-2">
