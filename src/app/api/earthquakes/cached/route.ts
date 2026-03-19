@@ -6,7 +6,6 @@ import { EarthquakeData } from '@/types/earthquake';
 import { gzip } from 'zlib';
 import { promisify } from 'util';
 import { perfMonitor } from '@/lib/monitoring/performance';
-import { trackError } from '@/lib/monitoring/errors';
 
 const gzipAsync = promisify(gzip);
 
@@ -282,46 +281,43 @@ export async function GET(request: NextRequest) {
             // CRITICAL FIX: Check if requested time range exceeds cached data
             // If user requests data older than what's cached, we need to fetch historical data
             let needsHistoricalFetch = false;
-            let historicalDaysNeeded = 0;
+            let gapStart: Date | null = null;
+
+            const cacheStartDate = new Date(existingCache.initialFetchDate);
 
             if (filters.daysBack !== undefined) {
-                // Calculate how many days back the cache covers
-                const cacheStartDate = new Date(existingCache.initialFetchDate);
-                const now = new Date();
-                const cachedDaysBack = Math.ceil((now.getTime() - cacheStartDate.getTime()) / (1000 * 60 * 60 * 24));
-
-                // If user requests more days than cached, we need to fetch older data
-                if (filters.daysBack > cachedDaysBack) {
+                const requestedStart = new Date(Date.now() - filters.daysBack * 24 * 60 * 60 * 1000);
+                if (requestedStart < cacheStartDate) {
                     needsHistoricalFetch = true;
-                    historicalDaysNeeded = filters.daysBack;
+                    gapStart = requestedStart;
+                    const cachedDaysBack = Math.ceil((Date.now() - cacheStartDate.getTime()) / (1000 * 60 * 60 * 24));
                     console.log(`📊 User requested ${filters.daysBack} days, but cache only has ${cachedDaysBack} days. Need to fetch historical data.`);
                 }
             } else if (filters.startDate) {
-                // Check if startDate is before the cache's initial fetch date
                 const requestedStartDate = new Date(filters.startDate);
-                const cacheStartDate = new Date(existingCache.initialFetchDate);
-
                 if (requestedStartDate < cacheStartDate) {
                     needsHistoricalFetch = true;
-                    const now = new Date();
-                    historicalDaysNeeded = Math.ceil((now.getTime() - requestedStartDate.getTime()) / (1000 * 60 * 60 * 24));
+                    gapStart = requestedStartDate;
                     console.log(`📊 User requested data from ${filters.startDate}, but cache starts at ${existingCache.initialFetchDate}. Need to fetch historical data.`);
                 }
             }
 
-            // Fetch historical data if needed
-            if (needsHistoricalFetch) {
-                console.log(`⚠️ User requested ${historicalDaysNeeded} days, but cache only has data from ${existingCache.initialFetchDate}.`);
-                console.log(`🌐 Fetching historical data to extend cache...`);
+            // Fetch historical data if needed — only the missing gap, not the full period
+            if (needsHistoricalFetch && gapStart) {
+                // Clamp gapStart to MAX_FETCH_DAYS ago to prevent excessively large fetches
+                const maxGapStart = new Date(Date.now() - MAX_FETCH_DAYS * 24 * 60 * 60 * 1000);
+                if (gapStart < maxGapStart) {
+                    console.log(`⚠️ Requested gap exceeds MAX_FETCH_DAYS (${MAX_FETCH_DAYS}), clamping.`);
+                    gapStart = maxGapStart;
+                }
+
+                console.log(`⚠️ Cache starts at ${existingCache.initialFetchDate}. Fetching missing gap: ${gapStart.toISOString()} → ${cacheStartDate.toISOString()}`);
 
                 try {
-                    // Limit to MAX_FETCH_DAYS for safety
-                    const safeDaysToFetch = Math.min(historicalDaysNeeded, MAX_FETCH_DAYS);
-
-                    console.log(`🌐 Fetching ${safeDaysToFetch} days of historical data...`);
                     const historicalEvents = await fetchEarthquakeData({
                         minMagnitude: 2.0,
-                        daysBack: safeDaysToFetch
+                        startDate: gapStart,
+                        endDate: cacheStartDate
                     });
 
                     // Merge with existing cache, removing duplicates
@@ -344,12 +340,11 @@ export async function GET(request: NextRequest) {
                             return bTime - aTime;
                         });
 
-                    // Update cache with extended historical data
-                    const now = new Date();
+                    // Update cache — initialFetchDate is the actual start of the fetched gap
                     const extendedCache: CacheData = {
                         earthquakes: mergedEarthquakes,
-                        lastUpdated: now.toISOString(),
-                        initialFetchDate: new Date(now.getTime() - (safeDaysToFetch * 24 * 60 * 60 * 1000)).toISOString(),
+                        lastUpdated: new Date().toISOString(),
+                        initialFetchDate: gapStart.toISOString(),
                         totalEvents: mergedEarthquakes.length
                     };
 
@@ -412,10 +407,11 @@ export async function GET(request: NextRequest) {
                 timeMs: eq.time.getTime()
             }));
 
+            const initialFetchDate = new Date(Date.now() - INITIAL_FETCH_DAYS * 24 * 60 * 60 * 1000).toISOString();
             const cacheData: CacheData = {
                 earthquakes: earthquakesWithTimestamps,
                 lastUpdated: now,
-                initialFetchDate: now,
+                initialFetchDate: initialFetchDate,
                 totalEvents: earthquakes.length
             };
 
@@ -432,7 +428,7 @@ export async function GET(request: NextRequest) {
                 data: filteredData,
                 cached: false,
                 lastUpdated: now,
-                initialFetchDate: now,
+                initialFetchDate: initialFetchDate,
                 isIncremental: false,
                 filteredCount: metadata.filteredCount,
                 returnedCount: metadata.returnedCount,

@@ -290,7 +290,7 @@ export default function Home() {
       await refreshEarthquakeCache();
       // Invalidate and refetch the query to get updated data
       await queryClient.invalidateQueries({
-        queryKey: ['earthquakes-cached-full']
+        queryKey: ['earthquakes-cached']
       });
       await refetch();
     } catch (error) {
@@ -327,11 +327,11 @@ export default function Home() {
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
           <p className="text-gray-800 text-xl font-bold mb-2">Loading Earthquake Catalog...</p>
           <p className="text-gray-600 text-base mb-4">
-            Fetching 10 years of historical data from GeoNet
+            Fetching 1 year of historical data from GeoNet
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
             <p className="text-sm text-gray-700 mb-2">
-              <strong>First-time load:</strong> This will take 1-3 minutes to fetch ~50,000 events from GeoNet.
+              <strong>First-time load:</strong> This may take up to a minute to fetch events from GeoNet.
             </p>
             <p className="text-sm text-gray-700">
               <strong>Subsequent loads:</strong> Instant (data is cached locally).

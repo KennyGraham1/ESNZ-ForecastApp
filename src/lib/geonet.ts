@@ -1,5 +1,5 @@
-import { Earthquake, GeoNetResponse, EarthquakeData } from '@/types/earthquake';
-import { addMonths, format, subYears } from 'date-fns';
+import { GeoNetResponse, EarthquakeData } from '@/types/earthquake';
+import { addMonths, format } from 'date-fns';
 
 const BASE_URL = 'https://quakesearch.geonet.org.nz/geojson';
 
@@ -103,7 +103,7 @@ export async function fetchEarthquakeData(options: FetchOptions = {}): Promise<E
 
             console.log(`  ✅ [${index + 1}/${chunks.length}] Got ${count} events`);
 
-            const features = data.features.map((feature: any) => ({
+            const features = (data.features || []).map((feature: any) => ({
                 eventID: feature.properties.publicid,
                 time: new Date(feature.properties.origintime),
                 latitude: feature.geometry.coordinates[1],
@@ -143,7 +143,8 @@ export async function fetchEarthquakeData(options: FetchOptions = {}): Promise<E
     for (let i = 0; i < chunks.length; i++) {
         const p = fetchChunk(chunks[i], i).then(() => {
             // Remove self from executing list
-            executing.splice(executing.indexOf(p), 1);
+            const idx = executing.indexOf(p);
+            if (idx !== -1) executing.splice(idx, 1);
         });
 
         executing.push(p);

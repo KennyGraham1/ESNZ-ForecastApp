@@ -33,10 +33,11 @@ export interface EarthquakeData {
     locality: string;
     mmi?: number;
     azimuthalGap?: number;
-    magnitudeType?: string;
-    evaluationStatus?: string;
-    usedStationCount?: number;
+    magnitudeStationCount?: number;
     minimumDistance?: number;
     standardError?: number;
+    originError?: number;
+    evaluationMethod?: string;
+    usedPhaseCount?: number;
     [key: string]: any;
 }
