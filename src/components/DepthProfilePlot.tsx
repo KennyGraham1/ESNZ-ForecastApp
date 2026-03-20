@@ -45,6 +45,7 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                 magnitude: eq.magnitude,
                 depth: eq.depth,
                 latitude: eq.latitude,
+                longitude: eq.longitude,
                 eventID: eq.eventID
             }
         }));
@@ -203,8 +204,12 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                                     <span style="font-weight: 500;">${custom.depth.toFixed(1)} km</span>
                                 </div>
                                 <div style="display: flex; justify-content: space-between;">
-                                    <span style="color: #6b7280;">Latitude:</span>
-                                    <span style="font-weight: 500;">${custom.latitude.toFixed(2)}°S</span>
+                                    <span style="color: #6b7280;">Lat:</span>
+                                    <span style="font-weight: 500;">${custom.latitude.toFixed(4)}°</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #6b7280;">Lon:</span>
+                                    <span style="font-weight: 500;">${custom.longitude.toFixed(4)}°</span>
                                 </div>
                                 <div style="border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 4px; font-size: 10px; color: #9ca3af;">
                                     ID: ${custom.eventID || 'N/A'}

@@ -59,6 +59,26 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         loadMapData();
     }, []);
 
+    // Fallback: ensure Kermadec zoom is applied once the chart is in the DOM.
+    // chart.events.load is the primary mechanism; this handles edge cases where
+    // the chart ref is not yet available when load fires.
+    useEffect(() => {
+        if (!nzMapGeometry) return;
+        const timer = setTimeout(() => {
+            const chart = (chartRef.current as any)?.chart;
+            const mapView = chart?.mapView;
+            if (!mapView || typeof mapView.lonLatToProjectedUnits !== 'function') return;
+            try {
+                const sw = mapView.lonLatToProjectedUnits({ lon: 163, lat: -49 });
+                const ne = mapView.lonLatToProjectedUnits({ lon: 179.9, lat: -30 });
+                mapView.fitToBounds({ x1: sw.x, y1: sw.y, x2: ne.x, y2: ne.y }, '2%');
+            } catch (e) {
+                console.error('Map fitToBounds fallback error:', e);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [nzMapGeometry]);
+
     const options: Highcharts.Options = useMemo(() => {
         if (!nzMapGeometry) {
             return {
@@ -142,11 +162,30 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
             `;
         };
 
+        // Zoom function defined here so it can be used in chart.events.load
+        const fitToNZWithKermadec = function (this: any) {
+            const mapView = this.mapView;
+            if (!mapView || typeof mapView.lonLatToProjectedUnits !== 'function') return;
+            try {
+                // SW corner: 163°E, 49°S  |  NE corner: 179.9°E, 30°S (includes Kermadec)
+                const sw = mapView.lonLatToProjectedUnits({ lon: 163, lat: -49 });
+                const ne = mapView.lonLatToProjectedUnits({ lon: 179.9, lat: -30 });
+                mapView.fitToBounds({ x1: sw.x, y1: sw.y, x2: ne.x, y2: ne.y }, '2%');
+            } catch (e) {
+                console.error('Map fitToBounds error:', e);
+            }
+        };
+
         const chartConfig: any = {
             chart: {
                 map: nzMapGeometry,
                 backgroundColor: '#a8d8ea', // ocean blue
                 height: 600,
+                events: {
+                    // chart.events.load fires synchronously during chart initialisation —
+                    // more reliable than a setTimeout useEffect for setting the initial zoom.
+                    load: fitToNZWithKermadec,
+                },
             },
             boost: { enabled: false },
             title: { text: '' },
@@ -211,7 +250,9 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     type: 'mappoint',
                     name: cat.label,
                     color: cat.color,
+                    showInLegend: false,
                     marker: {
+                        symbol: 'circle',
                         fillOpacity: 0.75,
                         lineWidth: 0.5,
                         lineColor: cat.border
@@ -250,7 +291,6 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                         options={options}
                         ref={chartRef}
                         constructorType={'mapChart'}
-                        immutable={true}
                     />
                 </div>
 
@@ -260,12 +300,18 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     <div className="flex flex-col gap-1.5 mb-4">
                         {MAG_SIZES.map(m => (
                             <div key={m.label} className="flex items-center gap-2">
-                                <span className="flex items-center justify-center" style={{ width: 24, height: 24 }}>
-                                    <span
-                                        className="rounded-full border border-gray-400 bg-white inline-block"
-                                        style={{ width: m.radius * 2, height: m.radius * 2 }}
+                                <div className="flex items-center justify-center shrink-0" style={{ width: 24, height: 24 }}>
+                                    <div
+                                        style={{
+                                            width: m.radius * 2,
+                                            height: m.radius * 2,
+                                            borderRadius: '50%',
+                                            border: '1px solid #9ca3af',
+                                            backgroundColor: 'white',
+                                            flexShrink: 0,
+                                        }}
                                     />
-                                </span>
+                                </div>
                                 <span className="text-gray-600">{m.label}</span>
                             </div>
                         ))}

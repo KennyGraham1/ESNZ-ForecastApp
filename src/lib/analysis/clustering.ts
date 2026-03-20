@@ -287,9 +287,6 @@ function nearestNeighborClustering(
             // Temporal distance (days)
             const temporalDist = Math.abs(time1 - time2) / (1000 * 60 * 60 * 24);
 
-            // Magnitude difference
-            const magDiff = Math.abs(eq1.magnitude - eq2.magnitude);
-
             // Nearest-neighbor metric (space-time-magnitude distance)
             // η = t * r^d / 10^(b*m) where d=1.6, b=1 (typical values)
             const d = 1.6;
@@ -503,8 +500,8 @@ function stepMagnitudeClustering(
                 const dist = haversineDistance(latRef, lonRef, event.lat, event.lon);
                 if (dist <= searchRadius) {
                     event.clusterNo = clusterNo;
-                    // Extend time window if event is above Mc (MATLAB uses strict > Mc)
-                    if (event.magnitude > minMainMag) {
+                    // Extend time window if event is at or above Mc
+                    if (event.magnitude >= minMainMag) {
                         tRef = event.decimalYear;
                     }
                 }
@@ -590,8 +587,9 @@ function stepTimeClustering(
     for (let i = 0; i < workingData.length; i++) {
         const event = workingData[i];
 
-        // Skip if already clustered or below minimum magnitude
-        if (event.clusterNo !== 0 || event.magnitude <= minMainMag) {
+        // Skip if already clustered or strictly below minimum magnitude
+        // Use < not <= so events at exactly minMainMag can be mainshocks
+        if (event.clusterNo !== 0 || event.magnitude < minMainMag) {
             continue;
         }
 
@@ -616,11 +614,12 @@ function stepTimeClustering(
             const candidate = workingData[j];
 
             if (candidate.clusterNo === 0) {
-                // NOTE: MATLAB line 69 appears to have a bug - it checks if candidate > magref
-                // but then calculates radius using magref (not candidate magnitude).
-                // We match MATLAB's behavior exactly here for consistency.
+                // When a larger event is found, evaluate the distance against the larger radius
+                // so that events within the bigger rupture zone can be absorbed.
+                // (Original MATLAB code had a bug here: used magRef instead of candidate.magnitude,
+                // making this check a no-op. Fixed to use candidate.magnitude.)
                 if (candidate.magnitude > magRef) {
-                    searchRadius = wellsCoppersmithRadius(magRef); // MATLAB uses magref here
+                    searchRadius = wellsCoppersmithRadius(candidate.magnitude);
                 }
 
                 const dist = haversineDistance(latRef, lonRef, candidate.lat, candidate.lon);
@@ -628,8 +627,8 @@ function stepTimeClustering(
                 if (dist <= searchRadius) {
                     candidate.clusterNo = clusterNo;
 
-                    // If after the reference time and above Mc, extend window (MATLAB uses > Mc)
-                    if (candidate.decimalYear > tRef && candidate.magnitude > minMainMag) {
+                    // If after the reference time and at or above Mc, extend window
+                    if (candidate.decimalYear > tRef && candidate.magnitude >= minMainMag) {
                         tRef = candidate.decimalYear;
                     }
 
@@ -860,6 +859,7 @@ function timeMagnitudeClustering(
     interface ClusterInfo {
         largestMag: number;
         largestMagTime: number; // Time of largest event
+        lastEventTime: number;  // Time of most recent event (used by Reasenberg tau formula)
         members: number[]; // Indices in sortedEvents
     }
     const clusterInfos: Map<number, ClusterInfo> = new Map();
@@ -884,8 +884,8 @@ function timeMagnitudeClustering(
         const info = clusterInfos.get(clusterId);
         if (!info) return tau0 * 1440;
 
-        // Time since largest event in cluster
-        const t = (eventTime - info.largestMagTime) / 1440; // Convert to days
+        // Time elapsed since most recent event in cluster (Reasenberg 1985 formula requires T_e = elapsed since last event)
+        const t = (eventTime - info.lastEventTime) / 1440; // Convert to days
         if (t <= 0) return tau0 * 1440;
 
         // Reasenberg formula: tau = -ln(1-p1) * t / 10^((deltaM-1)*2/3)
@@ -953,6 +953,10 @@ function timeMagnitudeClustering(
                         keepInfo.largestMag = mergeInfo.largestMag;
                         keepInfo.largestMagTime = mergeInfo.largestMagTime;
                     }
+                    // Keep the most recent event time across both clusters
+                    if (mergeInfo.lastEventTime > keepInfo.lastEventTime) {
+                        keepInfo.lastEventTime = mergeInfo.lastEventTime;
+                    }
                     keepInfo.members.push(...mergeInfo.members);
                     clusterInfos.delete(mergeId);
 
@@ -965,6 +969,10 @@ function timeMagnitudeClustering(
                         info.largestMag = event2.magnitude;
                         info.largestMagTime = event2.timeMinutes;
                     }
+                    // event2 is later (j > i, sorted by time) so it's always the most recent
+                    if (event2.timeMinutes > info.lastEventTime) {
+                        info.lastEventTime = event2.timeMinutes;
+                    }
 
                 } else if (event2.clusterId !== 0) {
                     // Add event1 to event2's cluster
@@ -975,6 +983,9 @@ function timeMagnitudeClustering(
                         info.largestMag = event1.magnitude;
                         info.largestMagTime = event1.timeMinutes;
                     }
+                    if (event1.timeMinutes > info.lastEventTime) {
+                        info.lastEventTime = event1.timeMinutes;
+                    }
 
                 } else {
                     // Start new cluster with both events
@@ -983,9 +994,11 @@ function timeMagnitudeClustering(
                     event2.clusterId = newId;
 
                     const largerEvent = event1.magnitude >= event2.magnitude ? event1 : event2;
+                    // event2 is temporally later (j > i), so it is the most recent event
                     clusterInfos.set(newId, {
                         largestMag: largerEvent.magnitude,
                         largestMagTime: largerEvent.timeMinutes,
+                        lastEventTime: event2.timeMinutes,
                         members: [i, j]
                     });
                 }
@@ -1031,7 +1044,6 @@ function hardebeckClustering(
 ): { clusters: number[][], noiseIndices: number[] } {
     const n = earthquakes.length;
     const labels = new Array(n).fill(-1); // -1 = unassigned/noise initially
-    const visited = new Array(n).fill(false);
 
     // Sort by magnitude (descending) to process largest events first as potential mainshocks
     // This makes it easier to respect the "larger event" exclusion rule
@@ -1293,19 +1305,6 @@ export function calculateSpatialClustering(
         console.log(`🔄 Starting ${algorithm} clustering on ${datasetSize.toLocaleString()} events...`);
     }
 
-    if (typeof optionsOrEpsilon !== 'number') {
-        const opts = optionsOrEpsilon || {};
-        // ST-DBSCAN
-        const epsilonTemporal = opts.epsilonTemporal ?? 7;
-        // TMC
-        const tmcRfact = opts.tmcRfact ?? 10;
-        const tmcTau0 = opts.tmcTau0 ?? 2;
-        const tmcTauMax = opts.tmcTauMax ?? 10;
-        const tmcP1 = opts.tmcP1 ?? 0.99;
-        const tmcXk = opts.tmcXk ?? 0.5;
-        const tmcMinMag = opts.tmcMinMag ?? 1.5;
-    }
-
     // Default values if using legacy signature (needed for block scope access later)
     let epsilonTemporal = 7;
     let tmcRfact = 10;
@@ -1441,12 +1440,11 @@ export function calculateSpatialClustering(
         });
     });
 
-    // Mark noise points explicitly as -1 (already default) to be explicit
-    noiseIndices.forEach(idx => {
-        if (idx >= 0 && idx < labels.length) {
-            labels[idx] = -1;
-        }
-    });
+    // NOTE: Do NOT unconditionally reset noiseIndices to -1 here.
+    // For algorithms like nearest-neighbor, background events (mainshocks) appear in
+    // noiseIndices because their OWN nearest-neighbour distance is large, but they are
+    // also inserted into clusters as parents of dependent events. Overwriting their label
+    // with -1 would erase the cluster assignment and make mainshocks invisible in the UI.
 
     const nClusters = clusters.length;
     const clusterPercent = (clusteredCount / earthquakes.length) * 100;

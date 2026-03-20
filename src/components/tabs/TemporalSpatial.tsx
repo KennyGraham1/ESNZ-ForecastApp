@@ -75,6 +75,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const [localTmcTau0, setLocalTmcTau0] = useState(tmcTau0);
     const [localTmcTauMax, setLocalTmcTauMax] = useState(tmcTauMax);
     const [localTmcP1, setLocalTmcP1] = useState(tmcP1);
+    const [localTmcXk, setLocalTmcXk] = useState(tmcXk);
     const [localHardebeckMinMag, setLocalHardebeckMinMag] = useState(hardebeckMinMag);
     const [localHardebeckTimeWindow, setLocalHardebeckTimeWindow] = useState(hardebeckTimeWindow);
     const [localHardebeckRuptureMult, setLocalHardebeckRuptureMult] = useState(hardebeckRuptureMult);
@@ -94,11 +95,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setLocalTmcTau0(tmcTau0);
         setLocalTmcTauMax(tmcTauMax);
         setLocalTmcP1(tmcP1);
+        setLocalTmcXk(tmcXk);
         setLocalHardebeckMinMag(hardebeckMinMag);
         setLocalHardebeckTimeWindow(hardebeckTimeWindow);
         setLocalHardebeckRuptureMult(hardebeckRuptureMult);
         setLocalHardebeckMainshockTimeYears(hardebeckMainshockTimeYears);
-    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears]);
+    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears]);
 
     // Apply handler
     const handleApplyParameters = () => {
@@ -114,6 +116,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setTmcTau0(localTmcTau0);
         setTmcTauMax(localTmcTauMax);
         setTmcP1(localTmcP1);
+        setTmcXk(localTmcXk);
         setHardebeckMinMag(localHardebeckMinMag);
         setHardebeckTimeWindow(localHardebeckTimeWindow);
         setHardebeckRuptureMult(localHardebeckRuptureMult);
@@ -121,13 +124,22 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     };
 
     // Performance optimization: Sample data for large datasets
+    // Uses reservoir sampling (random) so aftershock bursts are not systematically thinned.
     const SAMPLE_THRESHOLD = 3000;
     const processedEarthquakes = useMemo(() => {
         if (earthquakes.length > SAMPLE_THRESHOLD) {
-            const step = Math.ceil(earthquakes.length / SAMPLE_THRESHOLD);
-            const sampled = earthquakes.filter((_, index) => index % step === 0);
-            console.log(`TemporalSpatial: Sampled ${sampled.length} from ${earthquakes.length} events`);
-            return sampled;
+            // Reservoir sampling: every event has an equal chance of being included,
+            // so dense aftershock clusters are not disproportionately discarded.
+            const sampled = [...earthquakes];
+            for (let i = SAMPLE_THRESHOLD; i < sampled.length; i++) {
+                const j = Math.floor(Math.random() * (i + 1));
+                if (j < SAMPLE_THRESHOLD) {
+                    sampled[j] = earthquakes[i];
+                }
+            }
+            const result = sampled.slice(0, SAMPLE_THRESHOLD);
+            console.log(`TemporalSpatial: Reservoir-sampled ${result.length} from ${earthquakes.length} events`);
+            return result;
         }
         return earthquakes;
     }, [earthquakes]);
@@ -480,39 +492,37 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         return map;
     }, [processedEarthquakes, clusteringResult, includeNoise]);
 
+    // Pre-compute eventID → index map once (O(n)) to avoid O(n²) findIndex calls below
+    const eventIndexMap = useMemo(() => {
+        const map = new Map<string, number>();
+        processedEarthquakes.forEach((eq, idx) => map.set(eq.eventID, idx));
+        return map;
+    }, [processedEarthquakes]);
+
     // Re-implementing data preparation correctly for all charts
     const chartData = useMemo(() => {
         return filteredEarthquakes.map(eq => {
-            // We need to find the correct cluster label for this earthquake
-            let clusterLabel = -1; // Default to noise
-
-            if (clusteringResult) {
-                // Indices in clusteringResult.labels match processedEarthquakes
-                // We need to match filteredEarthquakes items back to processedEarthquakes to get the index
-                // Or, better, just zip the labels with the earthquakes during filtering
-                const originalIndex = processedEarthquakes.findIndex(e => e.eventID === eq.eventID);
-                if (originalIndex !== -1) {
-                    clusterLabel = clusteringResult.labels[originalIndex];
-                }
-            }
-
-            const isSelected = selectedIndices.has(processedEarthquakes.findIndex(e => e.eventID === eq.eventID));
+            const originalIndex = eventIndexMap.get(eq.eventID) ?? -1;
+            const clusterLabel = (clusteringResult && originalIndex !== -1)
+                ? clusteringResult.labels[originalIndex]
+                : -1;
+            const isSelected = selectedIndices.has(originalIndex);
 
             return {
                 lat: eq.latitude,
                 lon: eq.longitude,
-                z: isSelected ? 1000 : clusterLabel + 2, // High z-index for selected
+                z: isSelected ? 1000 : clusterLabel + 2,
                 cluster: clusterLabel,
                 magnitude: eq.magnitude,
                 depth: eq.depth,
                 time: eq.time,
-                locality: eq.locality, // Added locality
+                locality: eq.locality,
                 eventID: eq.eventID,
                 isSelected: isSelected,
-                originalIndex: processedEarthquakes.findIndex(e => e.eventID === eq.eventID)
+                originalIndex
             };
         });
-    }, [filteredEarthquakes, clusteringResult, selectedIndices, processedEarthquakes]);
+    }, [filteredEarthquakes, clusteringResult, selectedIndices, eventIndexMap]);
 
     // Create temporal plot options
     const temporalPlotOptions: Highcharts.Options = useMemo(() => {
@@ -1229,6 +1239,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                         value={localTmcP1}
                                         onChange={(e) => setLocalTmcP1(parseFloat(e.target.value))}
                                         title="Probability of observing next event in sequence"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Mag Scale (xk): <span className="font-semibold">{localTmcXk.toFixed(2)}</span></span>
+                                    <input
+                                        type="range"
+                                        min={0.1}
+                                        max={1.0}
+                                        step={0.05}
+                                        value={localTmcXk}
+                                        onChange={(e) => setLocalTmcXk(parseFloat(e.target.value))}
+                                        title="Magnitude scaling factor for interaction zone (xk)"
                                     />
                                 </div>
                             </>

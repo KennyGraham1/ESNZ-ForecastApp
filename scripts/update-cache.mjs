@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_FILE = path.join(__dirname, '..', 'data', 'earthquake-cache.json');
 const BASE_URL = 'https://quakesearch.geonet.org.nz/geojson';
-const NZ_BBOX = [163.0, -49.0, 179.0, -32.0];
+const NZ_BBOX = [163.0, -49.0, 179.9, -30.0]; // Extended to include Kermadec Islands
 const MAX_CONCURRENT_REQUESTS = 5;
 
 function formatDate(date) {
