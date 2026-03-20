@@ -27,6 +27,9 @@ export interface ClusteringState {
     hardebeckTimeWindow: number;
     hardebeckRuptureMult: number;
     hardebeckMainshockTimeYears: number;
+    // HDBSCAN parameters
+    hdbscanMinClusterSize: number;
+    hdbscanMinSamples: number;
 
     // Visualization Options
     includeNoise: boolean; // Whether to include noise points (cluster -1) in visualization
@@ -53,6 +56,8 @@ export interface ClusteringState {
     setHardebeckTimeWindow: (val: number) => void;
     setHardebeckRuptureMult: (val: number) => void;
     setHardebeckMainshockTimeYears: (val: number) => void;
+    setHdbscanMinClusterSize: (val: number) => void;
+    setHdbscanMinSamples: (val: number) => void;
     setIncludeNoise: (include: boolean) => void;
     setSelectedIndices: (indices: Set<number>) => void;
     toggleSelection: (index: number) => void;
@@ -86,6 +91,9 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     const [hardebeckTimeWindow, setHardebeckTimeWindow] = useState(10);
     const [hardebeckRuptureMult, setHardebeckRuptureMult] = useState(3);
     const [hardebeckMainshockTimeYears, setHardebeckMainshockTimeYears] = useState(3); // Years
+    // HDBSCAN parameters
+    const [hdbscanMinClusterSize, setHdbscanMinClusterSize] = useState(5);
+    const [hdbscanMinSamples, setHdbscanMinSamples] = useState(5);
 
     // Visualization Options
     const [includeNoise, setIncludeNoise] = useState(true);
@@ -149,6 +157,8 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         hardebeckTimeWindow,
         hardebeckRuptureMult,
         hardebeckMainshockTimeYears,
+        hdbscanMinClusterSize,
+        hdbscanMinSamples,
         includeNoise,
         selectedIndices,
         setAlgorithm,
@@ -169,6 +179,8 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         setHardebeckTimeWindow,
         setHardebeckRuptureMult,
         setHardebeckMainshockTimeYears,
+        setHdbscanMinClusterSize,
+        setHdbscanMinSamples,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -193,6 +205,8 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         hardebeckTimeWindow,
         hardebeckRuptureMult,
         hardebeckMainshockTimeYears,
+        hdbscanMinClusterSize,
+        hdbscanMinSamples,
         includeNoise,
         selectedIndicesKey,
         toggleSelection,

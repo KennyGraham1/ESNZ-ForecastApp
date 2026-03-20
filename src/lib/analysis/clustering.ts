@@ -1215,6 +1215,549 @@ function hardebeckClustering(
 }
 
 
+// ============================================================
+// HDBSCAN — Hierarchical Density-Based Spatial Clustering of
+//           Applications with Noise
+//
+// Reference: Campello, Moulavi & Sander (2013)
+//   "Density-Based Clustering Based on Hierarchical Density
+//    Estimates", PAKDD 2013. DOI: 10.1007/978-3-642-37456-2_14
+//
+// Algorithm overview:
+//   1. Compute core distances (k-th nearest-neighbour distance)
+//   2. Build MST on the mutual-reachability graph via Prim's
+//   3. Convert sorted MST edges into a single-linkage hierarchy
+//   4. Condense the hierarchy using minClusterSize
+//   5. Compute per-cluster stability (Excess of Mass)
+//   6. Extract the optimal flat clustering via bottom-up DP
+//   7. Assign labels, soft membership probabilities, and
+//      GLOSH-style outlier scores
+//
+// Complexity: O(n²) time and O(n) space — suitable for
+// n ≤ 3 000 (the display sample cap used by this application).
+// ============================================================
+
+/**
+ * Simple Union-Find (path compression + union by rank).
+ * Used both for MST construction and for tracking which
+ * condensed cluster "owns" each single-linkage node.
+ */
+class UnionFind {
+    private parent: Int32Array;
+    private rank: Int32Array;
+    readonly size: Int32Array;
+
+    constructor(n: number) {
+        this.parent = new Int32Array(n).map((_, i) => i);
+        this.rank   = new Int32Array(n);
+        this.size   = new Int32Array(n).fill(1);
+    }
+
+    find(x: number): number {
+        // Iterative path-halving — avoids stack overflow on deep trees
+        while (this.parent[x] !== x) {
+            this.parent[x] = this.parent[this.parent[x]];
+            x = this.parent[x];
+        }
+        return x;
+    }
+
+    /** Returns false if x and y were already in the same component. */
+    union(x: number, y: number): boolean {
+        const px = this.find(x);
+        const py = this.find(y);
+        if (px === py) return false;
+        if (this.rank[px] < this.rank[py]) {
+            this.parent[px] = py;
+            this.size[py] += this.size[px];
+        } else if (this.rank[px] > this.rank[py]) {
+            this.parent[py] = px;
+            this.size[px] += this.size[py];
+        } else {
+            this.parent[py] = px;
+            this.size[px] += this.size[py];
+            this.rank[px]++;
+        }
+        return true;
+    }
+
+    getSize(x: number): number { return this.size[this.find(x)]; }
+}
+
+/**
+ * Collect every leaf-point index reachable from nodeId in the
+ * single-linkage tree.  Iterative to avoid call-stack overflow.
+ * n = number of original data points (leaf IDs are 0 … n-1).
+ */
+function hdbscanGetLeaves(
+    nodeId: number,
+    n: number,
+    childrenOf: Map<number, [number, number]>
+): number[] {
+    const leaves: number[] = [];
+    const stack: number[] = [nodeId];
+    while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (id < n) {
+            leaves.push(id);
+        } else {
+            const ch = childrenOf.get(id)!;
+            stack.push(ch[0], ch[1]);
+        }
+    }
+    return leaves;
+}
+
+/**
+ * Full HDBSCAN implementation.
+ *
+ * @param dataset         2-D array of projected-km coordinates [x, y]
+ * @param minClusterSize  Smallest group considered a genuine cluster
+ * @param minSamples      Neighbourhood size k for core-distance (minPts)
+ * @returns clusters, noiseIndices, labels, probabilities, outlierScores
+ */
+function hdbscanClustering(
+    dataset: number[][],
+    minClusterSize: number = 5,
+    minSamples: number = 5
+): {
+    clusters: number[][];
+    noiseIndices: number[];
+    labels: number[];
+    probabilities: number[];
+    outlierScores: number[];
+} {
+    const n = dataset.length;
+    const empty = {
+        clusters: [], noiseIndices: [],
+        labels: [], probabilities: [], outlierScores: []
+    };
+    if (n === 0) return empty;
+    if (n === 1) return {
+        clusters: [[0]], noiseIndices: [],
+        labels: [0], probabilities: [1], outlierScores: [0]
+    };
+
+    // Clamp parameters to sensible ranges relative to dataset size
+    const k = Math.min(minSamples, n - 1);
+    const minCS = Math.max(2, Math.min(minClusterSize, Math.floor(n / 2)));
+
+    // ----------------------------------------------------------------
+    // PHASE 1 — Core distances
+    // core_dist_k(i) = distance from i to its k-th nearest neighbour.
+    // We compute all pairwise distances and pick the k-th smallest;
+    // O(n²) which is fine for n ≤ 3 000.
+    // ----------------------------------------------------------------
+    const coreDistances = new Float64Array(n);
+    const euclidean = (i: number, j: number): number => {
+        const dx = dataset[i][0] - dataset[j][0];
+        const dy = dataset[i][1] - dataset[j][1];
+        return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    for (let i = 0; i < n; i++) {
+        // Collect distances to all other points
+        const dists: number[] = new Array(n - 1);
+        let idx = 0;
+        for (let j = 0; j < n; j++) {
+            if (j !== i) dists[idx++] = euclidean(i, j);
+        }
+        // We only need the k-th smallest — partial-sort the first k entries
+        // via a max-heap would be fastest, but Array.sort is simpler and
+        // still fast for n ≤ 3 000.
+        dists.sort((a, b) => a - b);
+        coreDistances[i] = dists[k - 1]; // k-th nearest (1-indexed)
+    }
+
+    // ----------------------------------------------------------------
+    // PHASE 2 — Minimum Spanning Tree on the mutual-reachability graph
+    //
+    // d_mreach(i,j) = max( core_k(i), core_k(j), d(i,j) )
+    //
+    // Prim's algorithm, O(n²) — optimal for dense complete graphs.
+    // ----------------------------------------------------------------
+    const mreachDist = (i: number, j: number): number =>
+        Math.max(coreDistances[i], coreDistances[j], euclidean(i, j));
+
+    const inMST      = new Uint8Array(n);
+    const minW       = new Float64Array(n).fill(Infinity);
+    const minWSource = new Int32Array(n).fill(0);
+
+    inMST[0] = 1;
+    for (let j = 1; j < n; j++) {
+        minW[j] = mreachDist(0, j);
+        minWSource[j] = 0;
+    }
+
+    // [from, to, weight]  (n-1 edges)
+    const mstEdges: [number, number, number][] = [];
+
+    for (let iter = 0; iter < n - 1; iter++) {
+        // Find the cheapest edge into the MST
+        let bestW  = Infinity;
+        let bestJ  = -1;
+        for (let j = 0; j < n; j++) {
+            if (!inMST[j] && minW[j] < bestW) { bestW = minW[j]; bestJ = j; }
+        }
+        if (bestJ === -1) break; // disconnected (should not happen)
+        inMST[bestJ] = 1;
+        mstEdges.push([minWSource[bestJ], bestJ, bestW]);
+
+        // Relax edges from the newly added node
+        for (let j = 0; j < n; j++) {
+            if (!inMST[j]) {
+                const w = mreachDist(bestJ, j);
+                if (w < minW[j]) { minW[j] = w; minWSource[j] = bestJ; }
+            }
+        }
+    }
+
+    // Sort MST edges ascending by weight — produces single-linkage order
+    mstEdges.sort((a, b) => a[2] - b[2]);
+
+    // ----------------------------------------------------------------
+    // PHASE 3 — Build the single-linkage dendrogram
+    //
+    // Process MST edges in order (cheapest first).
+    // Each edge merges two components; internal nodes are numbered
+    // n, n+1, …, 2n-2.  We track which "node ID" represents each
+    // component so we can reconstruct the binary tree later.
+    // ----------------------------------------------------------------
+    interface Merge {
+        nodeId: number;  // internal node ID (≥ n)
+        left:   number;  // left-child node ID  (< n = leaf point)
+        right:  number;  // right-child node ID
+        weight: number;  // merge distance
+        size:   number;  // total points in this merged subtree
+    }
+
+    const uf = new UnionFind(n);
+    // Maps component root → the node ID that currently represents it
+    const compNode: number[] = Array.from({ length: n }, (_, i) => i);
+    const merges: Merge[] = [];
+    let nextInternalId = n;
+
+    for (const [u, v, w] of mstEdges) {
+        const ru = uf.find(u);
+        const rv = uf.find(v);
+        if (ru === rv) continue;
+
+        const nodeU = compNode[ru];
+        const nodeV = compNode[rv];
+        const sz    = uf.getSize(ru) + uf.getSize(rv);
+        const newId = nextInternalId++;
+
+        merges.push({ nodeId: newId, left: nodeU, right: nodeV, weight: w, size: sz });
+        uf.union(u, v);
+        const newRoot = uf.find(u);
+        compNode[newRoot] = newId;
+    }
+
+    if (merges.length === 0) {
+        // All points are identical — one degenerate cluster
+        return {
+            clusters: [Array.from({ length: n }, (_, i) => i)],
+            noiseIndices: [],
+            labels: new Array(n).fill(0),
+            probabilities: new Array(n).fill(1),
+            outlierScores: new Array(n).fill(0),
+        };
+    }
+
+    // Lookup: nodeId → (left child, right child)
+    const childrenOf = new Map<number, [number, number]>();
+    // Lookup: nodeId → subtree size
+    const subtreeSz  = new Map<number, number>();
+    for (let i = 0; i < n; i++) subtreeSz.set(i, 1); // leaves
+
+    for (const m of merges) {
+        childrenOf.set(m.nodeId, [m.left, m.right]);
+        subtreeSz.set(m.nodeId, m.size);
+    }
+
+    // ----------------------------------------------------------------
+    // PHASE 4 — Condense the tree
+    //
+    // Walk top-down from the root.  At each split with weight w
+    // (λ = 1/w):
+    //   • Both children ≥ minCS  → genuine split, each becomes a
+    //     new condensed cluster born at λ.
+    //   • One child < minCS      → those points "fall out" (dropout)
+    //     at λ; the large child continues as the same cluster.
+    //   • Both children < minCS  → all points fall out at λ; the
+    //     cluster ends.
+    //
+    // We record every dropout: (pointIndex, droppingClusterId, λ).
+    // ----------------------------------------------------------------
+    interface CondensedCluster {
+        id:           number;
+        parent:       number;       // -1 for root
+        lambdaBirth:  number;       // λ when this cluster was born
+        dropouts:     Map<number, number>; // pointIdx → λ at which it left
+        childIds:     number[];     // IDs of child clusters (genuine splits)
+    }
+
+    const condensed     = new Map<number, CondensedCluster>();
+    // Maps each dropped point to the cluster it fell from (for GLOSH)
+    const pointDropCluster = new Map<number, number>(); // pointIdx → clusterId
+
+    let nextCId = 0;
+    const rootMerge    = merges[merges.length - 1];
+    const rootCId      = nextCId++;
+    condensed.set(rootCId, {
+        id: rootCId, parent: -1, lambdaBirth: 0,
+        dropouts: new Map(), childIds: []
+    });
+
+    // Stack: [singleLinkageNodeId, condensedClusterId]
+    const stack: [number, number][] = [[rootMerge.nodeId, rootCId]];
+
+    while (stack.length > 0) {
+        const [nodeId, cid] = stack.pop()!;
+        if (nodeId < n) continue; // leaf — handled by parent as dropout
+
+        const ch      = childrenOf.get(nodeId)!;
+        const left    = ch[0];
+        const right   = ch[1];
+        const mergeW  = merges[nodeId - n].weight;    // O(1) by index offset
+        const lambda  = mergeW > 0 ? 1 / mergeW : 1e15;
+
+        const szL = subtreeSz.get(left)!;
+        const szR = subtreeSz.get(right)!;
+        const cl  = condensed.get(cid)!;
+
+        // --- Process left child ---
+        if (szL >= minCS) {
+            if (szR >= minCS) {
+                // Genuine split: left becomes a new cluster
+                const newId = nextCId++;
+                condensed.set(newId, {
+                    id: newId, parent: cid, lambdaBirth: lambda,
+                    dropouts: new Map(), childIds: []
+                });
+                cl.childIds.push(newId);
+                stack.push([left, newId]);
+            } else {
+                // Right is too small; left continues as current cluster
+                stack.push([left, cid]);
+            }
+        } else {
+            // Left too small — drop all its points at this lambda
+            const pts = hdbscanGetLeaves(left, n, childrenOf);
+            for (const p of pts) {
+                cl.dropouts.set(p, lambda);
+                pointDropCluster.set(p, cid);
+            }
+        }
+
+        // --- Process right child ---
+        if (szR >= minCS) {
+            if (szL >= minCS) {
+                // Genuine split (left already handled above): right → new cluster
+                const newId = nextCId++;
+                condensed.set(newId, {
+                    id: newId, parent: cid, lambdaBirth: lambda,
+                    dropouts: new Map(), childIds: []
+                });
+                cl.childIds.push(newId);
+                stack.push([right, newId]);
+            } else {
+                // Left was too small; right continues as current cluster
+                stack.push([right, cid]);
+            }
+        } else {
+            // Right too small — drop all its points
+            const pts = hdbscanGetLeaves(right, n, childrenOf);
+            for (const p of pts) {
+                cl.dropouts.set(p, lambda);
+                pointDropCluster.set(p, cid);
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // PHASE 5 — Cluster stability (Excess of Mass)
+    //
+    // stability(C) = Σ_{direct dropouts p} (λ_drop(p) − λ_birth(C))
+    //             + Σ_{child Ch}  |Ch| × (λ_birth(Ch) − λ_birth(C))
+    //
+    // where |Ch| is the total number of data points in Ch's subtree.
+    // ----------------------------------------------------------------
+
+    // Count total points under each condensed cluster (iterative, bottom-up)
+    const condensedSize = new Map<number, number>();
+    {
+        // BFS order from root, then reverse = bottom-up
+        const bfsOrder: number[] = [];
+        const bfsQ: number[] = [rootCId];
+        while (bfsQ.length > 0) {
+            const id = bfsQ.shift()!;
+            bfsOrder.push(id);
+            for (const ch of condensed.get(id)!.childIds) bfsQ.push(ch);
+        }
+        for (const id of bfsOrder.reverse()) {
+            const cl = condensed.get(id)!;
+            let sz = cl.dropouts.size;
+            for (const ch of cl.childIds) sz += condensedSize.get(ch)!;
+            condensedSize.set(id, sz);
+        }
+    }
+
+    const stability = new Map<number, number>();
+    for (const [id, cl] of condensed) {
+        let s = 0;
+        for (const lambdaDrop of cl.dropouts.values()) {
+            s += lambdaDrop - cl.lambdaBirth;
+        }
+        for (const chId of cl.childIds) {
+            const chCl = condensed.get(chId)!;
+            s += condensedSize.get(chId)! * (chCl.lambdaBirth - cl.lambdaBirth);
+        }
+        // Clamp to ≥ 0 (rounding can sometimes give tiny negatives)
+        stability.set(id, Math.max(0, s));
+    }
+
+    // ----------------------------------------------------------------
+    // PHASE 6 — Extract optimal flat clustering (bottom-up DP)
+    //
+    // For each cluster: select it if its own stability ≥ sum of the
+    // stabilities already selected from its children.
+    // ----------------------------------------------------------------
+    const dpValue    = new Map<number, number>();
+    const dpSelected = new Map<number, Set<number>>();
+
+    // Process bottom-up using the reversed BFS order we still have
+    // (re-compute it since bfsOrder was already reversed above)
+    const bfsOrder2: number[] = [];
+    {
+        const q: number[] = [rootCId];
+        while (q.length > 0) {
+            const id = q.shift()!;
+            bfsOrder2.push(id);
+            for (const ch of condensed.get(id)!.childIds) q.push(ch);
+        }
+    }
+    for (const id of bfsOrder2.reverse()) {
+        const cl = condensed.get(id)!;
+        if (cl.childIds.length === 0) {
+            // Leaf condensed cluster: always select itself
+            dpValue.set(id, stability.get(id)!);
+            dpSelected.set(id, new Set([id]));
+        } else {
+            let childSum = 0;
+            const childSel = new Set<number>();
+            for (const chId of cl.childIds) {
+                childSum += dpValue.get(chId)!;
+                for (const s of dpSelected.get(chId)!) childSel.add(s);
+            }
+            const mySt = stability.get(id)!;
+            if (mySt >= childSum) {
+                dpValue.set(id, mySt);
+                dpSelected.set(id, new Set([id]));
+            } else {
+                dpValue.set(id, childSum);
+                dpSelected.set(id, childSel);
+            }
+        }
+    }
+
+    const selectedSet = dpSelected.get(rootCId) ?? new Set<number>();
+
+    // ----------------------------------------------------------------
+    // PHASE 7 — Label assignment, probabilities, and outlier scores
+    //
+    // For each selected cluster:
+    //   • Recursively collect all data points (direct dropouts + those
+    //     in non-selected descendant sub-clusters).
+    //   • λ_max(C) = max λ among all collected points.
+    //   • prob(p) = λ_death(p) / λ_max(C) ∈ [0, 1].
+    //
+    // For noise points (label = -1):
+    //   • GLOSH-style score = 1 − λ_death(p) / λ_max(dropping cluster).
+    //     Higher score → more anomalous relative to the nearest cluster.
+    // ----------------------------------------------------------------
+
+    /** Collect all (pointIdx, lambdaDeath) pairs under a condensed cluster,
+     *  skipping sub-trees that are themselves in selectedSet. */
+    function collectPoints(
+        cid: number,
+        sel: Set<number>
+    ): { idx: number; lambda: number }[] {
+        const cl  = condensed.get(cid)!;
+        const pts: { idx: number; lambda: number }[] = [];
+        // Direct dropouts
+        for (const [p, lam] of cl.dropouts) pts.push({ idx: p, lambda: lam });
+        // Recurse into non-selected children
+        for (const chId of cl.childIds) {
+            if (!sel.has(chId)) {
+                // Child cluster was not independently selected; absorb it.
+                // Points in this child left the parent at the child's birth lambda.
+                const absorbed = collectPoints(chId, sel);
+                // Override lambda with child's birth lambda for points that went
+                // deeper into the sub-tree — their "exit from this cluster" was
+                // the moment the sub-cluster split off.
+                const childBirth = condensed.get(chId)!.lambdaBirth;
+                for (const entry of absorbed) {
+                    pts.push({ idx: entry.idx, lambda: childBirth });
+                }
+            }
+        }
+        return pts;
+    }
+
+    const labels        = new Array<number>(n).fill(-1);
+    const probabilities = new Array<number>(n).fill(0);
+    const outlierScores = new Array<number>(n).fill(0);
+    const outputClusters: number[][] = [];
+
+    let clusterIndex = 0;
+    for (const cid of selectedSet) {
+        const pts      = collectPoints(cid, selectedSet);
+        const lambdaMax = pts.reduce((mx, p) => Math.max(mx, p.lambda), 0);
+
+        const memberIndices: number[] = [];
+        for (const { idx, lambda } of pts) {
+            labels[idx]        = clusterIndex;
+            probabilities[idx] = lambdaMax > 0 ? Math.min(1, lambda / lambdaMax) : 1;
+            memberIndices.push(idx);
+        }
+        outputClusters.push(memberIndices);
+        clusterIndex++;
+    }
+
+    // GLOSH-style outlier scores for noise points
+    // Compute λ_max for each condensed cluster once (for GLOSH denominator)
+    const lambdaMaxOfCluster = new Map<number, number>();
+    for (const [cid, cl] of condensed) {
+        let lmx = 0;
+        for (const lam of cl.dropouts.values()) if (lam > lmx) lmx = lam;
+        for (const chId of cl.childIds) {
+            const chBirth = condensed.get(chId)!.lambdaBirth;
+            if (chBirth > lmx) lmx = chBirth;
+        }
+        lambdaMaxOfCluster.set(cid, lmx);
+    }
+
+    const noiseIndices: number[] = [];
+    for (let i = 0; i < n; i++) {
+        if (labels[i] !== -1) continue;
+        noiseIndices.push(i);
+
+        // Find which cluster dropped this point and at what lambda
+        const dropCId  = pointDropCluster.get(i) ?? rootCId;
+        const dropLam  = condensed.get(dropCId)?.dropouts.get(i) ?? 0;
+        const lmxOfDrop = lambdaMaxOfCluster.get(dropCId) ?? 0;
+
+        // outlierScore ∈ [0,1]:  0 = nearly in a cluster, 1 = deep outlier
+        outlierScores[i] = lmxOfDrop > 0
+            ? Math.max(0, 1 - dropLam / lmxOfDrop)
+            : 1;
+    }
+
+    return { clusters: outputClusters, noiseIndices, labels, probabilities, outlierScores };
+}
+
+
 // Get algorithm description for metadata
 
 function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
@@ -1232,7 +1775,8 @@ function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
         'nearest-neighbor': 'Nearest-Neighbor Clustering (Zaliapin-Ben-Zion) - Identifies clusters based on space-time-magnitude nearest-neighbor distances',
         'st-dbscan': 'ST-DBSCAN - Density-based clustering with both spatial and temporal thresholds',
         'tmc': 'Time-Magnitude Clustering (Reasenberg)',
-        'hardebeck-2019': 'Hardebeck (2019) Rupture-Window Clustering'
+        'hardebeck-2019': 'Hardebeck (2019) Rupture-Window Clustering',
+        'hdbscan': 'HDBSCAN (Hierarchical DBSCAN, Campello et al. 2013) — builds a cluster hierarchy over all density levels and extracts the most stable flat clustering; handles variable-density clusters without requiring an epsilon parameter'
     };
     return descriptions[algorithm] || 'Unknown algorithm';
 }
@@ -1318,6 +1862,9 @@ export function calculateSpatialClustering(
     let hardebeckTimeWindow = 10;
     let hardebeckRuptureMult = 3;
     let hardebeckMainshockTimeYears = 3;
+    // HDBSCAN variables
+    let hdbscanMinClusterSize = 5;
+    let hdbscanMinSamples = 5;
 
     if (typeof optionsOrEpsilon !== 'number') {
         const opts = optionsOrEpsilon || {};
@@ -1332,6 +1879,8 @@ export function calculateSpatialClustering(
         hardebeckTimeWindow = opts.hardebeckTimeWindow ?? 10;
         hardebeckRuptureMult = opts.hardebeckRuptureMult ?? 3;
         hardebeckMainshockTimeYears = opts.hardebeckMainshockTimeYears ?? 3;
+        hdbscanMinClusterSize = opts.hdbscanMinClusterSize ?? 5;
+        hdbscanMinSamples = opts.hdbscanMinSamples ?? 5;
     }
 
     // Prepare data for clustering (longitude, latitude)
@@ -1355,6 +1904,8 @@ export function calculateSpatialClustering(
 
     let clusters: number[][];
     let noiseIndices: number[] = [];
+    let hdbscanProbabilities: number[] | undefined;
+    let hdbscanOutlierScores: number[] | undefined;
 
     if (algorithm === 'dbscan') {
         // OPTIMIZATION: Use R-tree optimized DBSCAN for 90-95% speedup
@@ -1421,6 +1972,12 @@ export function calculateSpatialClustering(
         const result = hardebeckClustering(earthquakes, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears);
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
+    } else if (algorithm === 'hdbscan') {
+        const result = hdbscanClustering(dataset, hdbscanMinClusterSize, hdbscanMinSamples);
+        clusters = result.clusters;
+        noiseIndices = result.noiseIndices;
+        hdbscanProbabilities = result.probabilities;
+        hdbscanOutlierScores = result.outlierScores;
     } else {
         // Fallback to DBSCAN
         console.warn(`Unknown algorithm: ${algorithm}, falling back to DBSCAN`);
@@ -1491,6 +2048,9 @@ export function calculateSpatialClustering(
         parameters.tmcP1 = tmcP1;
         parameters.tmcXk = tmcXk;
         parameters.tmcMinMag = tmcMinMag;
+    } else if (algorithm === 'hdbscan') {
+        parameters.hdbscanMinClusterSize = hdbscanMinClusterSize;
+        parameters.hdbscanMinSamples = hdbscanMinSamples;
     }
 
 
@@ -1509,6 +2069,8 @@ export function calculateSpatialClustering(
         clusterPercent,
         noisePercent,
         clusters,
+        ...(hdbscanProbabilities !== undefined && { probabilities: hdbscanProbabilities }),
+        ...(hdbscanOutlierScores !== undefined && { outlierScores: hdbscanOutlierScores }),
         metadata
     };
 

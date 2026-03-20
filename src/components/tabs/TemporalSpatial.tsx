@@ -35,6 +35,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         hardebeckTimeWindow,
         hardebeckRuptureMult,
         hardebeckMainshockTimeYears,
+        hdbscanMinClusterSize,
+        hdbscanMinSamples,
         includeNoise,
         selectedIndices,
         setAlgorithm: setClusteringAlgorithm,
@@ -55,6 +57,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHardebeckTimeWindow,
         setHardebeckRuptureMult,
         setHardebeckMainshockTimeYears,
+        setHdbscanMinClusterSize,
+        setHdbscanMinSamples,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -80,6 +84,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const [localHardebeckTimeWindow, setLocalHardebeckTimeWindow] = useState(hardebeckTimeWindow);
     const [localHardebeckRuptureMult, setLocalHardebeckRuptureMult] = useState(hardebeckRuptureMult);
     const [localHardebeckMainshockTimeYears, setLocalHardebeckMainshockTimeYears] = useState(hardebeckMainshockTimeYears);
+    const [localHdbscanMinClusterSize, setLocalHdbscanMinClusterSize] = useState(hdbscanMinClusterSize);
+    const [localHdbscanMinSamples, setLocalHdbscanMinSamples] = useState(hdbscanMinSamples);
 
     // Sync local state when context values change (e.g. initial load or external update)
     useEffect(() => {
@@ -100,7 +106,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setLocalHardebeckTimeWindow(hardebeckTimeWindow);
         setLocalHardebeckRuptureMult(hardebeckRuptureMult);
         setLocalHardebeckMainshockTimeYears(hardebeckMainshockTimeYears);
-    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears]);
+        setLocalHdbscanMinClusterSize(hdbscanMinClusterSize);
+        setLocalHdbscanMinSamples(hdbscanMinSamples);
+    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples]);
 
     // Apply handler
     const handleApplyParameters = () => {
@@ -121,6 +129,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHardebeckTimeWindow(localHardebeckTimeWindow);
         setHardebeckRuptureMult(localHardebeckRuptureMult);
         setHardebeckMainshockTimeYears(localHardebeckMainshockTimeYears);
+        setHdbscanMinClusterSize(localHdbscanMinClusterSize);
+        setHdbscanMinSamples(localHdbscanMinSamples);
     };
 
     // Performance optimization: Sample data for large datasets
@@ -437,6 +447,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     hardebeckTimeWindow,
                     hardebeckRuptureMult,
                     hardebeckMainshockTimeYears,
+                    hdbscanMinClusterSize,
+                    hdbscanMinSamples,
                 });
                 setClusteringResult(result);
             } catch (error) {
@@ -448,7 +460,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         }, 50); // Small delay to allow loading indicator to render
 
         return () => clearTimeout(timeoutId);
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears]);
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
@@ -1050,6 +1062,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     <option value="st-dbscan">ST-DBSCAN - Spatio-Temporal Density</option>
                                     <option value="tmc">TMC - Reasenberg Style</option>
                                     <option value="hardebeck-2019">Hardebeck (2019)</option>
+                                    <option value="hdbscan">HDBSCAN - Hierarchical Density</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -1303,6 +1316,34 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                         value={localHardebeckRuptureMult}
                                         onChange={(e) => setLocalHardebeckRuptureMult(parseFloat(e.target.value))}
                                         title="Multiplier for Wells & Coppersmith rupture length"
+                                    />
+                                </div>
+                            </>
+                        )}
+                        {(clusteringAlgorithm === 'hdbscan') && (
+                            <>
+                                <div className="flex flex-col">
+                                    <span>Min Cluster Size: <span className="font-semibold">{localHdbscanMinClusterSize}</span></span>
+                                    <input
+                                        type="range"
+                                        min={2}
+                                        max={50}
+                                        step={1}
+                                        value={localHdbscanMinClusterSize}
+                                        onChange={(e) => setLocalHdbscanMinClusterSize(parseInt(e.target.value))}
+                                        title="Smallest grouping considered a true cluster (larger = fewer, more stable clusters)"
+                                    />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span>Min Samples: <span className="font-semibold">{localHdbscanMinSamples}</span></span>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={30}
+                                        step={1}
+                                        value={localHdbscanMinSamples}
+                                        onChange={(e) => setLocalHdbscanMinSamples(parseInt(e.target.value))}
+                                        title="k-NN neighbourhood size for core-distance (larger = more conservative, fewer noise points)"
                                     />
                                 </div>
                             </>

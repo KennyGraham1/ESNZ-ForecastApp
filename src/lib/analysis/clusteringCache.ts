@@ -49,6 +49,9 @@ class ClusteringCache {
             hardebeckTimeWindow: options.hardebeckTimeWindow,
             hardebeckRuptureMult: options.hardebeckRuptureMult,
             hardebeckMainshockTimeYears: options.hardebeckMainshockTimeYears,
+            // HDBSCAN parameters
+            hdbscanMinClusterSize: options.hdbscanMinClusterSize,
+            hdbscanMinSamples: options.hdbscanMinSamples,
         });
         return `${dataHash}:${paramsKey}`;
     }
