@@ -353,7 +353,15 @@ function nearestNeighborClustering(
         }
     }
 
-    return { clusters, noiseIndices };
+    // Some background mainshocks (high NN distance) are pulled into clusters as
+    // parents of dependent aftershock chains.  Filter noiseIndices down to only
+    // events that remain truly unassigned so that noiseIndices.length is consistent
+    // with the noisePercent statistic derived from clusteredCount.
+    const clusteredSet = new Set<number>();
+    clusters.forEach(cluster => cluster.forEach(idx => clusteredSet.add(idx)));
+    const trueNoiseIndices = noiseIndices.filter(i => !clusteredSet.has(i));
+
+    return { clusters, noiseIndices: trueNoiseIndices };
 }
 
 /**
@@ -1992,6 +2000,10 @@ export function calculateSpatialClustering(
     let clusteredCount = 0;
     clusters.forEach((clusterIndices, clusterId) => {
         clusterIndices.forEach(index => {
+            if (index < 0 || index >= earthquakes.length) {
+                console.error(`[clustering] ${algorithm}: cluster ${clusterId} contains out-of-bounds index ${index} (n=${earthquakes.length}) — skipped`);
+                return;
+            }
             labels[index] = clusterId;
             clusteredCount++;
         });

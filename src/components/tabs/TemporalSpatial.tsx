@@ -425,6 +425,14 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setPolygonSeries(null);
     };
 
+    // K-Means produces no noise — if the user had "Hide Noise" on, reset it to avoid
+    // showing an empty chart when they switch to K-Means.
+    useEffect(() => {
+        if (clusteringAlgorithm === 'kmeans' && !includeNoise) {
+            setIncludeNoise(true);
+        }
+    }, [clusteringAlgorithm, includeNoise, setIncludeNoise]);
+
     // Trigger clustering whenever inputs change
     useEffect(() => {
         if (!processedEarthquakes.length) return;
@@ -468,10 +476,11 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             return processedEarthquakes;
         }
 
-        // Return only points that are NOT noise (label != -1)
-        // We match by index since labels correspond to processedEarthquakes indices
+        // Return only points that are NOT noise (label != -1).
+        // Guard against a stale result whose labels array is shorter than processedEarthquakes:
+        // treat any missing label as noise (-1) so we don't accidentally show orphaned points.
         return processedEarthquakes.filter((_, index) => {
-            const label = clusteringResult.labels[index];
+            const label = clusteringResult.labels[index] ?? -1;
             return label !== -1;
         });
     }, [processedEarthquakes, clusteringResult, includeNoise]);
@@ -485,7 +494,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         let filteredIdx = 0; // Index in the filtered array
 
         processedEarthquakes.forEach((_, originalIdx) => {
-            const label = clusteringResult.labels[originalIdx];
+            const label = clusteringResult.labels[originalIdx] ?? -1;
             if (label !== -1) {
                 map.set(originalIdx, filteredIdx++);
             }
@@ -1013,9 +1022,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 <span>
                                     In clusters: <span className="font-semibold">{clusteringResult.clusterPercent.toFixed(1)}%</span>
                                 </span>
-                                <span>
-                                    Noise: <span className="font-semibold">{clusteringResult.noisePercent.toFixed(1)}%</span>
-                                </span>
+                                {clusteringResult.noisePercent > 0 ? (
+                                    <span>
+                                        Noise:{' '}
+                                        <span className="font-semibold">{clusteringResult.noisePercent.toFixed(1)}%</span>
+                                        {!includeNoise && (
+                                            <span className="ml-1 italic text-gray-400">(hidden — {Math.max(0, processedEarthquakes.length - filteredEarthquakes.length)} events)</span>
+                                        )}
+                                    </span>
+                                ) : (
+                                    <span className="italic text-gray-400">No noise — all points clustered</span>
+                                )}
                             </div>
                         )}
                     </div>
@@ -1346,14 +1363,20 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         <div className="flex flex-col bg-gray-50 px-3 py-2 rounded-md border border-gray-200 w-fit">
                             <span className="text-xs font-semibold text-gray-500 mb-1">Display Options</span>
                             <select
-                                className="px-2 py-1 bg-white border border-gray-300 rounded text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className={`px-2 py-1 bg-white border border-gray-300 rounded text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${clusteringAlgorithm === 'kmeans' ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 value={includeNoise ? "show" : "hide"}
                                 onChange={(e) => setIncludeNoise(e.target.value === "show")}
-                                title="Control visibility of noise (unclustered) points"
+                                disabled={clusteringAlgorithm === 'kmeans'}
+                                title={clusteringAlgorithm === 'kmeans'
+                                    ? 'K-Means assigns every point to a cluster — no noise is produced'
+                                    : 'Control visibility of noise (unclustered) points'}
                             >
                                 <option value="show">Show All Points</option>
                                 <option value="hide">Hide Noise</option>
                             </select>
+                            {clusteringAlgorithm === 'kmeans' && (
+                                <span className="text-xs text-amber-600 mt-1">K-Means has no noise</span>
+                            )}
                         </div>
                         <button
                             onClick={handleApplyParameters}
