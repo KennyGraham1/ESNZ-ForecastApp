@@ -13,37 +13,122 @@ interface MapProps {
     onPointClick?: (earthquake: EarthquakeData) => void;
 }
 
-// Depth colour scale: bright cyan → teal → dark navy
+// Depth ranges — labels and bounds only; colours come from the active palette.
 const DEPTH_CATEGORIES = [
-    { label: '< 15',    min: -Infinity, max: 15,  color: '#00e5ff', border: '#00b8cc' },
-    { label: '15 - 40', min: 15,        max: 40,  color: '#26c6da', border: '#0097a7' },
-    { label: '40 - 100',min: 40,        max: 100, color: '#00838f', border: '#005f6b' },
-    { label: '100 - 200',min: 100,      max: 200, color: '#00695c', border: '#004d40' },
-    { label: '>= 200',  min: 200,       max: Infinity, color: '#1a3a4a', border: '#0d1f28' },
+    { label: '< 15',      min: -Infinity, max: 15       },
+    { label: '15 – 40',   min: 15,        max: 40       },
+    { label: '40 – 100',  min: 40,        max: 100      },
+    { label: '100 – 200', min: 100,       max: 200      },
+    { label: '≥ 200',     min: 200,       max: Infinity },
 ];
 
 // Magnitude size scale
 const MAG_SIZES = [
-    { label: '>= 7', min: 7,   radius: 20 },
-    { label: '6 - 7', min: 6,  radius: 14 },
-    { label: '5 - 6', min: 5,  radius: 10 },
-    { label: '4 - 5', min: 4,  radius: 7  },
-    { label: '3 - 4', min: 3,  radius: 5  },
-    { label: '2 - 3', min: 2,  radius: 3  },
-    { label: '< 2',   min: -Infinity, radius: 2 },
+    { label: '>= 7', min: 7,          radius: 20 },
+    { label: '6 – 7', min: 6,         radius: 14 },
+    { label: '5 – 6', min: 5,         radius: 10 },
+    { label: '4 – 5', min: 4,         radius: 7  },
+    { label: '3 – 4', min: 3,         radius: 5  },
+    { label: '2 – 3', min: 2,         radius: 3  },
+    { label: '< 2',   min: -Infinity, radius: 2  },
 ];
 
-function getDepthCategory(depth: number) {
-    return DEPTH_CATEGORIES.find(c => depth >= c.min && depth < c.max) ?? DEPTH_CATEGORIES[DEPTH_CATEGORIES.length - 1];
+// ── Depth colour palettes ─────────────────────────────────────────────────────
+
+export type MapDepthPaletteName = 'ocean' | 'heat' | 'viridis' | 'magma' | 'cividis' | 'plasma';
+
+interface DepthColor { color: string; border: string; }
+
+// 5 entries per palette — index 0 = shallowest, index 4 = deepest.
+const MAP_DEPTH_PALETTES: Record<MapDepthPaletteName, DepthColor[]> = {
+    ocean: [       // cyan → teal → dark navy (original scheme)
+        { color: '#00e5ff', border: '#00b8cc' },
+        { color: '#26c6da', border: '#0097a7' },
+        { color: '#00838f', border: '#005f6b' },
+        { color: '#00695c', border: '#004d40' },
+        { color: '#1a3a4a', border: '#0d1f28' },
+    ],
+    heat: [        // warm (shallow) → cool (deep) — classic seismology
+        { color: '#ef4444', border: '#b91c1c' },
+        { color: '#f97316', border: '#c2410c' },
+        { color: '#eab308', border: '#a16207' },
+        { color: '#22c55e', border: '#15803d' },
+        { color: '#3b82f6', border: '#1d4ed8' },
+    ],
+    viridis: [     // yellow → green → teal → blue → purple
+        { color: '#fde725', border: '#c8b820' },
+        { color: '#5ec962', border: '#4aab52' },
+        { color: '#21918c', border: '#17756e' },
+        { color: '#3b528b', border: '#2e3f70' },
+        { color: '#440154', border: '#2d0044' },
+    ],
+    magma: [       // pale yellow → orange → red → dark purple → near-black
+        { color: '#fcffa4', border: '#d4d488' },
+        { color: '#fc8961', border: '#d4714f' },
+        { color: '#bb3754', border: '#922b42' },
+        { color: '#56106e', border: '#3d0950' },
+        { color: '#0d0221', border: '#060110' },
+    ],
+    cividis: [     // yellow → grey → dark blue (colorblind-friendly)
+        { color: '#fee838', border: '#d4c230' },
+        { color: '#a2a475', border: '#848770' },
+        { color: '#4c5473', border: '#3b4060' },
+        { color: '#252a3a', border: '#14192a' },
+        { color: '#00204d', border: '#001038' },
+    ],
+    plasma: [      // yellow → orange → pink → purple → dark blue
+        { color: '#f0f921', border: '#c8c91a' },
+        { color: '#fc8961', border: '#d4714f' },
+        { color: '#cc4778', border: '#a33560' },
+        { color: '#7201a8', border: '#5a0188' },
+        { color: '#0d0887', border: '#07005e' },
+    ],
+};
+
+const PALETTE_LABELS: Record<MapDepthPaletteName, string> = {
+    ocean:   'Ocean',
+    heat:    'Heat',
+    viridis: 'Viridis',
+    magma:   'Magma',
+    cividis: 'Cividis',
+    plasma:  'Plasma',
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getDepthCategoryIndex(depth: number): number {
+    const idx = DEPTH_CATEGORIES.findIndex(c => depth >= c.min && depth < c.max);
+    return idx === -1 ? DEPTH_CATEGORIES.length - 1 : idx;
 }
 
 function getMagnitudeRadius(mag: number): number {
     return (MAG_SIZES.find(m => mag >= m.min) ?? MAG_SIZES[MAG_SIZES.length - 1]).radius;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 function MapComponent({ earthquakes, onPointClick }: MapProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
     const [nzMapGeometry, setNzMapGeometry] = useState<any>(null);
+
+    // Which depth category indices are currently hidden (toggled off by the user).
+    const [hiddenDepths, setHiddenDepths] = useState<number[]>([]);
+
+    // Active colour palette for depth colouring.
+    const [activePalette, setActivePalette] = useState<MapDepthPaletteName>('ocean');
+
+    // Ref so useMemo can always read the latest palette without it being a dep.
+    // This way palette changes do NOT trigger chart.update() — which crashes
+    // in Highcharts mappoint series by accessing point.graphic before it exists.
+    // Instead, palette changes are applied via series.update() in a useEffect.
+    const activePaletteRef = useRef<MapDepthPaletteName>('ocean');
+    activePaletteRef.current = activePalette;
+
+    const toggleDepth = (idx: number) => {
+        setHiddenDepths(prev =>
+            prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+        );
+    };
 
     // Load New Zealand map data
     useEffect(() => {
@@ -60,8 +145,6 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
     }, []);
 
     // Fallback: ensure Kermadec zoom is applied once the chart is in the DOM.
-    // chart.events.load is the primary mechanism; this handles edge cases where
-    // the chart ref is not yet available when load fires.
     useEffect(() => {
         if (!nzMapGeometry) return;
         const timer = setTimeout(() => {
@@ -114,13 +197,19 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
             console.log(`📊 Map: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
         }
 
-        // Build per-depth-category data arrays with per-point magnitude radius
+        // Read palette from ref so activePalette is NOT a useMemo dep —
+        // palette changes must not trigger chart.update().
+        const paletteColors = MAP_DEPTH_PALETTES[activePaletteRef.current];
+
+        // Build per-depth-category data arrays.
+        // lineColor is intentionally NOT included per-point; it lives at the
+        // series level so palette changes can update it via series.update()
+        // without touching individual point objects.
         const categoryData: Record<number, any[]> = {};
         DEPTH_CATEGORIES.forEach((_, i) => { categoryData[i] = []; });
 
         processedEarthquakes.forEach((eq, index) => {
-            const catIdx = DEPTH_CATEGORIES.findIndex(c => eq.depth >= c.min && eq.depth < c.max);
-            const idx = catIdx === -1 ? DEPTH_CATEGORIES.length - 1 : catIdx;
+            const idx = getDepthCategoryIndex(eq.depth);
             categoryData[idx].push({
                 lon: eq.longitude,
                 lat: eq.latitude,
@@ -134,7 +223,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     radius: getMagnitudeRadius(eq.magnitude),
                     fillOpacity: 0.75,
                     lineWidth: 0.5,
-                    lineColor: getDepthCategory(eq.depth).border
+                    // lineColor lives at series level (see series config below)
                 }
             });
         });
@@ -162,12 +251,10 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
             `;
         };
 
-        // Zoom function defined here so it can be used in chart.events.load
         const fitToNZWithKermadec = function (this: any) {
             const mapView = this.mapView;
             if (!mapView || typeof mapView.lonLatToProjectedUnits !== 'function') return;
             try {
-                // SW corner: 163°E, 49°S  |  NE corner: 179.9°E, 30°S (includes Kermadec)
                 const sw = mapView.lonLatToProjectedUnits({ lon: 163, lat: -49 });
                 const ne = mapView.lonLatToProjectedUnits({ lon: 179.9, lat: -30 });
                 mapView.fitToBounds({ x1: sw.x, y1: sw.y, x2: ne.x, y2: ne.y }, '2%');
@@ -179,18 +266,20 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         const chartConfig: any = {
             chart: {
                 map: nzMapGeometry,
-                backgroundColor: '#a8d8ea', // ocean blue
+                backgroundColor: '#a8d8ea',
                 height: 600,
-                events: {
-                    // chart.events.load fires synchronously during chart initialisation —
-                    // more reliable than a setTimeout useEffect for setting the initial zoom.
-                    load: fitToNZWithKermadec,
-                },
+                // Explicit animation: false here (belt-and-suspenders on top of the
+                // global Highcharts.setOptions in Providers.tsx) — prevents the
+                // "Cannot read properties of undefined (reading 'graphic')" crash
+                // that occurs when chart.update() redraws series before their DOM
+                // elements exist.
+                animation: false,
+                events: { load: fitToNZWithKermadec },
             },
             boost: { enabled: false },
             title: { text: '' },
             credits: { enabled: false },
-            legend: { enabled: false }, // replaced by custom HTML legend
+            legend: { enabled: false },
             mapNavigation: {
                 enabled: true,
                 enableMouseWheelZoom: true,
@@ -220,15 +309,14 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                 formatter: tooltipFormatter
             },
             plotOptions: {
-                series: { turboThreshold: 50000 },
+                series: { animation: false, turboThreshold: 50000 },
                 mappoint: {
                     point: {
                         events: {
                             click: function (this: any) {
                                 const point = this;
                                 if (onPointClick && point.index !== undefined) {
-                                    const eq = earthquakes[point.index];
-                                    onPointClick(eq);
+                                    onPointClick(earthquakes[point.index]);
                                 }
                             }
                         }
@@ -241,7 +329,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     name: 'New Zealand',
                     borderColor: '#8aabb8',
                     borderWidth: 1,
-                    nullColor: '#e8dcc8', // beige land
+                    nullColor: '#e8dcc8',
                     showInLegend: false,
                     enableMouseTracking: false,
                     states: { hover: { brightness: 0.05 } }
@@ -249,13 +337,16 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                 ...DEPTH_CATEGORIES.map((cat, i) => ({
                     type: 'mappoint',
                     name: cat.label,
-                    color: cat.color,
+                    color: paletteColors[i].color,
+                    // Visibility is controlled via series.setVisible() in a
+                    // useEffect — NOT via chart.update() — to avoid the
+                    // 'graphic' animation crash.
                     showInLegend: false,
                     marker: {
                         symbol: 'circle',
                         fillOpacity: 0.75,
                         lineWidth: 0.5,
-                        lineColor: cat.border
+                        lineColor: paletteColors[i].border,
                     },
                     data: categoryData[i]
                 }))
@@ -268,7 +359,50 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         };
 
         return chartConfig;
+    // activePalette and hiddenDepths are intentionally omitted:
+    //   • activePalette → applied via series.update() in a useEffect (no chart.update())
+    //   • hiddenDepths  → applied via series.setVisible() in a useEffect (no chart.update())
+    // Both paths avoid the mappoint 'graphic' crash that chart.update() causes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [earthquakes, onPointClick, nzMapGeometry]);
+
+    // ── Palette change: update series colours without chart.update() ─────────
+    // series.update({ color }, false) updates the existing series objects in-place,
+    // preserving point.graphic references. chart.update() would recreate mappoint
+    // series from scratch, giving points no graphic → crash in drawPoints().
+    useEffect(() => {
+        const chart = (chartRef.current as any)?.chart;
+        if (!chart) return;
+        const colors = MAP_DEPTH_PALETTES[activePalette];
+        DEPTH_CATEGORIES.forEach((_, i) => {
+            const series = chart.series[i + 1]; // index 0 is the base map layer
+            if (!series) return;
+            series.update(
+                { color: colors[i].color, marker: { lineColor: colors[i].border } },
+                false  // batch — no redraw yet
+            );
+        });
+        chart.redraw(false); // single pass, no animation
+    }, [activePalette]);
+
+    // ── Depth toggle: show/hide series without chart.update() ────────────────
+    // Runs when the user toggles a depth range OR after a data rebuild (options
+    // dep) to re-apply any previously hidden ranges.
+    useEffect(() => {
+        const chart = (chartRef.current as any)?.chart;
+        if (!chart) return;
+        let changed = false;
+        DEPTH_CATEGORIES.forEach((_, i) => {
+            const series = chart.series[i + 1];
+            if (!series) return;
+            const shouldBeVisible = !hiddenDepths.includes(i);
+            if (series.visible !== shouldBeVisible) {
+                series.setVisible(shouldBeVisible, false); // batch
+                changed = true;
+            }
+        });
+        if (changed) chart.redraw(false);
+    }, [hiddenDepths, options]);
 
     if (!nzMapGeometry) {
         return (
@@ -281,6 +415,8 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         );
     }
 
+    const paletteColors = MAP_DEPTH_PALETTES[activePalette];
+
     return (
         <div className="w-full">
             <div className="flex gap-3 items-start">
@@ -291,11 +427,14 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                         options={options}
                         ref={chartRef}
                         constructorType={'mapChart'}
+                        updateArgs={[true, true, false]}
                     />
                 </div>
 
-                {/* Custom legend panel */}
-                <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 text-xs select-none shrink-0 w-36">
+                {/* Legend panel */}
+                <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 text-xs select-none shrink-0 w-40">
+
+                    {/* ── Magnitude ── */}
                     <p className="font-bold text-gray-700 mb-2 text-[11px] uppercase tracking-wide">Magnitude</p>
                     <div className="flex flex-col gap-1.5 mb-4">
                         {MAG_SIZES.map(m => (
@@ -317,17 +456,82 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                         ))}
                     </div>
 
-                    <p className="font-bold text-gray-700 mb-2 text-[11px] uppercase tracking-wide">Depth (km)</p>
-                    <div className="flex flex-col gap-1.5">
-                        {DEPTH_CATEGORIES.map(cat => (
-                            <div key={cat.label} className="flex items-center gap-2">
-                                <span
-                                    className="rounded-full shrink-0"
-                                    style={{ width: 14, height: 14, backgroundColor: cat.color, border: `1.5px solid ${cat.border}` }}
-                                />
-                                <span className="text-gray-600">{cat.label}</span>
-                            </div>
-                        ))}
+                    {/* ── Depth — clickable to filter ── */}
+                    <p className="font-bold text-gray-700 mb-0.5 text-[11px] uppercase tracking-wide">Depth (km)</p>
+                    <p className="text-[10px] text-gray-400 mb-2">Click to show/hide</p>
+                    <div className="flex flex-col gap-1">
+                        {DEPTH_CATEGORIES.map((cat, i) => {
+                            const isHidden = hiddenDepths.includes(i);
+                            const c = paletteColors[i];
+                            return (
+                                <button
+                                    key={cat.label}
+                                    onClick={() => toggleDepth(i)}
+                                    title={isHidden ? 'Click to show this depth range' : 'Click to hide this depth range'}
+                                    className={`flex items-center gap-2 w-full text-left rounded px-1 py-0.5 transition-all cursor-pointer
+                                        ${isHidden ? 'opacity-35' : 'opacity-100 hover:bg-gray-50'}`}
+                                >
+                                    <span
+                                        className="rounded-full shrink-0 transition-all"
+                                        style={{
+                                            width: 14,
+                                            height: 14,
+                                            backgroundColor: isHidden ? '#d1d5db' : c.color,
+                                            border: `1.5px solid ${isHidden ? '#9ca3af' : c.border}`,
+                                        }}
+                                    />
+                                    <span className={`transition-colors ${isHidden ? 'text-gray-400 line-through decoration-gray-400' : 'text-gray-600'}`}>
+                                        {cat.label}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {hiddenDepths.length > 0 && (
+                        <button
+                            onClick={() => setHiddenDepths([])}
+                            className="mt-1.5 text-[10px] text-blue-500 hover:text-blue-700 underline"
+                        >
+                            Show all
+                        </button>
+                    )}
+
+                    {/* ── Colour theme ── */}
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                        <p className="font-bold text-gray-700 mb-2 text-[11px] uppercase tracking-wide">Colour Theme</p>
+                        <div className="flex flex-col gap-1">
+                            {(Object.entries(MAP_DEPTH_PALETTES) as [MapDepthPaletteName, DepthColor[]][]).map(([name, colors]) => (
+                                <button
+                                    key={name}
+                                    onClick={() => setActivePalette(name)}
+                                    className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors w-full
+                                        ${activePalette === name
+                                            ? 'bg-blue-50 ring-1 ring-blue-300'
+                                            : 'hover:bg-gray-50'}`}
+                                >
+                                    {/* Mini swatch: 5 dots representing shallow→deep */}
+                                    <div className="flex gap-0.5 shrink-0">
+                                        {colors.map((c, i) => (
+                                            <span
+                                                key={i}
+                                                style={{
+                                                    width: 8,
+                                                    height: 8,
+                                                    borderRadius: '50%',
+                                                    backgroundColor: c.color,
+                                                    border: `1px solid ${c.border}`,
+                                                    display: 'inline-block',
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                    <span className="text-gray-600 text-[10px]">
+                                        {PALETTE_LABELS[name]}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -341,5 +545,4 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
     );
 }
 
-// Export memoized version to prevent unnecessary re-renders
 export default memo(MapComponent);
