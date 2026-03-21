@@ -3,8 +3,10 @@ import { CsvParser } from './parsers/CsvParser';
 import { ExcelParser } from './parsers/ExcelParser';
 import { JsonParser } from './parsers/JsonParser';
 import { DatParser } from './parsers/DatParser';
+import { QmlParser } from './parsers/QmlParser';
 
 const parsers: FileParser[] = [
+    new QmlParser(),
     new CsvParser(),
     new ExcelParser(),
     new JsonParser(),
@@ -25,7 +27,8 @@ export function getSupportedFileExtensions(): string[] {
         '.csv', '.txt', '.tsv', '.tab', // CSV/Tab
         '.xlsx', '.xls',        // Excel
         '.json', '.geojson',    // JSON
-        '.dat'                  // DAT
+        '.dat',                 // DAT
+        '.qml', '.quakeml',     // QuakeML
     ];
 }
 

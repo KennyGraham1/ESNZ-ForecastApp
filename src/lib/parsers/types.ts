@@ -4,6 +4,13 @@ import { FilePreviewResult, CustomParseResult } from '@/lib/csvPreview';
 
 export interface FileParser {
     /**
+     * When true, the file is self-describing (e.g. QuakeML XML) and the
+     * column-mapping wizard should be skipped.  CatalogUpload will offer a
+     * one-click direct import instead.
+     */
+    isDirectImport?: boolean;
+
+    /**
      * Check if this parser handles the given file
      */
     canParse(file: File): boolean;

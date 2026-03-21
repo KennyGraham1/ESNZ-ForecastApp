@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { useCachedEarthquakes, refreshEarthquakeCache } from '@/hooks/useCachedEarthquakes';
-import { useQueryClient } from '@tanstack/react-query';
+import { useGeoNetData } from '@/hooks/useGeoNetData';
 import FilterControls, { FilterOptions } from '@/components/FilterControls';
 import { parsePolygonString, isPointInPolygon } from '@/lib/polygonUtils';
 import TabNavigation from '@/components/TabNavigation';
@@ -30,8 +29,6 @@ type DataSource = 'geonet' | 'uploaded';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('basic');
-  const queryClient = useQueryClient();
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Data source management
   const [dataSource, setDataSource] = useState<DataSource>('geonet');
@@ -85,8 +82,8 @@ export default function Home() {
     minMagnitude: 3
   });
 
-  // Fetch the cached catalog with server-side filtering for better performance
-  const { data: response, isLoading, error, refetch } = useCachedEarthquakes({
+  // Fetch catalog — reads from browser IndexedDB first, falls back to GeoNet via proxy
+  const { data: response, isLoading, isRefreshing, error, refetch } = useGeoNetData({
     daysBack: filterOptions.daysBack,
     startDate: filterOptions.startDate,
     endDate: filterOptions.endDate,
@@ -283,22 +280,14 @@ export default function Home() {
     }
   }, [tempOptions.startDate, tempOptions.endDate, tempOptions.mode]);
 
-  // Handle manual refresh (incremental update - fetch only new events)
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
+  // Handle manual refresh (incremental update — hook manages isRefreshing state)
+  const handleRefresh = useCallback(async () => {
     try {
-      await refreshEarthquakeCache();
-      // Invalidate and refetch the query to get updated data
-      await queryClient.invalidateQueries({
-        queryKey: ['earthquakes-cached']
-      });
       await refetch();
     } catch (error) {
       console.error('Failed to refresh cache:', error);
-    } finally {
-      setIsRefreshing(false);
     }
-  };
+  }, [refetch]);
 
   // Handle "Load" button - just updates filter options (no API call)
   const handleLoad = () => {
@@ -370,8 +359,8 @@ export default function Home() {
     );
   }
 
-  // Don't render until we have data
-  if (!earthquakes || earthquakes.length === 0) {
+  // Don't render until we have a response (isLoading already handles the fetching state)
+  if (!response) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -688,8 +677,24 @@ export default function Home() {
                 {filteredEarthquakes.length === 0 ? (
                   <div className="flex items-center justify-center min-h-[400px]">
                     <div className="text-center">
-                      <p className="text-gray-600 text-lg font-medium">No earthquakes match the current filters</p>
-                      <p className="text-gray-500 text-sm mt-2">Try adjusting your magnitude, depth, or date range filters</p>
+                      {earthquakes.length === 0 ? (
+                        <>
+                          <p className="text-gray-600 text-lg font-medium">No earthquake data for the selected time range or magnitude</p>
+                          <p className="text-gray-500 text-sm mt-2">Try adjusting the time range or minimum magnitude in the controls above, then click Load</p>
+                          <button
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+                          >
+                            {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-gray-600 text-lg font-medium">No earthquakes match the current filters</p>
+                          <p className="text-gray-500 text-sm mt-2">Try adjusting your magnitude, depth, or date range filters</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : (

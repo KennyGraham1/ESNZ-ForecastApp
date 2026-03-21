@@ -43,6 +43,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
     const [isDragging, setIsDragging] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [filePreview, setFilePreview] = useState<FilePreviewResult | null>(null);
+    const [isDirectImportFile, setIsDirectImportFile] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Wizard state
@@ -129,18 +130,24 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
             }
             setFilePreview(preview);
 
-            // Auto-suggest mappings
-            const suggestions = suggestColumnMappings(preview.headers);
-            setMappingConfig({
-                columns: suggestions.mappings,
-                useSplitDateTime: suggestions.hasSplitDateTime,
-                yearColumn: suggestions.splitDateTimeColumns?.year,
-                monthColumn: suggestions.splitDateTimeColumns?.month,
-                dayColumn: suggestions.splitDateTimeColumns?.day,
-                hourColumn: suggestions.splitDateTimeColumns?.hour,
-                minuteColumn: suggestions.splitDateTimeColumns?.minute,
-                secondColumn: suggestions.splitDateTimeColumns?.second,
-            });
+            if (parser.isDirectImport) {
+                // Self-describing format (e.g. QuakeML) — skip column mapping.
+                setIsDirectImportFile(true);
+            } else {
+                setIsDirectImportFile(false);
+                // Auto-suggest mappings for columnar formats.
+                const suggestions = suggestColumnMappings(preview.headers);
+                setMappingConfig({
+                    columns: suggestions.mappings,
+                    useSplitDateTime: suggestions.hasSplitDateTime,
+                    yearColumn: suggestions.splitDateTimeColumns?.year,
+                    monthColumn: suggestions.splitDateTimeColumns?.month,
+                    dayColumn: suggestions.splitDateTimeColumns?.day,
+                    hourColumn: suggestions.splitDateTimeColumns?.hour,
+                    minuteColumn: suggestions.splitDateTimeColumns?.minute,
+                    secondColumn: suggestions.splitDateTimeColumns?.second,
+                });
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to read file');
         }
@@ -149,6 +156,46 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
 
     const handleBrowseClick = () => {
         fileInputRef.current?.click();
+    };
+
+    // Direct import for self-describing formats (e.g. QuakeML) — no mapping step.
+    const handleDirectImport = async () => {
+        if (!selectedFile) return;
+        setIsProcessing(true);
+        setError(null);
+
+        try {
+            const parser = getFileParser(selectedFile);
+            if (!parser) throw new Error('Could not determine file type');
+
+            const options: ImportOptions = {
+                dateFormat: 'auto',
+                coordinateFormat: 'decimal',
+                validationRules: DEFAULT_VALIDATION_RULES,
+                mapping: { columns: [], useSplitDateTime: false },
+            };
+
+            const result = await parser.parse(selectedFile, options);
+
+            setImportReport({
+                valid: result.statistics?.validRows || 0,
+                invalid: result.statistics?.invalidRows || 0,
+                warnings: result.warnings || [],
+            });
+
+            if (!result.success || result.data.length === 0) {
+                setError(result.errors.join('; ') || 'No valid data found');
+                setIsProcessing(false);
+                return;
+            }
+
+            const enhancedData = enhanceEarthquakeData(result.data);
+            setSuccess(`Successfully imported ${enhancedData.length.toLocaleString()} earthquakes`);
+            onDataLoaded(enhancedData, selectedFile.name);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Import failed');
+        }
+        setIsProcessing(false);
     };
 
     // Handle mapping change
@@ -319,6 +366,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
         setSelectedFile(null);
         setFilePreview(null);
         setMappingConfig(null);
+        setIsDirectImportFile(false);
         setCurrentStep('select');
         setUseAdvancedMode(false);
         setError(null);
@@ -400,7 +448,11 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                                     <CheckCircle className="w-10 h-10 text-green-500" />
                                     <p className="text-sm font-medium text-green-700">{selectedFile.name}</p>
                                     <p className="text-xs text-gray-500">
-                                        {(selectedFile.size / 1024).toFixed(1)} KB • {filePreview?.headers.length || 0} columns • {filePreview?.previewRows.length || 0}+ rows
+                                        {(selectedFile.size / 1024).toFixed(1)} KB
+                                        {isDirectImportFile
+                                            ? ` • ${(filePreview?.totalRows || 0).toLocaleString()} events`
+                                            : ` • ${filePreview?.headers.length || 0} columns • ${filePreview?.previewRows.length || 0}+ rows`
+                                        }
                                     </p>
                                     <button
                                         onClick={handleReset}
@@ -413,7 +465,7 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                                 <>
                                     <FileUp className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                                     <p className="text-sm text-gray-600 mb-2">
-                                        Drag and drop a data file here (CSV, Excel, JSON, etc.), or
+                                        Drag and drop a data file here (CSV, Excel, JSON, QuakeML, etc.), or
                                     </p>
                                     <button
                                         onClick={handleBrowseClick}
@@ -429,40 +481,63 @@ export default function CatalogUpload({ onDataLoaded, onClose }: CatalogUploadPr
                                         className="hidden"
                                     />
                                     <p className="text-xs text-gray-500 mt-3">
-                                        Supported formats: CSV, Excel, JSON, GeoJSON, TSV/TAB, DAT
+                                        Supported formats: CSV, Excel, JSON, GeoJSON, TSV/TAB, DAT, QuakeML
                                     </p>
                                 </>
                             )}
                         </div>
 
-                        {/* Quick vs Advanced mode selection */}
+                        {/* Import mode selection */}
                         {selectedFile && filePreview && (
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => { setUseAdvancedMode(false); setCurrentStep('mapping'); }}
-                                    className="flex-1 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Zap className="w-5 h-5 text-blue-600" />
-                                        <span className="font-medium text-gray-800">Quick Import</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600">
-                                        Map columns and import immediately with default settings
-                                    </p>
-                                </button>
-                                <button
-                                    onClick={() => { setUseAdvancedMode(true); setCurrentStep('mapping'); }}
-                                    className="flex-1 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Settings className="w-5 h-5 text-blue-600" />
-                                        <span className="font-medium text-gray-800">Advanced Import</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600">
-                                        Configure date format, validation rules, and preview before import
-                                    </p>
-                                </button>
-                            </div>
+                            isDirectImportFile ? (
+                                // Self-describing format (e.g. QuakeML) — single direct import button.
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={handleDirectImport}
+                                        disabled={isProcessing}
+                                        className="flex-1 p-4 border-2 border-blue-300 bg-blue-50 rounded-lg hover:border-blue-500 hover:bg-blue-100 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Zap className="w-5 h-5 text-blue-600" />
+                                            <span className="font-medium text-gray-800">
+                                                {isProcessing ? 'Importing…' : 'Import QuakeML'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-600">
+                                            QuakeML is self-describing — no column mapping needed.
+                                            Importing {filePreview.totalRows.toLocaleString()} events directly.
+                                        </p>
+                                    </button>
+                                </div>
+                            ) : (
+                                // Columnar formats — Quick vs Advanced wizard.
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { setUseAdvancedMode(false); setCurrentStep('mapping'); }}
+                                        className="flex-1 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Zap className="w-5 h-5 text-blue-600" />
+                                            <span className="font-medium text-gray-800">Quick Import</span>
+                                        </div>
+                                        <p className="text-xs text-gray-600">
+                                            Map columns and import immediately with default settings
+                                        </p>
+                                    </button>
+                                    <button
+                                        onClick={() => { setUseAdvancedMode(true); setCurrentStep('mapping'); }}
+                                        className="flex-1 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Settings className="w-5 h-5 text-blue-600" />
+                                            <span className="font-medium text-gray-800">Advanced Import</span>
+                                        </div>
+                                        <p className="text-xs text-gray-600">
+                                            Configure date format, validation rules, and preview before import
+                                        </p>
+                                    </button>
+                                </div>
+                            )
                         )}
                     </div>
                 );
