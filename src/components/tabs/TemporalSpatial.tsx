@@ -5,7 +5,7 @@ import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from '../ChartExportButtons';
-import { calculateSpatialClustering } from '@/lib/analysis/clustering';
+import { useClusteringWorker } from '@/hooks/useClusteringWorker';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
 import { formatDateForTooltip } from '@/utils/dateFormat';
 import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
@@ -171,8 +171,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     // Map state
     const [nzMapGeometry, setNzMapGeometry] = useState<any>(null);
 
-    // Clustering loading state
-    const [isClusteringCalculating, setIsClusteringCalculating] = useState(false);
+    // Clustering — hybrid worker/server hook
+    const {
+        result: clusteringResult,
+        isCalculating: isClusteringCalculating,
+        runClustering,
+    } = useClusteringWorker();
 
     const chartRef = useRef<HighchartsReact.RefObject>(null);
     const mapChartRef = useRef<HighchartsReact.RefObject>(null);
@@ -418,49 +422,32 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setPolygonSeries(null);
     };
 
-    // Compute clustering on the processed earthquakes with loading state
-    const [clusteringResult, setClusteringResult] = useState<any>(null);
-
+    // Trigger clustering whenever inputs change
     useEffect(() => {
-        // Show loading indicator
-        setIsClusteringCalculating(true);
-
-        // Use setTimeout to allow UI to update before heavy computation
-        const timeoutId = setTimeout(() => {
-            try {
-                const result = calculateSpatialClustering(processedEarthquakes, {
-                    algorithm: clusteringAlgorithm,
-                    epsilon,
-                    minSamples,
-                    k,
-                    nnThreshold,
-                    stepMinMag,
-                    stepT1,
-                    stepT2,
-                    epsilonTemporal,
-                    tmcRfact,
-                    tmcTau0,
-                    tmcTauMax,
-                    tmcP1,
-                    tmcXk,
-                    hardebeckMinMag,
-                    hardebeckTimeWindow,
-                    hardebeckRuptureMult,
-                    hardebeckMainshockTimeYears,
-                    hdbscanMinClusterSize,
-                    hdbscanMinSamples,
-                });
-                setClusteringResult(result);
-            } catch (error) {
-                console.error('Clustering error:', error);
-                setClusteringResult(null);
-            } finally {
-                setIsClusteringCalculating(false);
-            }
-        }, 50); // Small delay to allow loading indicator to render
-
-        return () => clearTimeout(timeoutId);
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples]);
+        if (!processedEarthquakes.length) return;
+        runClustering(processedEarthquakes, {
+            algorithm: clusteringAlgorithm,
+            epsilon,
+            minSamples,
+            k,
+            nnThreshold,
+            stepMinMag,
+            stepT1,
+            stepT2,
+            epsilonTemporal,
+            tmcRfact,
+            tmcTau0,
+            tmcTauMax,
+            tmcP1,
+            tmcXk,
+            hardebeckMinMag,
+            hardebeckTimeWindow,
+            hardebeckRuptureMult,
+            hardebeckMainshockTimeYears,
+            hdbscanMinClusterSize,
+            hdbscanMinSamples,
+        });
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples, runClustering]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
