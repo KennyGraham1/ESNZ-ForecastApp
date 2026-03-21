@@ -28,7 +28,7 @@ export function getSupportedFileExtensions(): string[] {
         '.xlsx', '.xls',        // Excel
         '.json', '.geojson',    // JSON
         '.dat',                 // DAT
-        '.qml', '.quakeml',     // QuakeML
+        '.qml', '.quakeml', '.xml', // QuakeML
     ];
 }
 

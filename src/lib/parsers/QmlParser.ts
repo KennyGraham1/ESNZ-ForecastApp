@@ -16,7 +16,7 @@
 
 import { FileParser } from './types';
 import { FilePreviewResult, CustomParseResult } from '@/lib/csvPreview';
-import { ImportOptions, PreviewStatistics, DEFAULT_VALIDATION_RULES } from '@/types/csvUpload';
+import { ImportOptions, PreviewStatistics } from '@/types/csvUpload';
 import { EarthquakeData } from '@/types/earthquake';
 
 // ── XML helpers ───────────────────────────────────────────────────────────────
@@ -223,7 +223,7 @@ export class QmlParser implements FileParser {
 
     canParse(file: File): boolean {
         const name = file.name.toLowerCase();
-        return name.endsWith('.qml') || name.endsWith('.quakeml');
+        return name.endsWith('.qml') || name.endsWith('.quakeml') || name.endsWith('.xml');
     }
 
     async getPreview(file: File): Promise<FilePreviewResult> {
