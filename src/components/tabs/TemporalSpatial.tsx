@@ -6,6 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from '../ChartExportButtons';
 import { useClusteringWorker } from '@/hooks/useClusteringWorker';
+import ClusteringProgressPanel from '@/components/ClusteringProgressPanel';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
 import { formatDateForTooltip } from '@/utils/dateFormat';
 import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
@@ -175,7 +176,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const {
         result: clusteringResult,
         isCalculating: isClusteringCalculating,
+        computeInfo: clusteringComputeInfo,
         runClustering,
+        cancelClustering,
     } = useClusteringWorker();
 
     const chartRef = useRef<HighchartsReact.RefObject>(null);
@@ -965,6 +968,14 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     return (
         <div className="space-y-6">
+            {/* Clustering progress popup */}
+            {clusteringComputeInfo && (
+                <ClusteringProgressPanel
+                    computeInfo={clusteringComputeInfo}
+                    onCancel={cancelClustering}
+                />
+            )}
+
             {/* Header Section */}
             <div className="bg-gradient-to-r from-green-50 to-teal-50 p-6 rounded-xl border border-green-200">
                 <h2 className="text-3xl font-bold text-gray-900 mb-2">Temporal-Spatial Analysis</h2>
@@ -991,12 +1002,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 </span>
                             )}
                         </div>
-                        {isClusteringCalculating ? (
-                            <div className="text-xs text-blue-600 flex items-center gap-2">
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                                <span className="font-medium">Computing clustering...</span>
-                            </div>
-                        ) : clusteringResult && (
+                        {clusteringResult && !isClusteringCalculating && (
                             <div className="text-xs text-gray-500 flex flex-wrap gap-3">
                                 <span>
                                     Algorithm: <span className="font-semibold uppercase">{clusteringAlgorithm}</span>

@@ -34,3 +34,13 @@ body {
 .animate-shimmer {
   animation: shimmer 3s infinite;
 }
+
+/* Indeterminate progress bar for clustering panel */
+@keyframes progress-slide {
+  0%   { transform: translateX(-250%); }
+  100% { transform: translateX(350%); }
+}
+
+.animate-progress-slide {
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
