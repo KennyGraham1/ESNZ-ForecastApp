@@ -1,280 +1,635 @@
 # Clustering Algorithms Reference
 
-This document describes all earthquake clustering algorithms implemented in the ESNZ-ForecastApp, their parameters, and scientific references.
+This document describes all earthquake clustering algorithms implemented in the
+ESNZ-ForecastApp, their parameters, how noise is determined, and scientific
+references.
+
+---
 
 ## Table of Contents
-- [1. DBSCAN (Density-Based Spatial Clustering)](#1-dbscan-density-based-spatial-clustering)
-- [2. OPTICS (Ordering Points To Identify Clustering Structure)](#2-optics-ordering-points-to-identify-clustering-structure)
+
+- [1. DBSCAN](#1-dbscan-density-based-spatial-clustering)
+- [2. OPTICS](#2-optics-ordering-points-to-identify-clustering-structure)
 - [3. K-Means](#3-k-means)
-- [4. ST-DBSCAN (Spatio-Temporal DBSCAN)](#4-st-dbscan-spatio-temporal-dbscan)
+- [4. ST-DBSCAN](#4-st-dbscan-spatio-temporal-dbscan)
 - [5. STEP Magnitude Clustering](#5-step-magnitude-clustering)
 - [6. STEP Time Clustering](#6-step-time-clustering)
-- [7. Nearest-Neighbor Clustering (Zaliapin-Ben-Zion)](#7-nearest-neighbor-clustering-zaliapin-ben-zion)
-- [8. TMC (Time-Magnitude Clustering / Reasenberg)](#8-tmc-time-magnitude-clustering--reasenberg)
-- [Noise Determination](#noise-determination)
+- [7. Nearest-Neighbor (Zaliapin-Ben-Zion)](#7-nearest-neighbor-clustering-zaliapin-ben-zion)
+- [8. TMC / Reasenberg](#8-tmc-time-magnitude-clustering--reasenberg)
+- [9. Hardebeck (2019)](#9-hardebeck-2019)
+- [10. HDBSCAN](#10-hdbscan-hierarchical-density-based-spatial-clustering)
+- [Noise Determination — detail per algorithm](#noise-determination)
+- [Performance Optimisations](#performance-optimisations)
+- [Comparison Guide](#comparison-guide)
+- [Seismology-Specific Recommendations](#seismology-specific-recommendations)
 
 ---
 
 ## 1. DBSCAN (Density-Based Spatial Clustering)
 
-**Description:**  
-DBSCAN groups together points that are closely packed together, marking points in low-density regions as noise. Optimized with R-tree spatial indexing for 90-95% faster performance.
+**Description:**
+DBSCAN groups together points that are closely packed, marking points in
+low-density regions as noise. Optimised with R-tree spatial indexing for 90–95 %
+faster performance on large catalogs.
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `epsilon` | number | 25 | Spatial distance threshold in kilometers. Points within this distance are considered neighbors. |
-| `minSamples` | number | 5 | Minimum number of points required to form a dense region (core point). |
-| `useRTree` | boolean | true | Use R-tree spatial index for optimization. |
+| `epsilon` | number | 25 | Spatial distance threshold (km). Points within this radius are neighbours. |
+| `minSamples` | number | 5 | Minimum neighbours required to declare a core point. |
+| `useRTree` | boolean | true | Enable R-tree spatial index optimisation. |
 
-**Output:**  
-- Clusters of earthquake events
-- Noise points (events that don't belong to any cluster)
+**Output:** Clusters + noise points (events that belong to no cluster).
 
-**Reference:**  
-Ester, M., et al. (1996). "A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise." KDD-96.
+**Reference:**
+Ester, M., et al. (1996). "A Density-Based Algorithm for Discovering Clusters in
+Large Spatial Databases with Noise." KDD-96.
 
 ---
 
 ## 2. OPTICS (Ordering Points To Identify Clustering Structure)
 
-**Description:**  
-OPTICS is an extension of DBSCAN that creates an ordering of points based on their density-reachability. It doesn't produce explicit clusters but an augmented ordering that can be used to extract clusters at various density levels.
+**Description:**
+OPTICS extends DBSCAN by producing a reachability ordering that encodes cluster
+structure at all density levels. The implementation extracts explicit clusters from
+this ordering; points that are unreachable from any core point are noise.
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `epsilon` | number | 25 | Maximum neighborhood radius in kilometers. |
-| `minSamples` | number | 5 | Minimum points required to form a core object. |
+| `epsilon` | number | 25 | Maximum neighbourhood radius (km). |
+| `minSamples` | number | 5 | Minimum points to form a core object. |
 
-**Reference:**  
-Ankerst, M., et al. (1999). "OPTICS: Ordering Points To Identify the Clustering Structure." SIGMOD Conference.
+**Reference:**
+Ankerst, M., et al. (1999). "OPTICS: Ordering Points To Identify the Clustering
+Structure." SIGMOD.
 
 ---
 
 ## 3. K-Means
 
-**Description:**  
-K-Means partitions the dataset into exactly K clusters by minimizing within-cluster variance. Unlike DBSCAN/OPTICS, every point is assigned to a cluster (no noise).
+**Description:**
+K-Means partitions the dataset into exactly *k* clusters by minimising
+within-cluster variance. Unlike density-based algorithms, **every point is
+assigned to a cluster** — no noise is produced.
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `k` | number | 5 | Number of clusters to create. |
 
-**Note:** K-Means assigns every point to a cluster; there are no noise points.
+> **Note:** Because K-Means produces no noise, the "Hide Noise" display option is
+> disabled when this algorithm is selected.
 
-**Reference:**  
-MacQueen, J. (1967). "Some Methods for Classification and Analysis of Multivariate Observations." Berkeley Symposium on Mathematical Statistics and Probability.
+**Reference:**
+MacQueen, J. (1967). "Some Methods for Classification and Analysis of Multivariate
+Observations." Berkeley Symposium on Mathematical Statistics and Probability.
 
 ---
 
 ## 4. ST-DBSCAN (Spatio-Temporal DBSCAN)
 
-**Description:**  
-ST-DBSCAN extends DBSCAN to consider both spatial AND temporal proximity. Events must be within both the spatial epsilon AND temporal epsilon to be considered neighbors. Uses R-tree spatial indexing for optimization.
+**Description:**
+ST-DBSCAN extends DBSCAN to require proximity in both space **and** time.
+Two events are neighbours only if they are within `epsilon` km AND within
+`epsilonTemporal` days of each other.
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `epsilon` | number | 25 | Spatial distance threshold in kilometers. |
-| `epsilonTemporal` | number | 7 | Temporal distance threshold in days. |
-| `minSamples` | number | 5 | Minimum neighbors to form a core point. |
+| `epsilon` | number | 25 | Spatial distance threshold (km). |
+| `epsilonTemporal` | number | 7 | Temporal distance threshold (days). |
+| `minSamples` | number | 5 | Minimum spatio-temporal neighbours for a core point. |
 
-**Reference:**  
-Birant, D. & Kut, A. (2007). "ST-DBSCAN: An algorithm for clustering spatial-temporal data." Data & Knowledge Engineering.
+**Reference:**
+Birant, D. & Kut, A. (2007). "ST-DBSCAN: An algorithm for clustering
+spatial-temporal data." Data & Knowledge Engineering.
 
 ---
 
 ## 5. STEP Magnitude Clustering
 
-**Description:**  
-Clusters earthquakes starting from the **largest magnitude event** (mainshock), using magnitude-dependent spatial windows based on the Wells-Coppersmith (1994) fault length relation. Implements sliding time windows that extend when significant aftershocks occur.
-
-Based on Annemarie Christophersen's MATLAB implementation (2008).
+**Description:**
+Clusters earthquakes starting from the **largest-magnitude event** (mainshock),
+using magnitude-dependent spatial windows derived from the Wells-Coppersmith (1994)
+fault-length relation. Sliding time windows extend when significant aftershocks
+occur. Based on Christophersen (2008).
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `stepMinMag` | number | 2.0 | Minimum mainshock magnitude (Mc). Events below this are filtered. |
-| `stepT1` | number | 1 | Time window before an earthquake in days. |
-| `stepT2` | number | 30 | Time window after an earthquake in days. |
+| `stepMinMag` | number | 2.0 | Minimum mainshock magnitude (Mc). Events below this are excluded. |
+| `stepT1` | number | 1 | Backward time window (days). |
+| `stepT2` | number | 30 | Forward time window (days). |
 
-**Algorithm Details:**
-1. Filter events by minimum magnitude
-2. Find the largest unclustered earthquake (mainshock)
-3. Calculate search radius using Wells-Coppersmith formula:
-   ```
-   radius = max(5, 10^(0.59 × M - 2.44)) km
-   ```
-4. Cluster events within radius and time window
-5. Extend time window if significant events (M > Mc) are found
-6. Repeat until all events are clustered
+**Spatial radius (Wells-Coppersmith):**
+```
+radius = max(5, 10^(0.59 × M − 2.44))  km
+```
 
-**Reference:**  
-- Wells, D.L. & Coppersmith, K.J. (1994). "New Empirical Relationships among Magnitude, Rupture Length, Rupture Width, Rupture Area, and Surface Displacement." BSSA.
-- Christophersen, A. (2008). STEP clustering MATLAB implementation.
+**Algorithm steps:**
+1. Filter events by `stepMinMag`.
+2. Find the largest unclustered earthquake (mainshock).
+3. Cluster events within the radius and time window.
+4. Extend the window when a significant event (M > Mc) is found within it.
+5. Repeat until all qualifying events are processed.
+
+**References:**
+- Wells, D.L. & Coppersmith, K.J. (1994). BSSA 84(4).
+- Christophersen, A. (2008). STEP MATLAB implementation.
 
 ---
 
 ## 6. STEP Time Clustering
 
-**Description:**  
-Clusters earthquakes in **temporal order** (chronologically), identifying sequences based on magnitude-dependent spatial windows and sliding time windows. Unlike STEP-Magnitude, this processes events as they occur in time.
-
-Based on Annemarie Christophersen's MATLAB implementation (2007).
+**Description:**
+Clusters earthquakes in **chronological order**, using the same
+magnitude-dependent windows as STEP-Mag but processing events as they occur
+in time rather than by descending magnitude. Based on Christophersen (2007).
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `stepMinMag` | number | 2.0 | Minimum mainshock magnitude. |
-| `stepT1` | number | 1 | Time window before an earthquake in days. |
-| `stepT2` | number | 30 | Time window after an earthquake in days. |
+| `stepT1` | number | 1 | Backward time window (days). |
+| `stepT2` | number | 30 | Forward time window (days). |
 
-**Algorithm Details:**
-1. Process events in chronological order
-2. For each event above minimum magnitude, start a new cluster
-3. Search backwards in time (within T1 window)
-4. Search forwards in time (within T2 window)
-5. Use Wells-Coppersmith radius based on current largest magnitude in cluster
-6. Extend time window when larger events are encountered
-
-**Reference:**  
-Christophersen, A. (2007). STEP time clustering MATLAB implementation.
+**Reference:**
+Christophersen, A. (2007). STEP time-ordering MATLAB implementation.
 
 ---
 
 ## 7. Nearest-Neighbor Clustering (Zaliapin-Ben-Zion)
 
-**Description:**  
-Identifies earthquake clusters based on nearest-neighbor distances in the space-time-magnitude domain. This method uses a rescaled distance metric (η) that accounts for the background seismicity rate.
+**Description:**
+Identifies clusters using a rescaled nearest-neighbor distance (η) in the
+space-time-magnitude domain. Events whose nearest-neighbor distance is below
+the threshold are treated as clustered (aftershocks/foreshocks); those above are
+background events.
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `nnThreshold` | number | 1.0 | Nearest-neighbor distance threshold. Lower values = stricter clustering. |
+| `nnThreshold` | number | 1.0 | Distance cut-off in η units. Lower → stricter clustering. |
 
-**Distance Metric (η):**
+**Distance metric:**
 ```
-η = t × r^d / 10^(b×m)
+η = t × r^d / 10^(b × m)
 ```
-Where:
-- `t` = temporal distance (days)
-- `r` = spatial distance (km)
-- `d` = fractal dimension (default: 1.6)
-- `b` = Gutenberg-Richter b-value (default: 1.0)
-- `m` = magnitude of the earlier event
+- `t` — temporal distance (days) to the nearest earlier event
+- `r` — spatial distance (km)
+- `d` — fractal dimension (1.6)
+- `b` — Gutenberg-Richter b-value (1.0)
+- `m` — magnitude of the earlier event
 
-**Reference:**  
-- Zaliapin, I. & Ben-Zion, Y. (2013). "Earthquake clusters in southern California I: Identification and stability." JGR.
-- Zaliapin, I. & Ben-Zion, Y. (2020). "Earthquake declustering using the nearest-neighbor approach in space-time-magnitude domain." JGR.
+**References:**
+- Zaliapin, I. & Ben-Zion, Y. (2013). JGR 118.
+- Zaliapin, I. & Ben-Zion, Y. (2020). JGR 125.
 
 ---
 
 ## 8. TMC (Time-Magnitude Clustering / Reasenberg)
 
 **Description:**
-Implements the Reasenberg (1985) declustering algorithm. Uses magnitude-dependent spatio-temporal windows based on the Kanamori-Anderson (1975) crack model. Features adaptive look-ahead windows and cluster merging.
+Implements the Reasenberg (1985) declustering algorithm. Uses adaptive
+magnitude-dependent spatio-temporal interaction zones based on the
+Kanamori-Anderson (1975) crack model. Clusters can merge when a later event falls
+within multiple interaction zones.
 
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `tmcRfact` | number | 10 | Spatial radius multiplier for interaction zone. |
-| `tmcTau0` | number | 2 | Base look-ahead time in days. |
-| `tmcTauMax` | number | 10 | Maximum look-ahead time in days. |
-| `tmcP1` | number | 0.99 | Probability threshold for clustering (0-1). |
+| `tmcRfact` | number | 10 | Spatial radius multiplier. |
+| `tmcTau0` | number | 2 | Base look-ahead time (days). |
+| `tmcTauMax` | number | 10 | Maximum look-ahead time (days). |
+| `tmcP1` | number | 0.99 | Probability threshold (0–1). |
 | `tmcXk` | number | 0.5 | Magnitude scaling factor. |
 
-**Algorithm Details:**
-
-### Interaction Radius (Kanamori-Anderson crack model):
+**Interaction radius:**
 ```
-r = rfact × 0.011 × 10^(0.4 × M) km
+r = rfact × 0.011 × 10^(0.4 × M)  km   (capped at 30 km)
 ```
-Capped at 30 km (crustal thickness constraint).
 
-### Look-ahead Time (τ):
+**Adaptive look-ahead window:**
 ```
-τ = -ln(1 - p1) × t / 10^((ΔM - 1) × 2/3)
+τ = −ln(1 − p1) × t / 10^((ΔM − 1) × 2/3)
+ΔM = (1 − xk) × M_largest − M_min
 ```
-Where:
-- `t` = time since largest event in cluster
-- `ΔM` = (1 - xk) × M_largest - M_min
-- Result clamped to [τ0, τMax]
+Result clamped to [τ0, τMax].
 
-### Clustering Process:
-1. Sort events chronologically
-2. For each event, calculate interaction radius and look-ahead time
-3. Test subsequent events for spatial-temporal proximity
-4. Create new clusters, add to existing clusters, or merge clusters
-5. Update cluster properties when larger events are added
+**References:**
+- Reasenberg, P. (1985). JGR 90.
+- Kanamori, H. & Anderson, D.L. (1975). BSSA 65(5).
 
-**Reference:**
-- Reasenberg, P. (1985). "Second-Order Moment of Central California Seismicity, 1969-1982." JGR.
-- Kanamori, H. & Anderson, D.L. (1975). "Theoretical Basis of Some Empirical Relations in Seismology." BSSA.
+---
+
+## 9. Hardebeck (2019)
+
+**Description:**
+Identifies mainshock-aftershock sequences using physical rupture-length windows
+based on the Wells-Coppersmith (1994) relation. Only events at or above
+`minMainMag` can act as mainshocks. Candidate mainshocks are suppressed if a
+larger event occurred nearby within the preceding `mainshockTimeYears` years,
+preventing the same sequence from being anchored to a foreshock.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hardebeckMinMag` | number | 5.0 | Minimum magnitude for a valid mainshock. |
+| `hardebeckTimeWindow` | number | 10 | Aftershock time window (days). |
+| `hardebeckRuptureMult` | number | 3 | Spatial radius = `ruptureMult × RL` (minimum 10 km). |
+| `hardebeckMainshockTimeYears` | number | 3 | Suppression window: ignore candidates near a larger event within this many years. |
+
+**Rupture length (Wells-Coppersmith):**
+```
+RL = 10^(0.59 × M − 2.44)  km
+radius = max(10, ruptureMult × RL)  km
+```
+
+**Mainshock suppression:** A candidate mainshock is rejected if any earlier event
+of larger magnitude occurred within 5 × RL km and within `mainshockTimeYears` years
+before it.
+
+**References:**
+- Hardebeck, J.L. (2019). "Appendix S — Constraining epidemic-type aftershock
+  sequence (ETAS) parameters from the UCERF3-ETAS project." USGS OFR 2019-1093.
+- Wells, D.L. & Coppersmith, K.J. (1994). BSSA 84(4).
+
+---
+
+## 10. HDBSCAN (Hierarchical Density-Based Spatial Clustering)
+
+**Description:**
+HDBSCAN extends DBSCAN by building a full hierarchy of density-based clusters and
+then selecting the most stable ones via the Excess-of-Mass criterion (Campello
+et al. 2013). Points that are never absorbed into a stable cluster become noise.
+It also computes a **GLOSH outlier score** ∈ [0, 1] for each noise point, where 1
+indicates an extreme outlier.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hdbscanMinClusterSize` | number | 5 | Smallest grouping considered a genuine cluster. Larger → fewer, broader clusters. |
+| `hdbscanMinSamples` | number | 5 | k-NN neighbourhood size for core-distance calculation. Larger → denser core points required. |
+
+**Seven-phase algorithm:**
+1. **Core distances** — compute the k-NN distance for each point.
+2. **Mutual-reachability MST** — build a minimum spanning tree on the
+   mutual-reachability graph using Prim's algorithm.
+3. **Single-linkage dendrogram** — convert the MST into a binary merge tree
+   sorted by merge distance (λ = 1 / distance).
+4. **Condensation** — prune dendrogram splits where either child has fewer than
+   `minClusterSize` points; record the λ at which small groups "drop out".
+5. **Stability** — compute Excess-of-Mass stability for each condensed cluster node.
+6. **Optimal extraction** — bottom-up dynamic programming selects the subset of
+   clusters with maximal total stability.
+7. **Labelling & outlier scores** — assign cluster labels; compute GLOSH scores for
+   remaining noise points.
+
+**GLOSH outlier score:**
+```
+score = max(0, 1 − λ_drop / λ_max_of_cluster)
+```
+- `λ_drop` — density level at which the point left its last cluster
+- `λ_max_of_cluster` — maximum density ever reached in that cluster
+- Score 0 ≈ nearly clustered; score 1 = extreme outlier
+
+**References:**
+- Campello, R.J.G.B., Moulavi, D. & Sander, J. (2013). "Density-Based Clustering
+  Based on Hierarchical Density Estimates." PAKDD, LNAI 7819.
+- McInnes, L., Healy, J. & Astels, S. (2017). "hdbscan: Hierarchical density based
+  clustering." JOSS 2(11).
 
 ---
 
 ## Noise Determination
 
-How each algorithm determines "noise" (points not belonging to any cluster):
+### Quick-reference table
 
-| Algorithm | Method used to classify Noise |
-|-----------|-------------------------------|
-| **DBSCAN** | Events with fewer than `minSamples` neighbors within the `epsilon` spatial radius are marked as noise. |
-| **ST-DBSCAN** | Similar to DBSCAN, but neighbors must fall within **both** the spatial `epsilon` and `epsilonTemporal` thresholds. Points with insufficient spatio-temporal neighbors are noise. |
-| **K-Means** | **Does not produce noise.** This algorithm forces every point into one of the `k` clusters based on proximity to a centroid. |
-| **OPTICS** | Events that are not reachable from any core point at any density distance (up to `epsilon`) are considered noise. |
-| **STEP (Mag/Time)** | Events that fall below the `stepMinMag` threshold or are not captured within the magnitude-dependent spatio-temporal windows of a mainshock are classified as background noise. |
-| **Nearest-Neighbor** | Events with a nearest-neighbor distance (η) greater than `nnThreshold` are considered unlinked background events (noise). Independent mainshocks often appear as "noise" in this context as they lack a close parent. |
-| **TMC (Reasenberg)** | Events that do not fall within the interaction zone and look-ahead time of any prior event are left unclustered (cluster ID 0) and thus classified as noise. |
-
----
-
-## Performance Optimizations
-
-### R-tree Spatial Indexing
-DBSCAN and ST-DBSCAN use R-tree spatial indexing (via the `rbush` library) for 90-95% faster neighbor queries compared to brute-force distance calculations.
-
-### Web Workers
-For datasets larger than 500 events, clustering computations are offloaded to Web Workers to prevent UI freezing.
+| Algorithm | Noise condition | Key parameter(s) |
+|-----------|-----------------|------------------|
+| DBSCAN | Fewer than `minSamples` spatial neighbours within `epsilon` km | `epsilon`, `minSamples` |
+| OPTICS | Not reachable from any core point up to `epsilon` | `epsilon`, `minSamples` |
+| K-Means | **None — all points clustered** | — |
+| ST-DBSCAN | Fewer than `minSamples` *spatio-temporal* neighbours (both thresholds must be met) | `epsilon`, `epsilonTemporal`, `minSamples` |
+| STEP-Mag | Magnitude < `stepMinMag`, **or** not captured by any mainshock's window | `stepMinMag`, `stepT1`, `stepT2` |
+| STEP-Time | Magnitude < `stepMinMag`, **or** not captured by any chronological window | `stepMinMag`, `stepT1`, `stepT2` |
+| Nearest-Neighbor | η ≥ `nnThreshold` (high space-time-magnitude distance from any earlier event) | `nnThreshold` |
+| TMC | `clusterId === 0` — never linked to any interaction zone | `tmcRfact`, `tmcTau0`, `tmcTauMax`, `tmcP1`, `tmcXk` |
+| Hardebeck | `label === −1` — not within any valid mainshock's rupture window | `hardebeckMinMag`, `hardebeckTimeWindow`, `hardebeckRuptureMult` |
+| HDBSCAN | `label === −1` — condensed out of all stable clusters | `hdbscanMinClusterSize`, `hdbscanMinSamples` |
 
 ---
 
-## Default Configuration
+### DBSCAN
 
-From `src/config/performance.ts`:
+A point is labelled **NOISE** (`−2` internally, then excluded from `clusters`) when
+the number of spatial neighbours within `epsilon` km is strictly less than
+`minSamples`:
 
 ```typescript
-CLUSTERING: {
-    WEB_WORKER_THRESHOLD: 500,    // Use Web Worker for datasets > 500
-    USE_RTREE: true,              // R-tree spatial indexing enabled
-    DEFAULT_EPSILON: 25,          // km
-    DEFAULT_MIN_SAMPLES: 5,
-    DEFAULT_K: 5                  // for K-means
+// src/lib/analysis/clustering.ts — dbscanWithRTree()
+if (neighbors.length < minSamples) {
+    labels[i] = NOISE;   // NOISE = −2
+    continue;
 }
 ```
+
+Border points (within epsilon of a core point but below minSamples themselves) are
+*promoted* to the cluster during BFS expansion — they are not noise.
+
+**Sensitivity:** Increasing `epsilon` or decreasing `minSamples` reduces noise.
+Decreasing `epsilon` or increasing `minSamples` produces more noise.
+
+---
+
+### OPTICS
+
+OPTICS does not mark noise during its pass; the external library returns a list of
+clusters. Points not appearing in any cluster are identified post-hoc:
+
+```typescript
+// After optics.run(...)
+const clusteredSet = new Set<number>();
+clusters.forEach(cluster => cluster.forEach(idx => clusteredSet.add(idx)));
+for (let i = 0; i < dataset.length; i++) {
+    if (!clusteredSet.has(i)) noiseIndices.push(i);
+}
+```
+
+Any point unreachable (at any density up to `epsilon`) from a core object is
+noise.
+
+**Sensitivity:** Same direction as DBSCAN. Because OPTICS processes all densities
+up to `epsilon`, it typically produces fewer noise points than DBSCAN at the same
+settings.
+
+---
+
+### K-Means
+
+K-Means always assigns every point to the nearest centroid. `noiseIndices` is
+always an empty array:
+
+```typescript
+noiseIndices = [];  // K-means has no concept of noise
+```
+
+The "Hide Noise" control is automatically disabled and reset to *Show All Points*
+when K-Means is the active algorithm.
+
+---
+
+### ST-DBSCAN
+
+Identical logic to DBSCAN, but a point counts as a neighbour only when it is
+within *both* the spatial and temporal thresholds:
+
+```typescript
+// A candidate neighbour must satisfy both tests:
+if (spatialDist > epsilonSpatial) return false;
+const temporalDist = Math.abs(timestamps[idx] - pointTime);
+return temporalDist <= epsilonTemporal;
+```
+
+A point is **NOISE** when its count of qualifying spatio-temporal neighbours is
+`< minSamples`.
+
+**Sensitivity:** Either threshold independently controls noise. Raising `epsilon`
+reduces spatial noise; raising `epsilonTemporal` reduces temporal isolation noise.
+A point that has many close *spatial* neighbours but none within the time window
+will still be noise.
+
+---
+
+### STEP Magnitude
+
+Two distinct routes produce noise:
+
+1. **Magnitude filter** — events below `stepMinMag` are excluded before clustering
+   begins; they are unconditionally noise.
+2. **Spatial-temporal exclusion** — events at or above `stepMinMag` that are not
+   captured within the Wells-Coppersmith radius and [T1, T2] window of *any*
+   mainshock pass through the outer loop without being assigned a cluster, and
+   are collected into noise at the end:
+
+```typescript
+const clusteredIndices = new Set(
+    workingData.filter(e => e.clusterNo > 0).map(e => e.originalIndex)
+);
+const noiseIndices = earthquakes.map((_, i) => i)
+    .filter(i => !clusteredIndices.has(i));
+```
+
+**Edge case:** If no event meets `stepMinMag`, every event is returned as noise
+immediately.
+
+**Sensitivity:** Lowering `stepMinMag` admits smaller mainshocks, reducing noise.
+Widening `stepT1`/`stepT2` or raising `stepMinMag` increases noise.
+
+---
+
+### STEP Time
+
+Identical noise logic to STEP Magnitude; the only difference is chronological
+(rather than magnitude-first) processing order. The same two routes apply:
+magnitude filter, then spatial-temporal exclusion.
+
+---
+
+### Nearest-Neighbor (Zaliapin-Ben-Zion)
+
+An event is initially marked as **background** (noise candidate) in a first pass
+when its η distance to the nearest *earlier* event exceeds the threshold, or when
+it has no earlier event at all (first event in catalog):
+
+```typescript
+// First pass — identify candidate noise
+if (nnDistances[i].distance >= threshold || nnDistances[i].nnIndex === -1) {
+    noiseIndices.push(i);
+}
+```
+
+In a second pass, clusters are built by following parent-child links. Some
+background mainshocks are *pulled into clusters as parents* of dependent aftershock
+chains. After cluster building, `noiseIndices` is filtered down to events that
+truly remain unassigned:
+
+```typescript
+const clusteredSet = new Set<number>();
+clusters.forEach(cluster => cluster.forEach(idx => clusteredSet.add(idx)));
+const trueNoiseIndices = noiseIndices.filter(i => !clusteredSet.has(i));
+```
+
+**Result:** An independent mainshock (large η) that spawned aftershocks is a
+*cluster member*, not noise. A background event with no dependent offspring is
+noise.
+
+**Sensitivity:** Raising `nnThreshold` admits more events as clustered, reducing
+noise. Lowering it produces a sparser, more conservative clustering with more noise.
+
+---
+
+### TMC (Reasenberg)
+
+An event remains noise (cluster ID 0) when it never falls within the
+magnitude-dependent interaction radius **and** adaptive look-ahead window of any
+prior event:
+
+```typescript
+if (dist <= rTest) {
+    // assign to / create a cluster
+}
+// Otherwise: event keeps clusterId = 0  →  becomes noise at end
+```
+
+At the end of processing, events with `clusterId === 0` are collected:
+
+```typescript
+for (const event of sortedEvents) {
+    if (event.clusterId > 0) {
+        clusterMap.get(event.clusterId)!.push(event.originalIndex);
+    } else {
+        noiseIndices.push(event.originalIndex);
+    }
+}
+```
+
+**Sensitivity:** Increasing `tmcRfact` (larger radius) or `tmcTauMax` (longer
+window) reduces noise. Increasing `tmcP1` raises the interaction probability
+required, which *increases* noise.
+
+---
+
+### Hardebeck (2019)
+
+All events start with `label = −1`. A label is written only when an event falls
+within the rupture-length window of a valid, non-suppressed mainshock:
+
+```typescript
+// All labels initialised to −1
+const labels = new Array(n).fill(-1);
+
+// Only events inside the aftershock window get a cluster label
+if (t_c > t_m && (t_c - t_m) <= windowMs) {
+    const d = dist(mIdx, i);
+    if (d <= radius) labels[i] = clusterId;
+}
+```
+
+Noise is collected at the end as every event still at `−1`:
+
+```typescript
+for (let i = 0; i < n; i++) {
+    if (labels[i] === -1) noiseIndices.push(i);
+}
+```
+
+Three conditions produce noise:
+1. Event magnitude < `hardebeckMinMag` (cannot be a mainshock) **and** not within
+   any valid mainshock's window.
+2. Event is a mainshock candidate but is **suppressed** — a larger event occurred
+   within 5 × RL km in the prior `mainshockTimeYears` years.
+3. Event is a mainshock candidate that passes suppression but has **no dependent
+   aftershocks** (it is the mainshock of a size-1 sequence) — it still receives its
+   own cluster label so is *not* noise.
+
+**Sensitivity:** Lowering `hardebeckMinMag` admits smaller mainshocks, reducing
+noise. Increasing `hardebeckRuptureMult` extends aftershock capture radii,
+reducing noise among events near mainshocks.
+
+---
+
+### HDBSCAN
+
+All labels start at `−1`. Labels are written during the final extraction phase
+only for points that belong to a selected stable cluster:
+
+```typescript
+// Phase 7: labelling
+const labels = new Array<number>(n).fill(-1);
+for (const [cid, members] of selectedClusters) {
+    for (const i of members) labels[i] = clusterIdMap.get(cid)!;
+}
+
+// Remaining −1 points are noise; compute GLOSH outlier score
+for (let i = 0; i < n; i++) {
+    if (labels[i] !== -1) continue;
+    noiseIndices.push(i);
+    const dropLam  = condensed.get(dropCId)?.dropouts.get(i) ?? 0;
+    const lmxOfDrop = lambdaMaxOfCluster.get(dropCId) ?? 0;
+    outlierScores[i] = lmxOfDrop > 0 ? Math.max(0, 1 - dropLam / lmxOfDrop) : 1;
+}
+```
+
+A point is noise when it was "condensed out" during the pruning phase (its
+sub-cluster had fewer than `minClusterSize` members) and was not later claimed by
+a selected parent cluster.
+
+**GLOSH outlier score** (available on `ClusterResult.outlierScores`):
+- **0** — dropped out of its cluster at high density; nearly clustered
+- **1** — dropped out at very low density; extreme outlier
+
+**Sensitivity:** Increasing `hdbscanMinClusterSize` raises the minimum size of an
+accepted cluster, causing smaller clusters to dissolve into noise. Increasing
+`hdbscanMinSamples` requires denser cores, marking sparser regions as noise.
+
+---
+
+## Performance Optimisations
+
+### R-tree Spatial Indexing
+DBSCAN and ST-DBSCAN use R-tree spatial indexing (via `rbush`) for 90–95 % faster
+neighbour queries compared to brute-force O(n²) distance calculations.
+
+### Clustering Routing (Worker / Server)
+
+Computation is routed to avoid blocking the UI:
+
+| Condition | Route |
+|-----------|-------|
+| Result already in cache | Instant return (no computation) |
+| Algorithm in {HDBSCAN, nearest-neighbor, TMC, hardebeck-2019} | **Server** (`POST /api/cluster`) — always, regardless of dataset size |
+| All other algorithms | **Web Worker** (non-blocking background thread) |
+| Web Worker unavailable / timed-out | Synchronous fallback on main thread |
+
+The worker timeout is **30 seconds**; if exceeded the worker is reset and the sync
+fallback runs.
+
+### LRU Result Cache
+Clustering results are cached in a 10-entry LRU cache with a 5-minute TTL.
+The cache key is derived from dataset size, first/last/middle event timestamps, and
+sample magnitudes (O(1) hash). Cache hits skip all computation.
 
 ---
 
 ## Comparison Guide
 
-| Algorithm | Best For | Handles Noise | Requires K | Temporal Aware |
-|-----------|----------|---------------|------------|----------------|
-| DBSCAN | General spatial clustering | ✅ | ❌ | ❌ |
-| OPTICS | Variable density clusters | ✅ | ❌ | ❌ |
-| K-Means | Fixed number of clusters | ❌ | ✅ | ❌ |
-| ST-DBSCAN | Space-time clustering | ✅ | ❌ | ✅ |
-| STEP-Mag | Aftershock identification | ✅ | ❌ | ✅ |
-| STEP-Time | Real-time sequence detection | ✅ | ❌ | ✅ |
-| Nearest-Neighbor | Statistical declustering | ✅ | ❌ | ✅ |
-| TMC/Reasenberg | Aftershock removal | ✅ | ❌ | ✅ |
+| Algorithm | Temporal Aware | Seismology-Specific | Produces Noise | Requires k | Complexity |
+|-----------|---------------|---------------------|----------------|------------|------------|
+| DBSCAN | ❌ | ❌ | ✅ | ❌ | O(n log n) with R-tree |
+| OPTICS | ❌ | ❌ | ✅ | ❌ | O(n log n) |
+| K-Means | ❌ | ❌ | ❌ | ✅ | O(n · k · iter) |
+| ST-DBSCAN | ✅ | ❌ | ✅ | ❌ | O(n log n) with R-tree |
+| STEP-Mag | ✅ | ✅ | ✅ | ❌ | O(n²) worst case |
+| STEP-Time | ✅ | ✅ | ✅ | ❌ | O(n²) worst case |
+| Nearest-Neighbor | ✅ | ✅ | ✅ | ❌ | O(n²) |
+| TMC / Reasenberg | ✅ | ✅ | ✅ | ❌ | O(n²) |
+| Hardebeck (2019) | ✅ | ✅ | ✅ | ❌ | O(n²) worst case |
+| HDBSCAN | ❌ | ❌ | ✅ (+ scores) | ❌ | O(n²) worst case |
 
 ---
 
 ## Seismology-Specific Recommendations
 
-- **Aftershock Identification**: Use **STEP-Mag** or **TMC** for identifying mainshock-aftershock sequences
-- **Real-time Monitoring**: Use **STEP-Time** for chronological sequence detection
-- **Statistical Analysis**: Use **Nearest-Neighbor (Zaliapin-Ben-Zion)** for declustering catalogs
-- **Swarm Detection**: Use **ST-DBSCAN** for identifying spatio-temporal swarms without clear mainshock
+| Goal | Recommended Algorithm |
+|------|-----------------------|
+| Aftershock sequence identification | **STEP-Mag** or **TMC / Reasenberg** |
+| Real-time / chronological sequence detection | **STEP-Time** |
+| Statistical catalog declustering | **Nearest-Neighbor (Zaliapin-Ben-Zion)** |
+| Physical rupture-based aftershock windows | **Hardebeck (2019)** |
+| Spatio-temporal swarm detection (no clear mainshock) | **ST-DBSCAN** |
+| General spatial clustering / exploratory analysis | **DBSCAN** |
+| Variable-density clusters | **OPTICS** or **HDBSCAN** |
+| Soft cluster membership + outlier scores | **HDBSCAN** |
+| Fixed number of regions (no noise needed) | **K-Means** |
