@@ -36,7 +36,6 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
     const chartRef = useRef<HighchartsReact.RefObject>(null);
     const depthChartRef = useRef<HighchartsReact.RefObject>(null);
     const mapChartRef = useRef<HighchartsReact.RefObject>(null);
-    const [nzMapGeometry, setNzMapGeometry] = useState<any>(null);
     const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
     const [fitMapTrigger, setFitMapTrigger] = useState(0);
@@ -109,83 +108,6 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         // Highcharts map removed; no geometry needed
     }, []);
 
-    // Optimized circle point generation using memoization
-    const generateCirclePoints = useCallback((lat: number, lon: number, radiusKm: number): [number, number][] => {
-        const circlePoints: [number, number][] = [];
-        const numPoints = 64; // Reduced from 72 for better performance
-
-        for (let i = 0; i <= numPoints; i++) {
-            const angle = (i * 360 / numPoints) * Math.PI / 180;
-            // Approximate conversion: 1 degree latitude ≈ 111 km
-            const latOffset = (radiusKm / 111) * Math.cos(angle);
-            const lonOffset = (radiusKm / (111 * Math.cos(lat * Math.PI / 180))) * Math.sin(angle);
-            circlePoints.push([
-                lon + lonOffset,
-                lat + latOffset
-            ]);
-        }
-
-        return circlePoints;
-    }, []);
-
-    // Effect to manage radius circle on map (optimized with debouncing)
-    useEffect(() => {
-        // Add a small delay to ensure chart is fully rendered
-        const timer = setTimeout(() => {
-            const chart = mapChartRef.current?.chart;
-            if (!chart || !nzMapGeometry) {
-                return;
-            }
-
-            // Remove existing radius circle series
-            const existingCircle = chart.get('radius-circle-series');
-            if (existingCircle) {
-                existingCircle.remove(false);
-            }
-
-            // Add new radius circle if enabled and coordinates are valid
-            if (showRadiusCircle && typeof mainEvent.latitude === 'number' && typeof mainEvent.longitude === 'number') {
-                const circlePoints = generateCirclePoints(mainEvent.latitude, mainEvent.longitude, debouncedRadius);
-
-                try {
-                    // Use geometry format for mapline
-                    const newSeries = chart.addSeries({
-                        type: 'mapline',
-                        id: 'radius-circle-series',
-                        name: `${debouncedRadius} km Radius`,
-                        data: [{
-                            geometry: {
-                                type: 'LineString',
-                                coordinates: circlePoints
-                            }
-                        }],
-                        color: '#0066ff',
-                        lineWidth: 3,
-                        dashStyle: 'Dash',
-                        enableMouseTracking: false,
-                        showInLegend: true,
-                        zIndex: 100,
-                        states: {
-                            inactive: {
-                                opacity: 1
-                            }
-                        }
-                    } as any, false);
-
-                    setRadiusCircleSeries(newSeries);
-                    chart.redraw();
-                } catch (error) {
-                    console.error('Error adding circle series:', error);
-                }
-            } else {
-                setRadiusCircleSeries(null);
-                chart.redraw();
-            }
-        }, 100);
-
-        return () => clearTimeout(timer);
-    }, [showRadiusCircle, debouncedRadius, mainEvent.latitude, mainEvent.longitude, nzMapGeometry, generateCirclePoints]);
-
     // Effect to attach zoom event handler to timeline chart
     useEffect(() => {
         // Use a small delay to ensure chart is fully initialized
@@ -249,61 +171,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         return () => clearTimeout(timer);
     }, [mainEvent]); // Removed sequenceData - not used in this effect
 
-    // Helper: fit the aftershock map to its full sequence bounding box.
-    // Takes the current sequence as a parameter to avoid a forward-reference to
-    // the sequenceData useMemo (which is declared later in the file).
-    // Called both from the auto-zoom useEffect and from the "Fit All" button.
-    const fitMapToSequence = useCallback((chart: any, data: typeof sequenceData) => {
-        const mapView = chart?.mapView;
-        if (!mapView || typeof mapView.lonLatToProjectedUnits !== 'function') return;
-
-        const mainLat: number = mainEvent.latitude ?? 0;
-        const mainLon: number = mainEvent.longitude ?? 0;
-
-        // Build bounding box from all sequence points plus the main event.
-        let minLat = mainLat;
-        let maxLat = mainLat;
-        let minLon = mainLon;
-        let maxLon = mainLon;
-
-        for (const eq of data) {
-            if (eq.latitude < minLat) minLat = eq.latitude;
-            if (eq.latitude > maxLat) maxLat = eq.latitude;
-            if (eq.longitude < minLon) minLon = eq.longitude;
-            if (eq.longitude > maxLon) maxLon = eq.longitude;
-        }
-
-        // Add at least debouncedRadius-worth of padding (in degrees, 1°≈111 km)
-        // so the view is never too tight even for a single-point sequence.
-        const padDeg = Math.max(0.5, debouncedRadius / 111 * 0.5);
-        const sw = mapView.lonLatToProjectedUnits({ lon: minLon - padDeg, lat: minLat - padDeg });
-        const ne = mapView.lonLatToProjectedUnits({ lon: maxLon + padDeg, lat: maxLat + padDeg });
-
-        mapView.fitToBounds({ x1: sw.x, y1: sw.y, x2: ne.x, y2: ne.y }, '5%');
-    }, [mainEvent.latitude, mainEvent.longitude, debouncedRadius]);
-
-
-    // Effect to auto-zoom map when main event changes
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            const chart = mapChartRef.current?.chart as any;
-            if (!chart || !nzMapGeometry) return;
-
-            // Validate coordinates
-            if (typeof mainEvent.latitude !== 'number' || typeof mainEvent.longitude !== 'number') {
-                console.log('Auto-zoom (useEffect): Invalid main event coordinates');
-                return;
-            }
-
-            try {
-                fitMapToSequence(chart, sequenceData);
-            } catch (error) {
-                console.error('Auto-zoom (useEffect) error:', error);
-            }
-        }, 200); // Small delay to ensure chart is ready
-
-        return () => clearTimeout(timer);
-    }, [mainEvent.latitude, mainEvent.longitude, nzMapGeometry, fitMapToSequence]);
+    // LeafletAftershockMap handles its own bounding logic natively.
 
     // Haversine formula to calculate distance between two lat/lon points in kilometers
     const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -1181,18 +1049,6 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
 
     // Aftershock Map Chart Points
     const mapPoints = useMemo(() => {
-        if (!nzMapGeometry) {
-            console.log('Map options: No geometry data yet');
-            return [];
-        }
-
-        console.log('Building map options with geometry:', {
-            hasGeometry: !!nzMapGeometry,
-            geometryType: nzMapGeometry?.type,
-            featuresCount: nzMapGeometry?.features?.length
-        });
-
-        // FIXED: Use iterative approach to avoid stack overflow on large datasets
         let maxDays = -Infinity;
         let minDays = Infinity;
         for (const eq of sequenceData) {
@@ -1200,58 +1056,43 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             if (eq.daysSince < minDays) minDays = eq.daysSince;
         }
 
-        const getColorForDays = (days: number) => {
-            return getColorForValue(days, minDays, maxDays, colorPalette as ColorPaletteName);
-        };
+        const points: any[] = [];
 
-        // Log timeline zoom range for debugging
-        if (timelineZoomRange) {
-            console.log('Map filtering by timeline zoom:', timelineZoomRange);
-        }
+        sequenceData.forEach((eq, index) => {
+            // Filter out invalid coordinates
+            const validCoords = (
+                typeof eq.latitude === 'number' &&
+                typeof eq.longitude === 'number' &&
+                isFinite(eq.latitude) &&
+                isFinite(eq.longitude) &&
+                eq.latitude >= -90 &&
+                eq.latitude <= 90 &&
+                eq.longitude >= -180 &&
+                eq.longitude <= 180
+            );
 
-        const mapData = sequenceData
-            .filter(eq => {
-                // Filter out invalid coordinates
-                const validCoords = (
-                    typeof eq.latitude === 'number' &&
-                    typeof eq.longitude === 'number' &&
-                    isFinite(eq.latitude) &&
-                    isFinite(eq.longitude) &&
-                    eq.latitude >= -90 &&
-                    eq.latitude <= 90 &&
-                    eq.longitude >= -180 &&
-                    eq.longitude <= 180
-                );
+            // Filter by timeline zoom range if active
+            let inZoomRange = true;
+            if (timelineZoomRange && validCoords) {
+                inZoomRange = eq.daysSince >= timelineZoomRange.min && eq.daysSince <= timelineZoomRange.max;
+            }
 
-                // Filter by timeline zoom range if active
-                if (timelineZoomRange && validCoords) {
-                    return eq.daysSince >= timelineZoomRange.min && eq.daysSince <= timelineZoomRange.max;
-                }
-
-                return validCoords;
-            })
-
-        console.log('Map data filtered:', {
-            totalSequenceData: sequenceData.length,
-            filteredMapData: mapData.length,
-            timelineZoomRange
+            if (validCoords && inZoomRange) {
+                points.push({
+                    lat: eq.latitude,
+                    lon: eq.longitude,
+                    magnitude: eq.magnitude,
+                    depth: eq.depth,
+                    daysSince: eq.daysSince,
+                    date: formatDate(eq.eqTime),
+                    index,
+                    eventID: eq.eventID,
+                    isSelected: selectedIndices.has(index)
+                });
+            }
         });
 
-        const mapPoints = mapData.map((eq, index) => {
-            return {
-                lat: eq.latitude,
-                lon: eq.longitude,
-                magnitude: eq.magnitude,
-                depth: eq.depth,
-                daysSince: eq.daysSince,
-                date: formatDate(eq.eqTime),
-                index,
-                eventID: eq.eventID,
-                isSelected: selectedIndices.has(index)
-            };
-        });
-
-        return mapPoints;
+        return points;
     }, [sequenceData, selectedIndices, timelineZoomRange]);
 
     if (sequenceData.length === 0) {
