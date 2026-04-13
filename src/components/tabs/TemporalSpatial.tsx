@@ -174,8 +174,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [polygonSeries, setPolygonSeries] = useState<any>(null);
 
-    // Map state
-    const [nzMapGeometry, setNzMapGeometry] = useState<any>(null);
+    // Map state (no longer needs NZ geometry — LeafletClusterMap handles tiles natively)
 
     // Clustering — hybrid worker/server hook
     const {
@@ -187,7 +186,6 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     } = useClusteringWorker();
 
     const chartRef = useRef<HighchartsReact.RefObject>(null);
-    const mapChartRef = useRef<HighchartsReact.RefObject>(null);
 
     // Load New Zealand map data
     useEffect(() => {
@@ -216,35 +214,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         return () => window.removeEventListener('error', handleError);
     }, []);
 
-    // Sync selection state with map points
-    useEffect(() => {
-        const mapChart = mapChartRef.current?.chart;
-        if (!mapChart) return;
 
-        const earthquakeSeries = mapChart.series.find((s: any) => s.name === 'Earthquakes');
-        if (!earthquakeSeries) return;
-
-        // Update point colors based on selection and clustering
-        earthquakeSeries.points.forEach((point: any) => {
-            const isSelected = selectedIndices.has(point.originalIndex);
-            const cluster = typeof point.cluster === 'number' ? point.cluster : -1;
-            point.update({
-                marker: {
-                    fillColor: isSelected ? '#ef4444' : getClusterColor(cluster),
-                    lineWidth: isSelected ? 2 : 0,
-                    lineColor: isSelected ? '#dc2626' : undefined,
-                    radius: isSelected ? 6 : 4
-                }
-            }, false);
-        });
-
-        mapChart.redraw();
-    }, [selectedIndices]);
 
     /* POLYGON SELECTION FEATURE - MAP CLICK HANDLER - COMMENTED OUT FOR FUTURE RESTORATION
     // Handle map clicks for polygon drawing
     useEffect(() => {
-        const mapChart = mapChartRef.current?.chart;
+        const mapChart = null; // mapChartRef removed — polygon feature not yet ported to Leaflet
         if (!mapChart) return;
 
         const handleMapClick = (event: any) => {
@@ -407,20 +382,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const clearPolygon = () => {
         setPolygonPoints([]);
         setIsDrawingPolygon(false);
-
-        // Remove polygon series from map
-        const chart = mapChartRef.current?.chart;
-        if (chart) {
-            const existingSeries = chart.get('polygon-series');
-            if (existingSeries) {
-                existingSeries.remove(false);
-            }
-            const markerSeries = chart.get('polygon-markers');
-            if (markerSeries) {
-                markerSeries.remove(false);
-            }
-            chart.redraw();
-        }
+        // Note: polygon series removal not applicable with LeafletClusterMap
         setPolygonSeries(null);
     };
 
@@ -784,16 +746,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         clearSelection();
     };
 
-    if (!nzMapGeometry) {
-        return (
-            <div className="h-[600px] w-full rounded-lg overflow-hidden border border-gray-300 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p className="text-gray-600 font-medium">Loading map data...</p>
-                </div>
-            </div>
-        );
-    }
+
 
     return (
         <div className="space-y-6">
