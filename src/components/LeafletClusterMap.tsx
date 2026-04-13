@@ -77,7 +77,8 @@ function ClusterMarkersLayer({
         let bounds = L.latLngBounds([]);
 
         points.forEach(p => {
-            const latLng = L.latLng(p.lat, p.lon);
+            const wrappedLon = p.lon < 0 ? p.lon + 360 : p.lon;
+            const latLng = L.latLng(p.lat, wrappedLon);
             bounds.extend(latLng);
 
             // Give selected points a distinct red look and bring them front-ish by rendering later

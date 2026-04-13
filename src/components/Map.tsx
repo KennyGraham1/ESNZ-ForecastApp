@@ -99,7 +99,7 @@ const PALETTE_LABELS: Record<MapDepthPaletteName, string> = {
 };
 
 // Full NZ + Kermadecs bounding box
-const NZ_BOUNDS: L.LatLngBoundsExpression = [[-49, 163], [-30, 179.9]];
+const NZ_BOUNDS: L.LatLngBoundsExpression = [[-49, 163], [-28, 183]];
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
@@ -200,7 +200,8 @@ function EarthquakeLayer({
             const { color, border } = palette[depthIdx];
             const radius = getMagnitudeRadius(eq.magnitude);
 
-            const circle = L.circleMarker([eq.latitude, eq.longitude], {
+            const wrappedLon = eq.longitude < 0 ? eq.longitude + 360 : eq.longitude;
+            const circle = L.circleMarker([eq.latitude, wrappedLon], {
                 renderer,
                 radius,
                 fillColor: color,
@@ -272,6 +273,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
 
     const [hiddenDepths, setHiddenDepths] = useState<number[]>([]);
     const [activePalette, setActivePalette] = useState<MapDepthPaletteName>('ocean');
+    const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
 
     // ── Stratified sampling for large datasets ────────────────────────────────
     const processedEarthquakes = useMemo(() => {
@@ -300,10 +302,11 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
         let minLat = Infinity, maxLat = -Infinity;
         let minLon = Infinity, maxLon = -Infinity;
         for (const eq of earthquakes) {
+            const wrappedLon = eq.longitude < 0 ? eq.longitude + 360 : eq.longitude;
             if (eq.latitude  < minLat) minLat = eq.latitude;
             if (eq.latitude  > maxLat) maxLat = eq.latitude;
-            if (eq.longitude < minLon) minLon = eq.longitude;
-            if (eq.longitude > maxLon) maxLon = eq.longitude;
+            if (wrappedLon < minLon) minLon = wrappedLon;
+            if (wrappedLon > maxLon) maxLon = wrappedLon;
         }
         const pad = 0.5;
         map.fitBounds(
@@ -428,7 +431,7 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     {/* Magnitude legend */}
                     <p className="font-bold text-gray-700 mb-2 text-[11px] uppercase tracking-wide">Magnitude</p>
                     <div className="flex flex-col gap-1.5 mb-4">
-                        {MAG_SIZES.map(m => (
+                        {MAG_SIZES.filter(m => m.min >= 3).map(m => (
                             <div key={m.label} className="flex items-center gap-2">
                                 <div className="flex items-center justify-center shrink-0" style={{ width: 24, height: 24 }}>
                                     <div
@@ -489,38 +492,43 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     )}
 
                     {/* Colour theme */}
-                    <div className="mt-4 pt-3 border-t border-gray-200">
+                    <div className="mt-4 pt-3 border-t border-gray-200 relative mb-4">
                         <p className="font-bold text-gray-700 mb-2 text-[11px] uppercase tracking-wide">Colour Theme</p>
-                        <div className="flex flex-col gap-1">
-                            {(Object.entries(MAP_DEPTH_PALETTES) as [MapDepthPaletteName, DepthColor[]][]).map(([name, colors]) => (
-                                <button
-                                    key={name}
-                                    onClick={() => setActivePalette(name)}
-                                    className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors w-full
-                                        ${activePalette === name
-                                            ? 'bg-blue-50 ring-1 ring-blue-300'
-                                            : 'hover:bg-gray-50'}`}
-                                >
-                                    {/* Mini swatch — 5 dots representing shallow → deep */}
-                                    <div className="flex gap-0.5 shrink-0">
-                                        {colors.map((c, i) => (
-                                            <span
-                                                key={i}
-                                                style={{
-                                                    width:  8,
-                                                    height: 8,
-                                                    borderRadius: '50%',
-                                                    backgroundColor: c.color,
-                                                    border: `1px solid ${c.border}`,
-                                                    display: 'inline-block',
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
-                                    <span className="text-gray-600 text-[10px]">{PALETTE_LABELS[name]}</span>
-                                </button>
-                            ))}
-                        </div>
+                        <button
+                            onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)}
+                            className="flex items-center justify-between w-full rounded px-2 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <div className="flex gap-0.5 shrink-0">
+                                    {MAP_DEPTH_PALETTES[activePalette].map((c, i) => (
+                                        <span key={i} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, border: `1px solid ${c.border}`, display: 'inline-block' }} />
+                                    ))}
+                                </div>
+                                <span className="text-[10px] uppercase font-medium tracking-wide text-gray-600">{PALETTE_LABELS[activePalette]}</span>
+                            </div>
+                            <svg className={`w-3 h-3 text-gray-500 transition-transform ${isThemeDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        
+                        {isThemeDropdownOpen && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded shadow-lg z-[1000] py-1 flex flex-col gap-0.5" style={{ minWidth: '100%' }}>
+                                {(Object.entries(MAP_DEPTH_PALETTES) as [MapDepthPaletteName, DepthColor[]][]).map(([name, colors]) => (
+                                    <button
+                                        key={name}
+                                        onClick={() => { setActivePalette(name); setIsThemeDropdownOpen(false); }}
+                                        className={`flex items-center gap-2 px-2 py-1.5 text-left w-full transition-colors ${activePalette === name ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-600'}`}
+                                    >
+                                        <div className="flex gap-0.5 shrink-0">
+                                            {colors.map((c, i) => (
+                                                <span key={i} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, border: `1px solid ${c.border}`, display: 'inline-block' }} />
+                                            ))}
+                                        </div>
+                                        <span className="text-[10px] uppercase font-medium">{PALETTE_LABELS[name]}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

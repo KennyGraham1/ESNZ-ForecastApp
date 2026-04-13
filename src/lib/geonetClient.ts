@@ -9,11 +9,11 @@ import { addMonths, format } from 'date-fns';
 import { StoredEarthquake } from './earthquakeCache';
 
 const PROXY_BASE = '/api/earthquakes/proxy';
-const NZ_BBOX = [163.0, -49.0, 179.9, -30.0];
+const NZ_BBOX = [163.0, -49.0, 179.9, -27.0];
 const MAX_CONCURRENT = 5;
 
 function isWithinNZBounds(lat: number, lon: number): boolean {
-    return lon >= 163.0 && lon <= 179.9 && lat >= -49.0 && lat <= -30.0;
+    return lon >= 163.0 && lon <= 179.9 && lat >= -49.0 && lat <= -27.0;
 }
 
 /**

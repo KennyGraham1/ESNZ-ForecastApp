@@ -57,20 +57,23 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
         const depthMin = Math.floor(minDepth / 10) * 10;
         const depthMax = Math.ceil(maxDepth / 10) * 10;
 
-        const data = processedEarthquakes.map(eq => ({
-            x: eq.time instanceof Date ? eq.time.getTime() : new Date(eq.time).getTime(),
-            y: eq.magnitude,
-            z: eq.depth,
-            custom: {
-                locality: eq.locality,
-                magnitude: eq.magnitude,
-                depth: eq.depth,
-                time: eq.time,
-                eventID: eq.eventID,
-                latitude: eq.latitude,
-                longitude: eq.longitude
-            }
-        }));
+        const data = processedEarthquakes.map(eq => {
+            const fallbackTime = eq.time instanceof Date ? eq.time.getTime() : new Date(eq.time).getTime();
+            return {
+                x: (typeof eq.timeMs === 'number' && !isNaN(eq.timeMs)) ? eq.timeMs : fallbackTime,
+                y: eq.magnitude,
+                z: eq.depth,
+                custom: {
+                    locality: eq.locality,
+                    magnitude: eq.magnitude,
+                    depth: eq.depth,
+                    time: eq.time,
+                    eventID: eq.eventID,
+                    latitude: eq.latitude,
+                    longitude: eq.longitude
+                }
+            };
+        }).filter(d => !isNaN(d.x));
 
         return {
             chart: {
@@ -253,7 +256,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             },
             plotOptions: {
                 series: {
-                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    turboThreshold: 0, // 0 disables the threshold outright instead of limiting to 50k
                     boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 scatter: {
@@ -482,7 +485,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             },
             plotOptions: {
                 series: {
-                    turboThreshold: 50000, // Support very large datasets (50k+ events)
+                    turboThreshold: 0, // Disable turboThreshold entirely to avoid array-of-objects crash
                     boostThreshold: HIGHCHARTS_CONFIG.BOOST_THRESHOLD // Use centralized boost threshold
                 },
                 line: {

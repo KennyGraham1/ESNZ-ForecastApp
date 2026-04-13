@@ -139,7 +139,8 @@ function AftershockLayers({
 
         // 1. Draw radius circle if main event coords are valid
         if (typeof mainEvent.latitude === 'number' && typeof mainEvent.longitude === 'number') {
-            const mainLatLng = L.latLng(mainEvent.latitude, mainEvent.longitude);
+            const wrappedMainLon = mainEvent.longitude < 0 ? mainEvent.longitude + 360 : mainEvent.longitude;
+            const mainLatLng = L.latLng(mainEvent.latitude, wrappedMainLon);
             bounds.extend(mainLatLng);
 
             // Radius is in meters for L.circle
@@ -179,7 +180,8 @@ function AftershockLayers({
             const renderer = L.canvas({ padding: 0.5 });
 
             points.forEach(p => {
-                const latLng = L.latLng(p.lat, p.lon);
+                const wrappedLon = p.lon < 0 ? p.lon + 360 : p.lon;
+                const latLng = L.latLng(p.lat, wrappedLon);
                 bounds.extend(latLng);
 
                 const baseColor = interpolateColor(p.daysSince, minDays, maxDays, colorPalette);
