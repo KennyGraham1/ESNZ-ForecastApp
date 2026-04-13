@@ -44,3 +44,22 @@ body {
 .animate-progress-slide {
   animation: progress-slide 1.4s ease-in-out infinite;
 }
+
+/* ── Leaflet earthquake-map tooltip ──────────────────────────────────────── */
+.eq-map-tooltip {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+  font-family: 'Inter', 'Segoe UI', sans-serif !important;
+  /* Remove Leaflet's default white arrow background */
+  white-space: normal !important;
+  max-width: 240px !important;
+}
+
+/* Arrow colour to match the border */
+.eq-map-tooltip::before {
+  border-right-color: #e5e7eb !important;
+}
+

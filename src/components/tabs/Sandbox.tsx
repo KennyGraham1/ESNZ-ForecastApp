@@ -1,12 +1,22 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { EarthquakeData } from '@/types/earthquake';
 import GenericScatterPlot from '@/components/sandbox/GenericScatterPlot';
 import GenericHistogram from '@/components/sandbox/GenericHistogram';
 import StatsPanel from '@/components/sandbox/StatsPanel';
 import { safeMinMax } from '@/utils/arrayMath';
-import Map from '@/components/Map';
+
+// Leaflet requires browser APIs — must be loaded client-side only.
+const Map = dynamic(() => import('@/components/Map'), {
+    ssr: false,
+    loading: () => (
+        <div className="h-[600px] w-full bg-gray-100 animate-pulse rounded-lg flex items-center justify-center text-gray-400">
+            Loading map…
+        </div>
+    ),
+});
 import ThreeDVisualization from '@/components/ThreeDVisualization';
 import MultiPanelPlot from '@/components/sandbox/MultiPanelPlot';
 import DateRangeSlider from '@/components/common/DateRangeSlider';

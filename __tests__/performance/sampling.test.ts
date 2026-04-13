@@ -5,7 +5,7 @@
  */
 
 import { EarthquakeData } from '@/types/earthquake';
-import { stratifiedSample } from '@/lib/utils/sampling';
+import { stratifiedSample } from '@/utils/dataOptimization';
 
 // Generate test data with known distribution
 function generateTestEarthquakes(count: number): EarthquakeData[] {

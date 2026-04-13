@@ -11,6 +11,12 @@ import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { formatDate } from '@/utils/dateFormat';
 import { getColorStops, getColorForValue, ColorPaletteName } from '@/utils/colorPalette';
 import { registerChart, unregisterChart } from '@/utils/chartRegistry';
+import dynamic from 'next/dynamic';
+
+const LeafletAftershockMap = dynamic(() => import('./LeafletAftershockMap'), {
+    ssr: false,
+    loading: () => <div className="h-[600px] w-full bg-gray-50 flex items-center justify-center animate-pulse rounded"><p className="text-gray-500">Loading interactive map...</p></div>
+});
 
 interface AftershockSequencePlotProps {
     earthquakes: EarthquakeData[];
@@ -33,6 +39,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
     const [nzMapGeometry, setNzMapGeometry] = useState<any>(null);
     const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+    const [fitMapTrigger, setFitMapTrigger] = useState(0);
 
     // Polygon drawing state
     const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
@@ -99,21 +106,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
 
     // Load New Zealand map data
     useEffect(() => {
-        const loadMapData = async () => {
-            try {
-                const mapModule = await import('@highcharts/map-collection/countries/nz/nz-all.geo.json');
-                const nzMap = mapModule.default || mapModule;
-                console.log('Map data loaded:', {
-                    hasData: !!nzMap,
-                    type: nzMap?.type,
-                    features: nzMap?.features?.length
-                });
-                setNzMapGeometry(nzMap);
-            } catch (error) {
-                console.error('Failed to load New Zealand map:', error);
-            }
-        };
-        loadMapData();
+        // Highcharts map removed; no geometry needed
     }, []);
 
     // Optimized circle point generation using memoization
@@ -256,20 +249,45 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         return () => clearTimeout(timer);
     }, [mainEvent]); // Removed sequenceData - not used in this effect
 
+    // Helper: fit the aftershock map to its full sequence bounding box.
+    // Takes the current sequence as a parameter to avoid a forward-reference to
+    // the sequenceData useMemo (which is declared later in the file).
+    // Called both from the auto-zoom useEffect and from the "Fit All" button.
+    const fitMapToSequence = useCallback((chart: any, data: typeof sequenceData) => {
+        const mapView = chart?.mapView;
+        if (!mapView || typeof mapView.lonLatToProjectedUnits !== 'function') return;
+
+        const mainLat: number = mainEvent.latitude ?? 0;
+        const mainLon: number = mainEvent.longitude ?? 0;
+
+        // Build bounding box from all sequence points plus the main event.
+        let minLat = mainLat;
+        let maxLat = mainLat;
+        let minLon = mainLon;
+        let maxLon = mainLon;
+
+        for (const eq of data) {
+            if (eq.latitude < minLat) minLat = eq.latitude;
+            if (eq.latitude > maxLat) maxLat = eq.latitude;
+            if (eq.longitude < minLon) minLon = eq.longitude;
+            if (eq.longitude > maxLon) maxLon = eq.longitude;
+        }
+
+        // Add at least debouncedRadius-worth of padding (in degrees, 1°≈111 km)
+        // so the view is never too tight even for a single-point sequence.
+        const padDeg = Math.max(0.5, debouncedRadius / 111 * 0.5);
+        const sw = mapView.lonLatToProjectedUnits({ lon: minLon - padDeg, lat: minLat - padDeg });
+        const ne = mapView.lonLatToProjectedUnits({ lon: maxLon + padDeg, lat: maxLat + padDeg });
+
+        mapView.fitToBounds({ x1: sw.x, y1: sw.y, x2: ne.x, y2: ne.y }, '5%');
+    }, [mainEvent.latitude, mainEvent.longitude, debouncedRadius]);
+
+
     // Effect to auto-zoom map when main event changes
     useEffect(() => {
         const timer = setTimeout(() => {
             const chart = mapChartRef.current?.chart as any;
-            const mapView = chart?.mapView;
-
-            if (!chart || !mapView || !nzMapGeometry) {
-                console.log('Auto-zoom (useEffect): chart or mapView not ready', {
-                    hasChart: !!chart,
-                    hasMapView: !!mapView,
-                    hasGeometry: !!nzMapGeometry
-                });
-                return;
-            }
+            if (!chart || !nzMapGeometry) return;
 
             // Validate coordinates
             if (typeof mainEvent.latitude !== 'number' || typeof mainEvent.longitude !== 'number') {
@@ -278,50 +296,14 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             }
 
             try {
-                if (typeof mapView.lonLatToProjectedUnits !== 'function') {
-                    console.log('Auto-zoom (useEffect): lonLatToProjectedUnits not available');
-                    return;
-                }
-
-                console.log('Auto-zoom (useEffect): Zooming to main event', {
-                    lat: mainEvent.latitude,
-                    lon: mainEvent.longitude
-                });
-
-                // ~275 km radius ≈ 2.5 degrees
-                const radiusDegrees = 2.5;
-
-                // Convert lat/lon bounds to projected units
-                const min = mapView.lonLatToProjectedUnits({
-                    lon: mainEvent.longitude - radiusDegrees,
-                    lat: mainEvent.latitude - radiusDegrees
-                });
-                const max = mapView.lonLatToProjectedUnits({
-                    lon: mainEvent.longitude + radiusDegrees,
-                    lat: mainEvent.latitude + radiusDegrees
-                });
-
-                console.log('Auto-zoom (useEffect): Projected bounds', {
-                    min,
-                    max
-                });
-
-                // Fit to bounds with 10% padding
-                mapView.fitToBounds({
-                    x1: min.x,
-                    x2: max.x,
-                    y1: min.y,
-                    y2: max.y
-                }, '10%');
-
-                console.log('Auto-zoom (useEffect): Successfully zoomed to main event');
+                fitMapToSequence(chart, sequenceData);
             } catch (error) {
                 console.error('Auto-zoom (useEffect) error:', error);
             }
         }, 200); // Small delay to ensure chart is ready
 
         return () => clearTimeout(timer);
-    }, [mainEvent.latitude, mainEvent.longitude, nzMapGeometry]);
+    }, [mainEvent.latitude, mainEvent.longitude, nzMapGeometry, fitMapToSequence]);
 
     // Haversine formula to calculate distance between two lat/lon points in kilometers
     const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -1197,11 +1179,11 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         };
     }, [sequenceData, setHighlightedIndex, selectedIndices, setSelectedIndices, colorPalette]);
 
-    // Aftershock Map Chart Options
-    const mapChartOptions: Highcharts.Options = useMemo(() => {
+    // Aftershock Map Chart Points
+    const mapPoints = useMemo(() => {
         if (!nzMapGeometry) {
             console.log('Map options: No geometry data yet');
-            return {};
+            return [];
         }
 
         console.log('Building map options with geometry:', {
@@ -1255,330 +1237,22 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
             timelineZoomRange
         });
 
-        const mapDataWithMarkers = mapData
-            .map((eq, index) => {
-                const isSelected = selectedIndices.has(index);
-                return {
-                    lat: eq.latitude,
-                    lon: eq.longitude,
-                    z: eq.magnitude,
-                    magnitude: eq.magnitude,
-                    depth: eq.depth,
-                    daysSince: eq.daysSince,
-                    date: formatDate(eq.eqTime), // Format as dd/mm/yyyy
-                    index,
-                    eventID: eq.eventID,
-                    color: isSelected ? '#ff0000' : getColorForDays(eq.daysSince),
-                    marker: {
-                        radius: isSelected ? Math.max(3, eq.magnitude * 1.5) * 1.5 : Math.max(3, eq.magnitude * 1.5),
-                        fillColor: isSelected ? '#ff0000' : getColorForDays(eq.daysSince),
-                        fillOpacity: isSelected ? 1 : 0.7,
-                        lineWidth: isSelected ? 2 : 0,
-                        lineColor: isSelected ? '#cc0000' : undefined
-                    }
-                };
-            });
-
-        console.log('Map data prepared:', {
-            mapDataPoints: mapData.length,
-            mainEventLat: mainEvent.latitude,
-            mainEventLon: mainEvent.longitude,
-            hasMapGeometry: !!nzMapGeometry
+        const mapPoints = mapData.map((eq, index) => {
+            return {
+                lat: eq.latitude,
+                lon: eq.longitude,
+                magnitude: eq.magnitude,
+                depth: eq.depth,
+                daysSince: eq.daysSince,
+                date: formatDate(eq.eqTime),
+                index,
+                eventID: eq.eventID,
+                isSelected: selectedIndices.has(index)
+            };
         });
 
-        return {
-            chart: {
-                map: nzMapGeometry,
-                backgroundColor: '#ffffff',
-                height: 600,
-                events: {
-                    load: function (this: any) {
-                        const chart = this;
-                        (window as any).aftershockMapChart = chart;
-
-                        // Auto-zoom to main event region (~275 km radius)
-                        try {
-                            const mapView = chart.mapView;
-                            if (!mapView || typeof mapView.lonLatToProjectedUnits !== 'function') {
-                                console.log('Auto-zoom: mapView or lonLatToProjectedUnits not available');
-                                return;
-                            }
-
-                            // Validate coordinates
-                            if (typeof mainEvent.latitude !== 'number' || typeof mainEvent.longitude !== 'number') {
-                                console.log('Auto-zoom: Invalid main event coordinates');
-                                return;
-                            }
-
-                            console.log('Auto-zoom: Attempting to zoom to main event', {
-                                lat: mainEvent.latitude,
-                                lon: mainEvent.longitude
-                            });
-
-                            // ~275 km radius ≈ 2.5 degrees
-                            const radiusDegrees = 2.5;
-
-                            // Convert lat/lon bounds to projected units
-                            const min = mapView.lonLatToProjectedUnits({
-                                lon: mainEvent.longitude - radiusDegrees,
-                                lat: mainEvent.latitude - radiusDegrees
-                            });
-                            const max = mapView.lonLatToProjectedUnits({
-                                lon: mainEvent.longitude + radiusDegrees,
-                                lat: mainEvent.latitude + radiusDegrees
-                            });
-
-                            console.log('Auto-zoom: Projected bounds', {
-                                min,
-                                max,
-                                bounds: { x1: min.x, y1: min.y, x2: max.x, y2: max.y }
-                            });
-
-                            // Fit to bounds with 10% padding
-                            mapView.fitToBounds({
-                                x1: min.x,
-                                x2: max.x,
-                                y1: min.y,
-                                y2: max.y
-                            }, '10%');
-
-                            console.log('Auto-zoom: Successfully zoomed to main event');
-                        } catch (error) {
-                            console.error('Auto-zoom error:', error);
-                        }
-                    },
-                    click: function (this: any, event: any) {
-                        if (!isDrawingPolygon) return;
-
-                        // Get lat/lon from click event
-                        const chart = this;
-                        if (!event.xAxis || !event.yAxis) return;
-
-                        const lon = event.xAxis[0].value;
-                        const lat = event.yAxis[0].value;
-
-                        if (typeof lat !== 'number' || typeof lon !== 'number') return;
-
-                        // Add point to polygon
-                        const newPoint = { lat, lon };
-                        const allPoints = [...polygonPoints, newPoint];
-                        setPolygonPoints(allPoints);
-
-                        // Remove old polygon series if exists
-                        const existingSeries = chart.get('polygon-series');
-                        if (existingSeries) {
-                            existingSeries.remove(false);
-                        }
-
-                        // Draw polygon outline
-                        if (allPoints.length >= 2) {
-                            // Create closed polygon path for visualization
-                            const polygonData = [...allPoints, allPoints[0]].map(p => [p.lon, p.lat]);
-
-                            const newSeries = chart.addSeries({
-                                type: 'mapline',
-                                id: 'polygon-series',
-                                name: 'Selection Polygon',
-                                data: [polygonData],
-                                color: '#ff0000',
-                                lineWidth: 3,
-                                enableMouseTracking: false,
-                                showInLegend: false,
-                                dashStyle: 'Solid',
-                                zIndex: 100
-                            }, false);
-                            setPolygonSeries(newSeries);
-                        }
-
-                        // Add point markers
-                        const markerSeries = chart.get('polygon-markers');
-                        if (markerSeries) {
-                            markerSeries.remove(false);
-                        }
-
-                        const markerData = allPoints.map(p => ({ lat: p.lat, lon: p.lon }));
-                        chart.addSeries({
-                            type: 'mappoint',
-                            id: 'polygon-markers',
-                            name: 'Polygon Points',
-                            data: markerData,
-                            color: '#ff0000',
-                            marker: {
-                                radius: 5,
-                                symbol: 'circle',
-                                fillColor: '#ff0000',
-                                lineWidth: 2,
-                                lineColor: '#ffffff'
-                            },
-                            enableMouseTracking: false,
-                            showInLegend: false,
-                            zIndex: 101
-                        }, false);
-
-                        chart.redraw();
-                    }
-                }
-            },
-            title: {
-                text: ''
-            },
-            credits: { enabled: false },
-            // Disable Highcharts built-in export menu - use custom export buttons
-            exporting: {
-                enabled: false
-            },
-            mapNavigation: {
-                enabled: true,
-                buttonOptions: {
-                    verticalAlign: 'bottom'
-                }
-            },
-            colorAxis: {
-                min: minDays,
-                max: maxDays,
-                stops: getColorStops(colorPalette as ColorPaletteName),
-                labels: { format: '{value:.0f} days' },
-                title: { text: 'Days Since Main Event' }
-            },
-            tooltip: {
-                useHTML: true,
-                formatter: function (this: any) {
-                    const point = this.point;
-                    if (!point || !point.magnitude) return '';
-                    return `
-                        <div style="padding: 4px;">
-                            <strong>M${point.magnitude?.toFixed(1) || 'N/A'}</strong><br/>
-                            Event ID: ${point.eventID || 'N/A'}<br/>
-                            Depth: ${point.depth?.toFixed(1) || 'N/A'} km<br/>
-                            Days since main event: ${point.daysSince?.toFixed(1) || 'N/A'}<br/>
-                            Lat: ${point.lat?.toFixed(4) || 'N/A'}°<br/>
-                            Lon: ${point.lon?.toFixed(4) || 'N/A'}°<br/>
-                            ${point.date || 'N/A'}
-                        </div>
-                    `;
-                }
-            },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true
-            },
-            plotOptions: {
-                series: {
-                    turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000 // Use boost module for datasets > 5000 points
-                },
-                mappoint: {
-                    turboThreshold: 50000, // Support very large datasets (50k+ events)
-                    boostThreshold: 5000, // Use boost module for datasets > 5000 points
-                    cursor: 'pointer',
-                    states: {
-                        hover: {
-                            enabled: true,
-                            lineWidth: 2,
-                            lineColor: '#000000',
-                            radiusPlus: 2
-                        }
-                    },
-                    point: {
-                        events: {
-                            click: function (this: any) {
-                                // Don't select individual points when drawing polygon
-                                if (isDrawingPolygon) return;
-
-                                const index = this.index;
-                                setSelectedIndices(prev => {
-                                    const newSet = new Set(prev);
-                                    if (newSet.has(index)) {
-                                        newSet.delete(index);
-                                    } else {
-                                        newSet.add(index);
-                                    }
-                                    return newSet;
-                                });
-                            },
-                            mouseOver: function (this: any) {
-                                const index = this.index;
-                                setHighlightedIndex(index);
-                                if ((window as any).aftershockSequenceChart) {
-                                    const seqChart = (window as any).aftershockSequenceChart;
-                                    if (seqChart.series && seqChart.series[0] && seqChart.series[0].data && seqChart.series[0].data[index]) {
-                                        seqChart.series[0].data[index].setState('hover');
-                                    }
-                                }
-                                if ((window as any).aftershockDepthChart) {
-                                    const depthChart = (window as any).aftershockDepthChart;
-                                    if (depthChart.series && depthChart.series[0] && depthChart.series[0].data && depthChart.series[0].data[index]) {
-                                        depthChart.series[0].data[index].setState('hover');
-                                    }
-                                }
-                            },
-                            mouseOut: function (this: any) {
-                                setHighlightedIndex(null);
-                                if ((window as any).aftershockSequenceChart) {
-                                    const seqChart = (window as any).aftershockSequenceChart;
-                                    if (seqChart.series && seqChart.series[0] && seqChart.series[0].data && seqChart.series[0].data[this.index]) {
-                                        seqChart.series[0].data[this.index].setState('');
-                                    }
-                                }
-                                if ((window as any).aftershockDepthChart) {
-                                    const depthChart = (window as any).aftershockDepthChart;
-                                    if (depthChart.series && depthChart.series[0] && depthChart.series[0].data && depthChart.series[0].data[this.index]) {
-                                        depthChart.series[0].data[this.index].setState('');
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            series: [
-                {
-                    type: 'map',
-                    name: 'New Zealand',
-                    borderColor: '#606060',
-                    nullColor: 'rgba(200, 200, 200, 0.2)',
-                    showInLegend: false
-                },
-                // Radius circle is added dynamically via useEffect
-                // Main event marker
-                {
-                    type: 'mappoint',
-                    name: 'Main Event',
-                    data: [{
-                        lat: mainEvent.latitude,
-                        lon: mainEvent.longitude,
-                        name: mainEvent.name,
-                        magnitude: mainEvent.magnitude,
-                        eventID: mainEvent.eventID
-                    }],
-                    color: '#ff0000',
-                    marker: {
-                        symbol: 'diamond',
-                        radius: 8,
-                        fillColor: '#ff0000',
-                        lineWidth: 2,
-                        lineColor: '#ffffff'
-                    },
-                    enableMouseTracking: true,
-                    showInLegend: true,
-                    zIndex: 60,
-                    tooltip: {
-                        pointFormat: '<b>{point.name}</b><br/>Event ID: {point.eventID}<br/>M{point.magnitude}<br/>Lat: {point.lat:.4f}°<br/>Lon: {point.lon:.4f}°<br/>Main Event'
-                    }
-                },
-                {
-                    type: 'mappoint',
-                    name: 'Aftershocks',
-                    data: mapDataWithMarkers.map(d => ({ ...d, colorValue: d.daysSince })),
-                    colorKey: 'colorValue'
-                }
-            ],
-            accessibility: {
-                enabled: true,
-                description: 'Map showing aftershock locations color-coded by time since main event'
-            }
-        };
-    }, [sequenceData, nzMapGeometry, setHighlightedIndex, selectedIndices, setSelectedIndices, isDrawingPolygon, polygonPoints, polygonSeries, mainEvent.latitude, mainEvent.longitude, mainEvent.magnitude, mainEvent.name, timelineZoomRange, colorPalette]);
+        return mapPoints;
+    }, [sequenceData, selectedIndices, timelineZoomRange]);
 
     if (sequenceData.length === 0) {
         return (
@@ -1802,6 +1476,20 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-xl font-bold text-gray-800">Aftershock Locations</h3>
                     <div className="flex items-center gap-2">
+                        {/* Fit-All button: resets map zoom to the full aftershock bounding box */}
+                        <button
+                            onClick={() => {
+                                setFitMapTrigger(prev => prev + 1);
+                            }}
+                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors flex items-center gap-1.5"
+                            title="Fit map to all aftershock locations"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                            </svg>
+                            Fit All
+                        </button>
                         {timelineZoomRange && (
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-300 rounded-lg">
                                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
@@ -1824,38 +1512,33 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                                 </button>
                             </div>
                         )}
-                        {/* 
-                        {isDrawingPolygon && (
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-300 rounded-lg">
-                                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-sm font-medium text-red-700">Drawing Mode Active</span>
-                            </div>
-                        )}
-                        */}
                     </div>
                 </div>
-                {nzMapGeometry ? (
-                    <>
-                        <div className="h-[600px]">
-                            <HighchartsReact
-                                key={`map-${sequenceData.length}-${mainEvent.eventID}`}
-                                highcharts={Highcharts}
-                                options={mapChartOptions}
-                                ref={mapChartRef}
-                                constructorType="mapChart"
-                            />
-                        </div>
-                        <ChartExportButtons
-                            chartRef={mapChartRef}
-                            data={earthquakes}
-                            filename="aftershock-map"
-                        />
-                    </>
-                ) : (
-                    <div className="h-[600px] flex items-center justify-center bg-gray-50 rounded">
-                        <p className="text-gray-500">Loading map...</p>
-                    </div>
-                )}
+                <div className="h-[600px] border border-gray-200 rounded-lg overflow-hidden relative">
+                    <LeafletAftershockMap 
+                        points={mapPoints} 
+                        mainEvent={{
+                            latitude: mainEvent.latitude as number,
+                            longitude: mainEvent.longitude as number,
+                            magnitude: mainEvent.magnitude,
+                            name: mainEvent.name,
+                            eventID: mainEvent.eventID
+                        }}
+                        radiusKm={debouncedRadius}
+                        colorPalette={colorPalette as ColorPaletteName}
+                        minDays={0}
+                        maxDays={Math.max(...sequenceData.map(d => d.daysSince), 1)}
+                        onPointClick={(index) => {
+                            setSelectedIndices(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(index)) newSet.delete(index);
+                                else newSet.add(index);
+                                return newSet;
+                            });
+                        }}
+                        fitMapTrigger={fitMapTrigger}
+                    />
+                </div>
             </div>
         </div>
     );

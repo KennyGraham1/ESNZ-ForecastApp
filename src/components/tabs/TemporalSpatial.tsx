@@ -10,7 +10,12 @@ import ClusteringProgressPanel from '@/components/ClusteringProgressPanel';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
 import { formatDateForTooltip } from '@/utils/dateFormat';
 import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
+import dynamic from 'next/dynamic';
 
+const LeafletClusterMap = dynamic(() => import('@/components/LeafletClusterMap'), {
+    ssr: false,
+    loading: () => <div className="h-[600px] w-full bg-gray-50 flex items-center justify-center animate-pulse rounded"><p className="text-gray-500">Loading interactive map...</p></div>
+});
 interface TemporalSpatialProps {
     earthquakes: EarthquakeData[];
 }
@@ -186,13 +191,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     // Load New Zealand map data
     useEffect(() => {
-        import('@highcharts/map-collection/countries/nz/nz-all.geo.json')
-            .then((module) => {
-                setNzMapGeometry(module.default);
-            })
-            .catch((error) => {
-                console.error('Error loading map data:', error);
-            });
+        // Highcharts map removed; no geometry needed
     }, []);
 
     // Add global error handler for Highcharts coordinate errors
@@ -742,14 +741,10 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         };
     }, [chartData, toggleSelection]);
 
-    // Map configuration
-    const mapOptions: any = useMemo(() => {
-        if (!nzMapGeometry) return null;
-
-        // Prepare earthquake data for map - filter out invalid coordinates
-        const mapPoints = chartData
+    // Prepare earthquake data for map
+    const mapPoints = useMemo(() => {
+        return chartData
             .map((d) => {
-                // Validate coordinates before creating the object
                 const lat = d.lat;
                 const lon = d.lon;
 
@@ -783,182 +778,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 };
             })
             .filter((eq): eq is NonNullable<typeof eq> => eq !== null);
-
-        return {
-            chart: {
-                map: nzMapGeometry,
-                backgroundColor: '#ffffff',
-                height: 600,
-                events: {
-                    load: function (this: any) {
-                        const chart = this;
-                        (window as any).temporalSpatialMapChart = chart;
-
-                        // Comprehensive error handling for coordinate transformations
-                        if (chart.pointer) {
-                            // Wrap onContainerMouseLeave
-                            const originalMouseLeave = chart.pointer.onContainerMouseLeave;
-                            if (originalMouseLeave) {
-                                chart.pointer.onContainerMouseLeave = function (e: any) {
-                                    try {
-                                        originalMouseLeave.call(this, e);
-                                    } catch (error) {
-                                        // Silently catch coordinate transformation errors
-                                        console.debug('Mouse leave coordinate error (ignored):', error);
-                                    }
-                                };
-                            }
-
-                            // Wrap setHoverChartIndex
-                            const originalSetHover = chart.pointer.setHoverChartIndex;
-                            if (originalSetHover) {
-                                chart.pointer.setHoverChartIndex = function (...args: any[]) {
-                                    try {
-                                        originalSetHover.apply(this, args);
-                                    } catch (error) {
-                                        console.debug('Hover chart index error (ignored):', error);
-                                    }
-                                };
-                            }
-
-                            // Wrap onContainerMouseMove
-                            const originalMouseMove = chart.pointer.onContainerMouseMove;
-                            if (originalMouseMove) {
-                                chart.pointer.onContainerMouseMove = function (e: any) {
-                                    try {
-                                        originalMouseMove.call(this, e);
-                                    } catch (error) {
-                                        console.debug('Mouse move coordinate error (ignored):', error);
-                                    }
-                                };
-                            }
-                        }
-
-                        // Add global error handler for the chart
-                        if (chart.container) {
-                            const container = chart.container;
-                            const originalOnMouseLeave = container.onmouseleave;
-                            container.onmouseleave = function (e: any) {
-                                try {
-                                    if (originalOnMouseLeave) {
-                                        originalOnMouseLeave.call(this, e);
-                                    }
-                                } catch (error) {
-                                    console.debug('Container mouse leave error (ignored):', error);
-                                }
-                            };
-                        }
-                    }
-                }
-            },
-            title: {
-                text: 'Spatial Distribution',
-                style: { fontSize: '16px', fontWeight: 'bold' }
-            },
-            credits: { enabled: false },
-            // CRITICAL FIX: Disable Highcharts built-in export menu
-            // Reason: The built-in CSV export exports chart series data (map geometry + points)
-            // instead of the original earthquake data. We use custom export buttons below.
-            exporting: {
-                enabled: false
-            },
-            mapNavigation: {
-                enabled: true,
-                enableMouseWheelZoom: true,
-                buttonOptions: {
-                    verticalAlign: 'bottom'
-                },
-                mouseWheelSensitivity: 1.1
-            },
-            tooltip: {
-                useHTML: true,
-                formatter: function (this: any) {
-                    try {
-                        const point = this.point;
-                        if (!point || !point.magnitude) return '';
-
-                        // Validate point has valid coordinates
-                        if (
-                            typeof point.lat !== 'number' ||
-                            typeof point.lon !== 'number' ||
-                            !isFinite(point.lat) ||
-                            !isFinite(point.lon)
-                        ) {
-                            return '';
-                        }
-
-                        // Format date as dd/mm/yyyy HH:mm:ss
-                        const timeStr = formatDateForTooltip(point.time);
-                        const clusterText = point.cluster >= 0 ? `Cluster ${point.cluster}` : 'Noise';
-                        return `
-                            <div style="padding: 8px;">
-                                <strong>${point.locality || 'Unknown location'}</strong><br/>
-                                <strong>M${point.magnitude.toFixed(1)}</strong><br/>
-                                Event ID: ${point.eventID || 'N/A'}<br/>
-                                ${timeStr}<br/>
-                                Depth: ${point.depth.toFixed(1)} km<br/>
-                                Lat: ${point.lat.toFixed(2)}°, Lon: ${point.lon.toFixed(2)}°<br/>
-                                <em>${clusterText}</em>
-                            </div>
-                        `;
-                    } catch (error) {
-                        console.error('Tooltip error:', error);
-                        return '';
-                    }
-                }
-            },
-            series: [
-                {
-                    type: 'map',
-                    name: 'New Zealand',
-                    borderColor: '#a0a0a0',
-                    nullColor: '#f0f0f0',
-                    showInLegend: false,
-                    enableMouseTracking: false
-                },
-                {
-                    type: 'mappoint',
-                    name: 'Earthquakes',
-                    data: mapPoints,
-                    colorKey: 'color',
-                    marker: {
-                        radius: 4,
-                        symbol: 'circle'
-                    },
-                    dataLabels: {
-                        enabled: false
-                    },
-                    point: {
-                        events: {
-                            click: function (this: any) {
-                                // Don't select individual points when drawing polygon
-                                if (isDrawingPolygon) {
-                                    console.log('Point click ignored - drawing polygon');
-                                    return;
-                                }
-
-                                const idx = this.originalIndex;
-                                toggleSelection(idx);
-                            }
-                        }
-                    },
-                    states: {
-                        select: {
-                            color: '#ef4444',
-                            borderColor: '#dc2626'
-                        }
-                    }
-                }
-            ],
-            accessibility: {
-                enabled: true,
-                description: 'Interactive map showing earthquake locations in New Zealand. Points are colored by cluster assignment. Click points to select, or use polygon tool for area selection.',
-                keyboardNavigation: {
-                    enabled: true
-                }
-            }
-        };
-    }, [nzMapGeometry, chartData, isDrawingPolygon, toggleSelection]);
+    }, [chartData]);
 
     const handleClearSelection = () => {
         clearSelection();
@@ -1451,13 +1271,10 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         Click on points to select/deselect earthquakes.
                     </p>
                 </div>
-                <div className="h-[600px]">
-                    <HighchartsReact
-                        key={`map-${processedEarthquakes.length}-${clusteringAlgorithm}`}
-                        highcharts={Highcharts}
-                        constructorType="mapChart"
-                        options={mapOptions}
-                        ref={mapChartRef}
+                <div className="h-[600px] border border-gray-200 rounded-lg overflow-hidden relative">
+                    <LeafletClusterMap 
+                        points={mapPoints} 
+                        onPointClick={toggleSelection} 
                     />
                 </div>
             </div>

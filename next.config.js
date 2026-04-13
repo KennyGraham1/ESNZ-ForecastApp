@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
     // Fixes for Highcharts and map-collection
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -14,6 +14,15 @@ const nextConfig = {
       config.optimization = {
         ...config.optimization,
         moduleIds: 'deterministic',
+      };
+    }
+
+    // In dev mode, exclude node_modules and build artefacts from the file
+    // watcher to prevent EMFILE: too many open files (inotify limit exhaustion).
+    if (dev) {
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: ['**/node_modules/**', '**/.next/**', '**/.git/**'],
       };
     }
 
