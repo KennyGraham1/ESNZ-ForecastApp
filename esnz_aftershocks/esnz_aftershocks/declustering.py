@@ -125,6 +125,10 @@ def find_recent_significant_mainshocks(catalog: pd.DataFrame, decluster_method: 
         declustered = decluster_zaliapin(sig_events, log_eta_threshold=zaliapin_log_eta_threshold, **kwargs)
     elif decluster_method == 'reasenberg':
         declustered = decluster_reasenberg(sig_events, **kwargs)
+    elif decluster_method == 'etas':
+        declustered = decluster_stochastic_etas(sig_events, **kwargs)
+    elif decluster_method == 'st_dbscan':
+        declustered = decluster_st_dbscan(sig_events, **kwargs)
     else:
         raise ValueError(f"Unknown decluster_method: {decluster_method}")
         
@@ -246,3 +250,88 @@ def decluster_reasenberg(catalog: pd.DataFrame, rfact: float = 10.0, taumin: flo
             j += 1
             
     return sorted_cat[~is_dependent].reset_index(drop=True)
+
+def decluster_st_dbscan(catalog: pd.DataFrame, 
+                        eps_spatial_km: float = 10.0, 
+                        eps_temporal_days: float = 14.0, 
+                        min_pts: int = 3) -> pd.DataFrame:
+    """
+    Apply pure Data-Driven Spatiotemporal Density-Based Spatial Clustering (ST-DBSCAN).
+    Unlike Gardner-Knopoff or Reasenberg, this relies on ZERO empirical magnitude-scaling laws.
+    Identifies high-density 3D sequences; retains 'Noise' as the independent background catalog.
+    """
+    try:
+        from sklearn.neighbors import BallTree
+    except ImportError:
+        raise ImportError("scikit-learn is required for ST-DBSCAN. Please run: pip install scikit-learn")
+
+    cat = catalog.sort_values(by='time').reset_index(drop=True)
+    n = len(cat)
+    if n == 0:
+        return cat
+        
+    times_days = cat['time'].astype(np.int64).values / (10**9 * 86400.0) 
+    lats = np.radians(cat['latitude'].values)
+    lons = np.radians(cat['longitude'].values)
+    
+    coords = np.vstack((lats, lons)).T
+    
+    # Build BallTree for Haversine speed
+    tree = BallTree(coords, metric='haversine')
+    eps_spatial_rad = eps_spatial_km / 6371.0
+    
+    # -1 unassigned, 0 Noise, >0 Cluster
+    labels = np.full(n, -1, dtype=int)
+    cluster_id = 0
+    
+    for i in range(n):
+        if labels[i] != -1:
+            continue
+            
+        t_target = times_days[i]
+        idx_start = np.searchsorted(times_days, t_target - eps_temporal_days, side='left')
+        idx_end = np.searchsorted(times_days, t_target + eps_temporal_days, side='right')
+        
+        candidates = np.arange(idx_start, idx_end)
+        
+        dists, = tree.query_radius(coords[i:i+1], r=eps_spatial_rad, return_distance=False)
+        neighbors = np.intersect1d(candidates, dists)
+        
+        if len(neighbors) < min_pts:
+            labels[i] = 0 # Independent background (noise)
+        else:
+            cluster_id += 1
+            labels[i] = cluster_id
+            
+            queue = list(neighbors)
+            queue.remove(i)
+            
+            while len(queue) > 0:
+                q = queue.pop(0)
+                
+                if labels[q] == 0:
+                    labels[q] = cluster_id 
+                if labels[q] != -1:
+                    continue
+                    
+                labels[q] = cluster_id
+                
+                q_t_target = times_days[q]
+                q_idx_start = np.searchsorted(times_days, q_t_target - eps_temporal_days, side='left')
+                q_idx_end = np.searchsorted(times_days, q_t_target + eps_temporal_days, side='right')
+                q_candidates = np.arange(q_idx_start, q_idx_end)
+                
+                q_dists, = tree.query_radius(coords[q:q+1], r=eps_spatial_rad, return_distance=False)
+                q_neighbors = np.intersect1d(q_candidates, q_dists)
+                
+                if len(q_neighbors) >= min_pts:
+                    for val in q_neighbors:
+                        if labels[val] == -1 and val not in queue:
+                            queue.append(val)
+                            
+    # Any label > 0 is part of a density swarm (aftershocks)
+    is_dependent = (labels > 0)
+    
+    return cat[~is_dependent].reset_index(drop=True)
+
+
