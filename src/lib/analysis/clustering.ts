@@ -892,8 +892,8 @@ function timeMagnitudeClustering(
         const info = clusterInfos.get(clusterId);
         if (!info) return tau0 * 1440;
 
-        // Time elapsed since most recent event in cluster (Reasenberg 1985 formula requires T_e = elapsed since last event)
-        const t = (eventTime - info.lastEventTime) / 1440; // Convert to days
+        // Reasenberg 1985 (cluster2000x.f) uses T_e = elapsed since LARGEST event in cluster, not most recent
+        const t = (eventTime - info.largestMagTime) / 1440; // Convert to days
         if (t <= 0) return tau0 * 1440;
 
         // Reasenberg formula: tau = -ln(1-p1) * t / 10^((deltaM-1)*2/3)
@@ -931,9 +931,10 @@ function timeMagnitudeClustering(
 
             // Calculate interaction distance:
             // Sum of event1's radius and cluster's largest event radius (if clustered)
+            // Note: cluster2000x.f mathematically specifies that rMain does NOT scale by rfact.
             const r1 = interactionRadius(event1.magnitude);
             const rMain = event1.clusterId !== 0
-                ? interactionRadius(clusterInfos.get(event1.clusterId)!.largestMag)
+                ? Math.min(0.011 * Math.pow(10, 0.4 * clusterInfos.get(event1.clusterId)!.largestMag), 30)
                 : 0;
             const rTest = r1 + rMain;
 
