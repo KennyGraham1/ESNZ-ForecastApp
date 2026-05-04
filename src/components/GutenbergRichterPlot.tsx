@@ -50,7 +50,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
         // Validate data before processing
         if (!result || !result.binCenters || result.binCenters.length === 0) {
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
                 exporting: { enabled: false }, // Disable built-in export menu
@@ -63,7 +63,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
         // Additional validation for arrays and matching lengths
         if (!Array.isArray(binCenters) || !Array.isArray(cumulativeCounts) || !Array.isArray(fittedLine)) {
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
                 exporting: { enabled: false },

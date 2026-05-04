@@ -617,7 +617,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         const baseOptions: Highcharts.Options = {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 500
             },
             title: { text: '' },

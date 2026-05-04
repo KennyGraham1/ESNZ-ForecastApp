@@ -389,7 +389,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         if (!sequenceData || sequenceData.length === 0) {
             console.warn('⚠️ No sequence data available for chart');
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 500 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 500 },
                 title: { text: '' },
                 credits: { enabled: false },
                 exporting: { enabled: false }, // Disable built-in export menu
@@ -469,7 +469,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         if (data.length === 0) {
             console.warn('⚠️ No valid data points after filtering');
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 500 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 500 },
                 title: { text: 'No valid data' },
                 credits: { enabled: false },
                 exporting: { enabled: false },
@@ -480,7 +480,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 500,
                 backgroundColor: 'white',
                 style: {
@@ -785,7 +785,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         // Validate data before processing
         if (!sequenceData || sequenceData.length === 0) {
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
                 exporting: { enabled: false }, // Disable built-in export menu
@@ -833,7 +833,7 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 500,
                 backgroundColor: 'white',
                 style: {

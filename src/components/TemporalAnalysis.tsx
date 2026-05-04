@@ -20,7 +20,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
         // Validate data before processing
         if (!earthquakes || earthquakes.length === 0) {
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
                 exporting: { enabled: false }, // Disable built-in export menu
@@ -78,7 +78,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 400,
                 backgroundColor: '#ffffff',
                 style: {
@@ -444,7 +444,7 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
         return {
             chart: {
                 type: 'line',
-                zoomType: 'x',
+                zooming: { type: 'x' },
                 height: 350
             },
             title: {

@@ -67,7 +67,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 400,
                 backgroundColor: '#ffffff',
                 style: {
@@ -414,7 +414,7 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
         return {
             chart: {
                 type: 'line',
-                zoomType: 'x',
+                zooming: { type: 'x' },
                 height: 350
             },
             title: {

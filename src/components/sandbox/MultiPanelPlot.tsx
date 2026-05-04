@@ -155,7 +155,7 @@ const MultiPanelPlot = memo(function MultiPanelPlot({
 
         return {
             chart: {
-                zoomType: 'x',
+                zooming: { type: 'x' },
                 height: 800,
                 backgroundColor: '#ffffff',
                 style: {

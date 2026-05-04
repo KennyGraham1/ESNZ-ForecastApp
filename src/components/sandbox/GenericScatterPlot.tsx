@@ -140,7 +140,7 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 600,
                 backgroundColor: '#ffffff',
                 style: { fontFamily: 'Instrument Sans, sans-serif' },

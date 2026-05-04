@@ -20,7 +20,7 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
         // Validate data before processing
         if (!earthquakes || earthquakes.length === 0) {
             return {
-                chart: { type: 'scatter', zoomType: 'xy', height: 400 },
+                chart: { type: 'scatter', zooming: { type: 'xy' }, height: 400 },
                 title: { text: '' },
                 credits: { enabled: false },
                 exporting: { enabled: false }, // Disable built-in export menu
@@ -66,7 +66,7 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
         return {
             chart: {
                 type: 'scatter',
-                zoomType: 'xy',
+                zooming: { type: 'xy' },
                 height: 400
             },
             title: {
