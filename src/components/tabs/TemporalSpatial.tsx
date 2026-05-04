@@ -97,6 +97,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     // Selection mode: 'individual' selects one point; 'cluster' selects all events in the same cluster
     const [selectionMode, setSelectionMode] = useState<'individual' | 'cluster'>('individual');
+    // Tracks the currently active cluster label for exclusive single-cluster selection (null = none)
+    const [activeClusterLabel, setActiveClusterLabel] = useState<number | null>(null);
 
     // Sync local state when context values change (e.g. initial load or external update)
     useEffect(() => {
@@ -218,6 +220,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         if (selectedIndices.size > 0) {
             clearSelection();
         }
+        setActiveClusterLabel(null);
     }, [processedEarthquakes, clearSelection]);
 
     // POLYGON SELECTION FEATURE - STATE KEPT BUT FEATURE DISABLED
@@ -241,7 +244,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     // Unified point-click handler for all three views.
     // In 'individual' mode: toggles the single clicked event.
-    // In 'cluster' mode: selects/deselects every event sharing the same clusterLabel.
+    // In 'cluster' mode: exclusive single-cluster selection —
+    //   clicking a cluster replaces any prior selection with that cluster's events;
+    //   clicking the already-active cluster deselects (clears).
     // Noise points (label -1) always behave as individual selections.
     const handlePointClick = useCallback((originalIndex: number) => {
         if (originalIndex < 0) return;
@@ -259,24 +264,20 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             return;
         }
 
-        // Gather every index that belongs to the clicked cluster
-        const clusterIndices: number[] = [];
-        clusteringResult.labels.forEach((label, idx) => {
-            if (label === clickedLabel) clusterIndices.push(idx);
-        });
-
-        // Toggle: if every member is already selected → deselect all; otherwise select all
-        const allSelected = clusterIndices.every(idx => selectedIndices.has(idx));
-        const newSet = new Set(selectedIndices);
-
-        if (allSelected) {
-            clusterIndices.forEach(idx => newSet.delete(idx));
+        if (clickedLabel === activeClusterLabel) {
+            // Re-clicking the active cluster → deselect everything
+            clearSelection();
+            setActiveClusterLabel(null);
         } else {
-            clusterIndices.forEach(idx => newSet.add(idx));
+            // New cluster clicked → exclusively select its events, replacing any prior selection
+            const clusterIndices = clusteringResult.labels.reduce<number[]>((acc, label, idx) => {
+                if (label === clickedLabel) acc.push(idx);
+                return acc;
+            }, []);
+            setSelectedIndices(new Set(clusterIndices));
+            setActiveClusterLabel(clickedLabel);
         }
-
-        setSelectedIndices(newSet);
-    }, [selectionMode, clusteringResult, toggleSelection, selectedIndices, setSelectedIndices]);
+    }, [selectionMode, clusteringResult, activeClusterLabel, clearSelection, setSelectedIndices, toggleSelection]);
 
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -806,6 +807,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     const handleClearSelection = () => {
         clearSelection();
+        setActiveClusterLabel(null);
     };
 
 
@@ -831,7 +833,21 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                     <div className="flex-1 space-y-2">
                         <div className="text-sm font-medium text-gray-700">
-                            {selectedIndices.size > 0 ? (
+                            {selectedIndices.size > 0 && selectionMode === 'cluster' && activeClusterLabel !== null ? (
+                                <span className="flex items-center gap-2">
+                                    <span
+                                        className="inline-block w-3 h-3 rounded-full ring-2 ring-white shadow"
+                                        style={{ backgroundColor: getClusterColor(activeClusterLabel) }}
+                                    />
+                                    <span>
+                                        <strong style={{ color: getClusterColor(activeClusterLabel) }}>
+                                            Cluster {activeClusterLabel}
+                                        </strong>
+                                        {' '}— <strong className="text-gray-800">{selectedIndices.size}</strong> events selected
+                                    </span>
+                                    <span className="text-xs text-purple-500 italic">Click cluster again to deselect</span>
+                                </span>
+                            ) : selectedIndices.size > 0 ? (
                                 <span className="flex items-center gap-2">
                                     <span className="inline-block w-3 h-3 bg-red-500 rounded-full"></span>
                                     <strong className="text-red-600">{selectedIndices.size}</strong> earthquakes selected
@@ -879,8 +895,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 onChange={(e) => {
                                     const algo = e.target.value as any;
                                     setClusteringAlgorithm(algo);
-                                    // Reset selection when algorithm changes to avoid stale indices
                                     clearSelection();
+                                    setActiveClusterLabel(null);
                                 }}
                                 className="text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                 title="Select clustering algorithm"
@@ -1358,7 +1374,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                         <h4 className="font-bold text-blue-900 mb-2">Three-Way Interactive Selection</h4>
                         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                             <li><strong>Individual mode:</strong> click any point to select/deselect that single event across all three views</li>
-                            <li><strong>Cluster mode:</strong> click any point to select/deselect every event in its cluster simultaneously — noise points (label −1) remain individual</li>
+                            <li><strong>Cluster mode:</strong> click any point to <em>exclusively</em> select its entire cluster — any previously active cluster is deselected automatically; click the active cluster again to deselect; noise points (label −1) remain individual</li>
                             <li><strong>Selections sync</strong> automatically across the map, temporal plot, and 3D plot</li>
                             <li>Selected events are highlighted in <span className="text-red-600 font-bold">red with a white halo</span> for clear visual distinction</li>
                             <li>Sliders <strong>auto-apply</strong> 600 ms after you stop moving them — the Apply button still provides instant commit</li>
