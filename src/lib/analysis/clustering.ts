@@ -407,7 +407,11 @@ function toDecimalYear(date: Date): number {
  * Based on Annemarie Christophersen's MATLAB implementation (2008)
  *
  * @param earthquakes - Array of earthquake data
- * @param minMainMag - Minimum mainshock magnitude (Mc)
+ * @param minMainMag - Completeness magnitude Mc. Controls both the initial catalog
+ *                     filter (events below this are noise) and the time-window
+ *                     extension trigger (only events STRICTLY ABOVE this extend tRef).
+ *                     The MATLAB reference has a separate `Mainmag` parameter but it is
+ *                     unused — only `Mc` drives the algorithm.
  * @param t1 - Time window before an earthquake in days
  * @param t2 - Time window after an earthquake in days
  */
@@ -508,8 +512,9 @@ function stepMagnitudeClustering(
                 const dist = haversineDistance(latRef, lonRef, event.lat, event.lon);
                 if (dist <= searchRadius) {
                     event.clusterNo = clusterNo;
-                    // Extend time window if event is at or above Mc
-                    if (event.magnitude >= minMainMag) {
+                    // Extend time window only for events STRICTLY ABOVE Mc.
+                    // MATLAB: `if (b(lino,6) > Mc)` — events at exactly Mc do not slide the window.
+                    if (event.magnitude > minMainMag) {
                         tRef = event.decimalYear;
                     }
                 }
@@ -547,7 +552,10 @@ function stepMagnitudeClustering(
  * Based on Annemarie Christophersen's MATLAB implementation (2007)
  *
  * @param earthquakes - Array of earthquake data
- * @param minMainMag - Minimum mainshock magnitude
+ * @param minMainMag - Completeness magnitude Mc (same role as in stepMagnitudeClustering).
+ *                     Only events STRICTLY ABOVE this value initiate new clusters
+ *                     (MATLAB: `b(i,6) > Mainmag`) and only those events extend tRef
+ *                     (MATLAB: `b(lino,6) > Mc`).
  * @param t1 - Time window before an earthquake in days
  * @param t2 - Time window after an earthquake in days
  */
@@ -595,9 +603,10 @@ function stepTimeClustering(
     for (let i = 0; i < workingData.length; i++) {
         const event = workingData[i];
 
-        // Skip if already clustered or strictly below minimum magnitude
-        // Use < not <= so events at exactly minMainMag can be mainshocks
-        if (event.clusterNo !== 0 || event.magnitude < minMainMag) {
+        // Skip if already clustered, or at-or-below the threshold.
+        // MATLAB: `if (b(i,12) == 0 && b(i,6) > Mainmag)` — strictly greater than, so
+        // events at exactly minMainMag do NOT initiate clusters (they can still be absorbed).
+        if (event.clusterNo !== 0 || event.magnitude <= minMainMag) {
             continue;
         }
 
@@ -635,8 +644,9 @@ function stepTimeClustering(
                 if (dist <= searchRadius) {
                     candidate.clusterNo = clusterNo;
 
-                    // If after the reference time and at or above Mc, extend window
-                    if (candidate.decimalYear > tRef && candidate.magnitude >= minMainMag) {
+                    // Extend window only for events STRICTLY ABOVE Mc and after tRef.
+                    // MATLAB: `if (b(lino,6) > Mc && b(lino,3) > tref)`
+                    if (candidate.decimalYear > tRef && candidate.magnitude > minMainMag) {
                         tRef = candidate.decimalYear;
                     }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { EarthquakeData } from '@/types/earthquake';
-import { useState, useMemo, useRef, useEffect, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, memo, useCallback } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from '../ChartExportButtons';
@@ -11,6 +11,8 @@ import { useClusteringContext } from '@/contexts/ClusteringContext';
 import { formatDateForTooltip } from '@/utils/dateFormat';
 import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
 import dynamic from 'next/dynamic';
+import { useDebounce } from '@/hooks/useDebounce';
+import { applyChartOptimizations } from '@/utils/highchartsOptimization';
 
 const LeafletClusterMap = dynamic(() => import('@/components/LeafletClusterMap'), {
     ssr: false,
@@ -93,6 +95,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const [localHdbscanMinClusterSize, setLocalHdbscanMinClusterSize] = useState(hdbscanMinClusterSize);
     const [localHdbscanMinSamples, setLocalHdbscanMinSamples] = useState(hdbscanMinSamples);
 
+    // Selection mode: 'individual' selects one point; 'cluster' selects all events in the same cluster
+    const [selectionMode, setSelectionMode] = useState<'individual' | 'cluster'>('individual');
+
     // Sync local state when context values change (e.g. initial load or external update)
     useEffect(() => {
         setLocalEpsilon(epsilon);
@@ -116,7 +121,56 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setLocalHdbscanMinSamples(hdbscanMinSamples);
     }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples]);
 
-    // Apply handler
+    // Snapshot of all local slider values — changes reference only when a value actually changes
+    const localParamsSnapshot = useMemo(() => ({
+        epsilon: localEpsilon,
+        minSamples: localMinSamples,
+        k: localK,
+        nnThreshold: localNnThreshold,
+        stepMinMag: localStepMinMag,
+        stepT1: localStepT1,
+        stepT2: localStepT2,
+        epsilonTemporal: localEpsilonTemporal,
+        tmcRfact: localTmcRfact,
+        tmcTau0: localTmcTau0,
+        tmcTauMax: localTmcTauMax,
+        tmcP1: localTmcP1,
+        tmcXk: localTmcXk,
+        hardebeckMinMag: localHardebeckMinMag,
+        hardebeckTimeWindow: localHardebeckTimeWindow,
+        hardebeckRuptureMult: localHardebeckRuptureMult,
+        hardebeckMainshockTimeYears: localHardebeckMainshockTimeYears,
+        hdbscanMinClusterSize: localHdbscanMinClusterSize,
+        hdbscanMinSamples: localHdbscanMinSamples,
+    }), [localEpsilon, localMinSamples, localK, localNnThreshold, localStepMinMag, localStepT1, localStepT2, localEpsilonTemporal, localTmcRfact, localTmcTau0, localTmcTauMax, localTmcP1, localTmcXk, localHardebeckMinMag, localHardebeckTimeWindow, localHardebeckRuptureMult, localHardebeckMainshockTimeYears, localHdbscanMinClusterSize, localHdbscanMinSamples]);
+
+    // Debounce: auto-apply to context 600ms after the user stops moving any slider,
+    // so clustering re-runs without requiring an explicit "Apply" click.
+    const debouncedLocalParams = useDebounce(localParamsSnapshot, 600);
+
+    useEffect(() => {
+        setEpsilon(debouncedLocalParams.epsilon);
+        setMinSamples(debouncedLocalParams.minSamples);
+        setK(debouncedLocalParams.k);
+        setNnThreshold(debouncedLocalParams.nnThreshold);
+        setStepMinMag(debouncedLocalParams.stepMinMag);
+        setStepT1(debouncedLocalParams.stepT1);
+        setStepT2(debouncedLocalParams.stepT2);
+        setEpsilonTemporal(debouncedLocalParams.epsilonTemporal);
+        setTmcRfact(debouncedLocalParams.tmcRfact);
+        setTmcTau0(debouncedLocalParams.tmcTau0);
+        setTmcTauMax(debouncedLocalParams.tmcTauMax);
+        setTmcP1(debouncedLocalParams.tmcP1);
+        setTmcXk(debouncedLocalParams.tmcXk);
+        setHardebeckMinMag(debouncedLocalParams.hardebeckMinMag);
+        setHardebeckTimeWindow(debouncedLocalParams.hardebeckTimeWindow);
+        setHardebeckRuptureMult(debouncedLocalParams.hardebeckRuptureMult);
+        setHardebeckMainshockTimeYears(debouncedLocalParams.hardebeckMainshockTimeYears);
+        setHdbscanMinClusterSize(debouncedLocalParams.hdbscanMinClusterSize);
+        setHdbscanMinSamples(debouncedLocalParams.hdbscanMinSamples);
+    }, [debouncedLocalParams, setEpsilon, setMinSamples, setK, setNnThreshold, setStepMinMag, setStepT1, setStepT2, setEpsilonTemporal, setTmcRfact, setTmcTau0, setTmcTauMax, setTmcP1, setTmcXk, setHardebeckMinMag, setHardebeckTimeWindow, setHardebeckRuptureMult, setHardebeckMainshockTimeYears, setHdbscanMinClusterSize, setHdbscanMinSamples]);
+
+    // Apply handler — immediate application without waiting for the debounce delay
     const handleApplyParameters = () => {
         setEpsilon(localEpsilon);
         setMinSamples(localMinSamples);
@@ -184,6 +238,45 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         runClustering,
         cancelClustering,
     } = useClusteringWorker();
+
+    // Unified point-click handler for all three views.
+    // In 'individual' mode: toggles the single clicked event.
+    // In 'cluster' mode: selects/deselects every event sharing the same clusterLabel.
+    // Noise points (label -1) always behave as individual selections.
+    const handlePointClick = useCallback((originalIndex: number) => {
+        if (originalIndex < 0) return;
+
+        if (selectionMode === 'individual' || !clusteringResult) {
+            toggleSelection(originalIndex);
+            return;
+        }
+
+        const clickedLabel = clusteringResult.labels[originalIndex] ?? -1;
+
+        if (clickedLabel === -1) {
+            // Noise point — fall back to individual toggle
+            toggleSelection(originalIndex);
+            return;
+        }
+
+        // Gather every index that belongs to the clicked cluster
+        const clusterIndices: number[] = [];
+        clusteringResult.labels.forEach((label, idx) => {
+            if (label === clickedLabel) clusterIndices.push(idx);
+        });
+
+        // Toggle: if every member is already selected → deselect all; otherwise select all
+        const allSelected = clusterIndices.every(idx => selectedIndices.has(idx));
+        const newSet = new Set(selectedIndices);
+
+        if (allSelected) {
+            clusterIndices.forEach(idx => newSet.delete(idx));
+        } else {
+            clusterIndices.forEach(idx => newSet.add(idx));
+        }
+
+        setSelectedIndices(newSet);
+    }, [selectionMode, clusteringResult, toggleSelection, selectedIndices, setSelectedIndices]);
 
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -498,13 +591,10 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     // Create temporal plot options
     const temporalPlotOptions: Highcharts.Options = useMemo(() => {
-        // Create arrays with valid data only
         const validData = chartData.map((d) => {
             try {
                 const time = d.time instanceof Date ? d.time : new Date(d.time);
-                if (isNaN(time.getTime())) {
-                    return null;
-                }
+                if (isNaN(time.getTime())) return null;
                 return {
                     time: time.getTime(),
                     timeStr: time.toISOString(),
@@ -524,82 +614,42 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             }
         }).filter((item): item is NonNullable<typeof item> => item !== null);
 
-        return {
+        const baseOptions: Highcharts.Options = {
             chart: {
                 type: 'scatter',
                 zoomType: 'xy',
                 height: 500
             },
-            title: {
-                text: ''
-            },
-            credits: {
-                enabled: false
-            },
-            // CRITICAL FIX: Disable Highcharts built-in export menu
-            // Reason: The built-in CSV export exports chart series data (x, y, custom)
-            // instead of the original earthquake data. We use custom export buttons below.
-            exporting: {
-                enabled: false
-            },
-            // OPTIMIZATION: Boost module disabled for this chart
-            // Reason: Boost module conflicts with individual point markers and selection state
-            // The chart has interactive features (click to select) and custom markers per point
-            boost: {
-                enabled: false
-            },
+            title: { text: '' },
+            credits: { enabled: false },
+            // Custom export buttons replace the built-in menu (which exports series coords, not raw data)
+            exporting: { enabled: false },
+            // Boost disabled: conflicts with per-point marker customisation and click selection
+            boost: { enabled: false },
             xAxis: {
                 type: 'datetime',
                 title: {
                     text: 'Time',
-                    style: {
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: '#374151'
-                    }
+                    style: { fontSize: '13px', fontWeight: '600', color: '#374151' }
                 },
                 gridLineWidth: 0,
-                labels: {
-                    style: {
-                        fontSize: '11px',
-                        color: '#6b7280'
-                    }
-                },
+                labels: { style: { fontSize: '11px', color: '#6b7280' } },
                 lineColor: '#d1d5db',
                 tickColor: '#d1d5db',
-                crosshair: {
-                    width: 1,
-                    color: '#9ca3af',
-                    dashStyle: 'Dash'
-                }
+                crosshair: { width: 1, color: '#9ca3af', dashStyle: 'Dash' }
             },
             yAxis: {
                 title: {
                     text: 'Magnitude',
-                    style: {
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: '#374151'
-                    }
+                    style: { fontSize: '13px', fontWeight: '600', color: '#374151' }
                 },
                 gridLineWidth: 0,
-                labels: {
-                    style: {
-                        fontSize: '11px',
-                        color: '#6b7280'
-                    }
-                },
+                labels: { style: { fontSize: '11px', color: '#6b7280' } },
                 lineColor: '#d1d5db',
                 tickColor: '#d1d5db',
-                crosshair: {
-                    width: 1,
-                    color: '#9ca3af',
-                    dashStyle: 'Dash'
-                }
+                crosshair: { width: 1, color: '#9ca3af', dashStyle: 'Dash' }
             },
-            legend: {
-                enabled: false
-            },
+            legend: { enabled: false },
             tooltip: {
                 useHTML: true,
                 backgroundColor: 'rgba(255, 255, 255, 0.96)',
@@ -653,15 +703,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             },
             plotOptions: {
                 scatter: {
-                    turboThreshold: 20000, // Increase threshold for large datasets (20+ years)
-                    marker: {
-                        radius: 5
-                    },
+                    turboThreshold: 20000,
+                    marker: { radius: 5 },
                     point: {
                         events: {
                             click: function (this: any) {
-                                const idx = this.custom.originalIndex;
-                                toggleSelection(idx);
+                                handlePointClick(this.custom.originalIndex);
                             }
                         }
                     }
@@ -674,11 +721,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     x: d.time,
                     y: d.magnitude,
                     marker: {
-                        radius: d.size,
+                        // Selected points: larger radius + white ring = glowing halo effect
+                        radius: d.isSelected ? Math.max(d.size + 2, 7) : d.size,
                         fillColor: d.isSelected ? '#ef4444' : getClusterColor(d.cluster),
-                        fillOpacity: d.isSelected ? 0.95 : 0.7,
-                        lineWidth: d.isSelected ? 2 : 0,
-                        lineColor: d.isSelected ? '#dc2626' : undefined
+                        fillOpacity: d.isSelected ? 1 : 0.7,
+                        lineWidth: d.isSelected ? 2.5 : 0,
+                        lineColor: d.isSelected ? '#ffffff' : undefined,
                     },
                     custom: {
                         magnitude: d.magnitude,
@@ -696,12 +744,26 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             accessibility: {
                 enabled: true,
                 description: 'Temporal plot showing earthquake magnitude over time. Points are colored by cluster assignment. Click points to select.',
-                keyboardNavigation: {
-                    enabled: true
-                }
+                keyboardNavigation: { enabled: true }
             }
         };
-    }, [chartData, toggleSelection]);
+
+        // Apply GPU/animation optimisations based on dataset size, but preserve
+        // our scatter config (per-point markers) and keep boost disabled.
+        const optimized = applyChartOptimizations(baseOptions, validData.length);
+        return {
+            ...optimized,
+            boost: { enabled: false },
+            plotOptions: {
+                ...optimized.plotOptions,
+                scatter: baseOptions.plotOptions?.scatter,
+            },
+            tooltip: {
+                ...optimized.tooltip,
+                useHTML: true,
+            },
+        };
+    }, [chartData, handlePointClick]);
 
     // Prepare earthquake data for map
     const mapPoints = useMemo(() => {
@@ -1150,6 +1212,32 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             {clusteringAlgorithm === 'kmeans' && (
                                 <span className="text-xs text-amber-600 mt-1">K-Means has no noise</span>
                             )}
+                            <span className="text-xs font-semibold text-gray-500 mt-3 mb-1">Selection Mode</span>
+                            <div className="flex gap-1" title="Choose whether clicking a point selects the individual event or every event in the same cluster">
+                                <button
+                                    onClick={() => setSelectionMode('individual')}
+                                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${selectionMode === 'individual'
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                    title="Click selects/deselects a single event"
+                                >
+                                    Individual
+                                </button>
+                                <button
+                                    onClick={() => setSelectionMode('cluster')}
+                                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${selectionMode === 'cluster'
+                                        ? 'bg-purple-600 text-white shadow-sm'
+                                        : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                    title="Click selects/deselects every event in the same cluster (noise points remain individual)"
+                                >
+                                    Cluster
+                                </button>
+                            </div>
+                            {selectionMode === 'cluster' && (
+                                <span className="text-xs text-purple-600 mt-1">Click any point to select its cluster</span>
+                            )}
                         </div>
                         <button
                             onClick={handleApplyParameters}
@@ -1225,9 +1313,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     </p>
                 </div>
                 <div className="h-[600px] border border-gray-200 rounded-lg overflow-hidden relative">
-                    <LeafletClusterMap 
-                        points={mapPoints} 
-                        onPointClick={toggleSelection} 
+                    <LeafletClusterMap
+                        points={mapPoints}
+                        onPointClick={handlePointClick}
                     />
                 </div>
             </div>
@@ -1259,8 +1347,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
             {/* Panel 3: 3D Spatial Distribution */}
             <TemporalSpatial3DPlot
-                data={chartData as any} // Cast to any to avoid temporary type mismatch if interface isn't fully propagated in IDE yet
-                onPointClick={toggleSelection}
+                data={chartData as any}
+                onPointClick={handlePointClick}
             />
             {/* Info Card */}
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-6">
@@ -1269,11 +1357,12 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     <div>
                         <h4 className="font-bold text-blue-900 mb-2">Three-Way Interactive Selection</h4>
                         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                            <li><strong>Click points</strong> in any of the three views (map, temporal plot, or 3D plot) to select/deselect individual earthquakes</li>
-                            <li><strong>Draw polygon</strong> on the map to select multiple earthquakes within a custom area</li>
-                            <li><strong>Selections sync</strong> automatically across all three visualizations</li>
-                            <li>Selected earthquakes are highlighted in <span className="text-red-600 font-bold">red</span> in all views</li>
-                            <li><strong>3D Plot:</strong> Drag to rotate, scroll to zoom, and explore the spatial distribution with depth</li>
+                            <li><strong>Individual mode:</strong> click any point to select/deselect that single event across all three views</li>
+                            <li><strong>Cluster mode:</strong> click any point to select/deselect every event in its cluster simultaneously — noise points (label −1) remain individual</li>
+                            <li><strong>Selections sync</strong> automatically across the map, temporal plot, and 3D plot</li>
+                            <li>Selected events are highlighted in <span className="text-red-600 font-bold">red with a white halo</span> for clear visual distinction</li>
+                            <li>Sliders <strong>auto-apply</strong> 600 ms after you stop moving them — the Apply button still provides instant commit</li>
+                            <li><strong>3D Plot:</strong> drag to rotate, scroll to zoom, explore spatial distribution with depth</li>
                         </ul>
                     </div>
                 </div>

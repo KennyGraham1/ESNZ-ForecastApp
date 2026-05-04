@@ -106,10 +106,11 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                 z: d.depth,
                 color: d.isSelected ? '#ef4444' : getClusterColor(d.cluster),
                 marker: {
-                    radius: getMarkerRadius(d.magnitude),
-                    fillOpacity: d.isSelected ? 0.95 : 0.7,
-                    lineWidth: d.isSelected ? 2 : 0.5,
-                    lineColor: d.isSelected ? '#dc2626' : 'rgba(255,255,255,0.3)'
+                    // Selected: enlarged + white ring creates a visible halo effect
+                    radius: d.isSelected ? getMarkerRadius(d.magnitude) + 3 : getMarkerRadius(d.magnitude),
+                    fillOpacity: d.isSelected ? 1 : 0.7,
+                    lineWidth: d.isSelected ? 3 : 0.5,
+                    lineColor: d.isSelected ? '#ffffff' : 'rgba(255,255,255,0.3)'
                 },
                 custom: {
                     magnitude: d.magnitude,

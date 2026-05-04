@@ -76,18 +76,39 @@ function ClusterMarkersLayer({
         const renderer = L.canvas({ padding: 0.5 });
         let bounds = L.latLngBounds([]);
 
-        points.forEach(p => {
+        // Canvas renderer paints in insertion order — render unselected first so
+        // selected points always appear on top.
+        const sortedPoints = [...points].sort((a, b) => {
+            if (a.isSelected === b.isSelected) return 0;
+            return a.isSelected ? 1 : -1;
+        });
+
+        sortedPoints.forEach(p => {
             const wrappedLon = p.lon < 0 ? p.lon + 360 : p.lon;
             const latLng = L.latLng(p.lat, wrappedLon);
             bounds.extend(latLng);
 
-            // Give selected points a distinct red look and bring them front-ish by rendering later
-            // (we handle selected ordering below)
             const color = p.isSelected ? '#ef4444' : p.color;
             const border = p.isSelected ? '#dc2626' : darkenHex(p.color, 40);
-            const radius = p.isSelected ? 6 : 4;
+            const radius = p.isSelected ? 7 : 4;
             const weight = p.isSelected ? 2 : 1;
             const opacity = p.isSelected ? 1 : 0.8;
+
+            // Glowing halo ring rendered behind the main marker for selected points
+            if (p.isSelected) {
+                const halo = L.circleMarker(latLng, {
+                    renderer,
+                    radius: radius + 5,
+                    fillColor: 'transparent',
+                    color: '#ef4444',
+                    weight: 2.5,
+                    fillOpacity: 0,
+                    opacity: 0.35,
+                    interactive: false,
+                    bubblingMouseEvents: false,
+                } as L.CircleMarkerOptions);
+                group.addLayer(halo);
+            }
 
             const circle = L.circleMarker(latLng, {
                 renderer,
@@ -119,15 +140,6 @@ function ClusterMarkersLayer({
             });
 
             group.addLayer(circle);
-        });
-
-        // Add a "bringToFront" style effect by re-adding selected points 
-        // to canvas so they render on top
-        points.filter(p => p.isSelected).forEach(p => {
-             // they are already in the array, but we could add them last. 
-             // Canvas renderer processes them in order. 
-             // We'd have to sort points. 
-             // Actually it's fine, let's keep it simple.
         });
 
         // Fit map bounds if this is the first substantial load
