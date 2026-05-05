@@ -36,7 +36,8 @@ export interface GeoNetFetchReport {
     chunksEmpty: number;
     chunksSplit: number;
     truncatedChunks: number;
-    invalidFeatures: number;
+    invalidFeatures: number;  // missing/unparseable required fields
+    skippedFeatures: number;  // valid records excluded by bbox or event-type filter
     duplicateEvents: number;
     partial: boolean;
     issues: GeoNetFetchIssue[];
@@ -58,7 +59,8 @@ interface ChunkResult {
     empty: boolean;
     splitCount: number;
     truncatedCount: number;
-    invalidFeatures: number;
+    invalidFeatures: number;  // missing/unparseable required fields
+    skippedFeatures: number;  // valid records excluded by bbox or event-type filter
     issues: GeoNetFetchIssue[];
 }
 
@@ -107,10 +109,14 @@ function issue(type: FetchIssueType, chunk: Chunk, message: string, status?: num
     };
 }
 
-function parseGeoNetFeature(feature: GeoNetFeature, eventType?: string | null): StoredEarthquake | null {
+// Return value semantics:
+//   StoredEarthquake  — accepted
+//   'invalid'         — missing/unparseable required fields
+//   'skipped'         — valid record excluded by bbox or event-type filter
+function parseGeoNetFeature(feature: GeoNetFeature, eventType?: string | null): StoredEarthquake | 'invalid' | 'skipped' {
     const props = feature.properties;
     const coords = feature.geometry?.coordinates;
-    if (!props || !Array.isArray(coords)) return null;
+    if (!props || !Array.isArray(coords)) return 'invalid';
 
     const eventID = asOptionalString(props.publicid);
     const time = asOptionalString(props.origintime);
@@ -120,24 +126,19 @@ function parseGeoNetFeature(feature: GeoNetFeature, eventType?: string | null): 
     const magnitude = asFiniteNumber(props.magnitude);
     const featureEventType = asOptionalString(props.eventtype);
 
-    if (
-        !eventID ||
-        !time ||
-        lon === null ||
-        lat === null ||
-        depth === null ||
-        magnitude === null ||
-        !isWithinNZBounds(lat, lon)
-    ) {
-        return null;
-    }
-
-    if (eventType && featureEventType?.toLowerCase() !== eventType.toLowerCase()) {
-        return null;
+    if (!eventID || !time || lon === null || lat === null || depth === null || magnitude === null) {
+        return 'invalid';
     }
 
     const timeMs = new Date(time).getTime();
-    if (!Number.isFinite(timeMs)) return null;
+    if (!Number.isFinite(timeMs)) return 'invalid';
+
+    // Bbox and event-type are filter criteria, not data errors.
+    if (!isWithinNZBounds(lat, lon)) return 'skipped';
+    // Only reject if eventtype is explicitly set to a different type.
+    // Events with null/missing eventtype are unreviewed automatic solutions
+    // (almost always earthquakes) and should be included.
+    if (eventType && featureEventType !== undefined && featureEventType.toLowerCase() !== eventType.toLowerCase()) return 'skipped';
 
     return {
         eventID,
@@ -255,6 +256,7 @@ async function fetchChunkRecursive(
                     splitCount: a.splitCount + b.splitCount + 1,
                     truncatedCount: a.truncatedCount + b.truncatedCount,
                     invalidFeatures: a.invalidFeatures + b.invalidFeatures,
+                    skippedFeatures: a.skippedFeatures + b.skippedFeatures,
                     issues: [...a.issues, ...b.issues],
                 };
             }
@@ -266,18 +268,22 @@ async function fetchChunkRecursive(
                 splitCount: 0,
                 truncatedCount: 1,
                 invalidFeatures: 0,
+                skippedFeatures: 0,
                 issues: [issue('truncated', chunk, 'GeoNet returned the maximum 20,000 features for a minimum-size chunk; data may be incomplete')],
             };
         }
 
         let invalidFeatures = 0;
+        let skippedFeatures = 0;
         const events: StoredEarthquake[] = [];
         for (const feature of features) {
             const parsed = parseGeoNetFeature(feature, eventType);
-            if (parsed) {
-                events.push(parsed);
-            } else {
+            if (parsed === 'invalid') {
                 invalidFeatures++;
+            } else if (parsed === 'skipped') {
+                skippedFeatures++;
+            } else {
+                events.push(parsed);
             }
         }
 
@@ -292,6 +298,7 @@ async function fetchChunkRecursive(
             splitCount: 0,
             truncatedCount: 0,
             invalidFeatures,
+            skippedFeatures,
             issues,
         };
     } catch (err) {
@@ -311,6 +318,7 @@ async function fetchChunkRecursive(
                 splitCount: a.splitCount + b.splitCount + 1,
                 truncatedCount: a.truncatedCount + b.truncatedCount,
                 invalidFeatures: a.invalidFeatures + b.invalidFeatures,
+                skippedFeatures: a.skippedFeatures + b.skippedFeatures,
                 issues: [...a.issues, ...b.issues],
             };
         }
@@ -322,6 +330,7 @@ async function fetchChunkRecursive(
             splitCount: 0,
             truncatedCount: 0,
             invalidFeatures: 0,
+            skippedFeatures: 0,
             issues: [issue(status ? 'http' : 'network', chunk, err instanceof Error ? err.message : 'Unknown GeoNet fetch error', status)],
         };
     }
@@ -403,6 +412,7 @@ export async function fetchFromGeoNetWithReport(
         chunksSplit: results.reduce((sum, result) => sum + (result?.splitCount ?? 0), 0),
         truncatedChunks,
         invalidFeatures: results.reduce((sum, result) => sum + (result?.invalidFeatures ?? 0), 0),
+        skippedFeatures: results.reduce((sum, result) => sum + (result?.skippedFeatures ?? 0), 0),
         duplicateEvents: duplicates,
         partial: chunksFailed > 0 || truncatedChunks > 0,
         issues,

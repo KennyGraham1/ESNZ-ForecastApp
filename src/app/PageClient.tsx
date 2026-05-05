@@ -192,7 +192,7 @@ export default function PageClient() {
     setFilters(newFilters);
   }, []);
 
-  useMemo(() => {
+  useEffect(() => {
     if (dataDateRange.min && dataDateRange.max) {
       setFilters(prev => ({
         ...prev,
@@ -200,7 +200,6 @@ export default function PageClient() {
         endDate: dataDateRange.max
       }));
     }
-    return null;
   }, [dataDateRange]);
 
   const filteredEarthquakes = useMemo(() => {

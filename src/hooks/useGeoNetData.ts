@@ -125,7 +125,7 @@ function buildFetchWarnings(report?: GeoNetFetchReport): string[] {
         warnings.push(`${report.truncatedChunks} GeoNet chunk${report.truncatedChunks === 1 ? '' : 's'} still reached the 20,000-event limit after splitting.`);
     }
     if (report.invalidFeatures > 0) {
-        warnings.push(`${report.invalidFeatures} GeoNet feature${report.invalidFeatures === 1 ? '' : 's'} were skipped because required fields were invalid.`);
+        warnings.push(`${report.invalidFeatures} GeoNet feature${report.invalidFeatures === 1 ? ' was' : 's were'} skipped due to missing or unparseable required fields.`);
     }
     if (report.duplicateEvents > 0) {
         warnings.push(`${report.duplicateEvents} duplicate GeoNet event${report.duplicateEvents === 1 ? '' : 's'} were removed by public ID.`);
@@ -150,12 +150,16 @@ export function useGeoNetData({
     const [newEventsAdded, setNewEventsAdded] = useState(0);
     const [fetchReport, setFetchReport] = useState<GeoNetFetchReport | undefined>(undefined);
 
-    // Guard against concurrent loads for the same magnitude.
-    const loadingRef = useRef(false);
+    // Track which magnitude is currently being loaded so we can:
+    //  - skip duplicate loads for the same magnitude (null = not loading)
+    //  - allow a NEW magnitude to start loading even while the old one is mid-flight
+    const loadingMagRef = useRef<number | null>(null);
     const gapFillRef = useRef(false);
-    // Track which minMagnitude is currently mounted so async callbacks don't
-    // apply results for a stale magnitude after a rapid switch.
+    // Track the currently-wanted magnitude so in-flight callbacks can detect
+    // that the user has moved on and discard stale results.
     const magnitudeRef = useRef(minMagnitude);
+    // Prevent concurrent refreshes without coupling refetch's identity to isRefreshing.
+    const isRefreshingRef = useRef(false);
 
     // ── Derived: filtered view of the full catalog ───────────────────────────
     const data = useMemo<CatalogResponse | undefined>(() => {
@@ -179,10 +183,12 @@ export function useGeoNetData({
         };
     }, [catalog, daysBack, startDate, endDate, newEventsAdded, fetchReport]);
 
-    // ── Load / gap-fill catalog ───────────────────────────────────────────────
+    // ── Load catalog ─────────────────────────────────────────────────────────
     const loadCatalog = useCallback(async (magnitude: number) => {
-        if (loadingRef.current) return;
-        loadingRef.current = true;
+        // Skip only if this exact magnitude is already in-flight.
+        // A different magnitude must be allowed through even while another loads.
+        if (loadingMagRef.current === magnitude) return;
+        loadingMagRef.current = magnitude;
         magnitudeRef.current = magnitude;
         setIsLoading(true);
         setError(null);
@@ -193,8 +199,10 @@ export function useGeoNetData({
             // 1. Try IndexedDB first — instant if data is already there.
             let cached = await getCachedCatalog(magnitude);
 
+            if (magnitudeRef.current !== magnitude) return; // user switched away mid-await
+
             if (!cached) {
-                // 2. First-ever load for this magnitude: fetch 1 year from GeoNet.
+                // 2. First-ever load for this magnitude: fetch DEFAULT_FETCH_DAYS from GeoNet.
                 console.log(`📥 No IndexedDB data for M${magnitude}+. Fetching initial ${DEFAULT_FETCH_DAYS} days…`);
                 const now = new Date();
                 const fetchStart = new Date(Date.now() - DEFAULT_FETCH_DAYS * 24 * 60 * 60 * 1000);
@@ -219,13 +227,13 @@ export function useGeoNetData({
             if (magnitudeRef.current !== magnitude) return;
             setCatalog(cached);
         } catch (err) {
-            console.error('❌ Error loading catalog:', err);
-            setError(err instanceof Error ? err : new Error('Failed to load earthquake data'));
-        } finally {
             if (magnitudeRef.current === magnitude) {
-                setIsLoading(false);
+                console.error('❌ Error loading catalog:', err);
+                setError(err instanceof Error ? err : new Error('Failed to load earthquake data'));
             }
-            loadingRef.current = false;
+        } finally {
+            if (loadingMagRef.current === magnitude) loadingMagRef.current = null;
+            if (magnitudeRef.current === magnitude) setIsLoading(false);
         }
     }, []);
 
@@ -272,6 +280,7 @@ export function useGeoNetData({
     // ── Effect: reload when minMagnitude changes ──────────────────────────────
     useEffect(() => {
         setCatalog(null);
+        gapFillRef.current = false; // stale gap-fill for old magnitude must not block the new one
         loadCatalog(minMagnitude);
     }, [minMagnitude, loadCatalog]);
 
@@ -298,7 +307,8 @@ export function useGeoNetData({
 
     // ── Incremental refresh (user-triggered) ─────────────────────────────────
     const refetch = useCallback(async () => {
-        if (!catalog || isRefreshing) return;
+        if (!catalog || isRefreshingRef.current) return;
+        isRefreshingRef.current = true;
         setIsRefreshing(true);
         setNewEventsAdded(0);
 
@@ -330,9 +340,10 @@ export function useGeoNetData({
         } catch (err) {
             console.error('❌ Refresh failed:', err);
         } finally {
+            isRefreshingRef.current = false;
             setIsRefreshing(false);
         }
-    }, [catalog, isRefreshing]);
+    }, [catalog]); // isRefreshing removed — guarded by ref to keep identity stable
 
     return { data, isLoading, isRefreshing, error, refetch };
 }
