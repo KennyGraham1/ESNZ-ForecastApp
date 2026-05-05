@@ -97,6 +97,8 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
     // Selection mode: 'individual' selects one point; 'cluster' selects all events in the same cluster
     const [selectionMode, setSelectionMode] = useState<'individual' | 'cluster'>('individual');
+    const [showOnlySelectedCluster, setShowOnlySelectedCluster] = useState(false);
+    const [isolatedClusterLabel, setIsolatedClusterLabel] = useState<number | null>(null);
 
     // Sync local state when context values change (e.g. initial load or external update)
     useEffect(() => {
@@ -218,6 +220,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         if (selectedIndices.size > 0) {
             clearSelection();
         }
+        setIsolatedClusterLabel(null);
     }, [processedEarthquakes, clearSelection]);
 
     // POLYGON SELECTION FEATURE - STATE KEPT BUT FEATURE DISABLED
@@ -270,10 +273,14 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
 
         if (exactClusterSelected) {
             clearSelection();
+            setIsolatedClusterLabel(null);
         } else {
             setSelectedIndices(new Set(clusterIndices));
+            if (showOnlySelectedCluster) {
+                setIsolatedClusterLabel(clickedLabel);
+            }
         }
-    }, [selectionMode, clusteringResult, toggleSelection, selectedIndices, setSelectedIndices, clearSelection]);
+    }, [selectionMode, clusteringResult, toggleSelection, selectedIndices, setSelectedIndices, clearSelection, showOnlySelectedCluster]);
 
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -586,9 +593,61 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         });
     }, [filteredEarthquakes, clusteringResult, selectedIndices, eventIndexMap]);
 
+    const selectedClusterLabel = useMemo(() => {
+        if (!clusteringResult || selectedIndices.size === 0) return null;
+
+        let label: number | null = null;
+        for (const idx of selectedIndices) {
+            const currentLabel = clusteringResult.labels[idx] ?? -1;
+            if (currentLabel < 0) return null;
+            if (label === null) {
+                label = currentLabel;
+            } else if (label !== currentLabel) {
+                return null;
+            }
+        }
+
+        if (label === null) return null;
+
+        let clusterSize = 0;
+        clusteringResult.labels.forEach(currentLabel => {
+            if (currentLabel === label) clusterSize++;
+        });
+
+        return selectedIndices.size === clusterSize ? label : null;
+    }, [clusteringResult, selectedIndices]);
+
+    useEffect(() => {
+        if (!showOnlySelectedCluster) {
+            if (isolatedClusterLabel !== null) setIsolatedClusterLabel(null);
+            return;
+        }
+
+        setIsolatedClusterLabel(selectedClusterLabel);
+    }, [showOnlySelectedCluster, selectedClusterLabel, isolatedClusterLabel]);
+
+    const visibleChartData = useMemo(() => {
+        if (!showOnlySelectedCluster || isolatedClusterLabel === null) {
+            return chartData;
+        }
+
+        return chartData.filter(d => d.cluster === isolatedClusterLabel);
+    }, [chartData, showOnlySelectedCluster, isolatedClusterLabel]);
+
+    const visibleExportEarthquakes = useMemo(() => {
+        return visibleChartData
+            .map(d => processedEarthquakes[d.originalIndex])
+            .filter((eq): eq is EarthquakeData => Boolean(eq));
+    }, [visibleChartData, processedEarthquakes]);
+
+    const visibleClusterLabels = useMemo(() => {
+        if (!clusteringResult) return undefined;
+        return visibleChartData.map(d => d.cluster);
+    }, [visibleChartData, clusteringResult]);
+
     // Create temporal plot options
     const temporalPlotOptions: Highcharts.Options = useMemo(() => {
-        const validData = chartData.map((d) => {
+        const validData = visibleChartData.map((d) => {
             try {
                 const time = d.time instanceof Date ? d.time : new Date(d.time);
                 if (isNaN(time.getTime())) return null;
@@ -760,11 +819,11 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 useHTML: true,
             },
         };
-    }, [chartData, handlePointClick]);
+    }, [visibleChartData, handlePointClick]);
 
     // Prepare earthquake data for map
     const mapPoints = useMemo(() => {
-        return chartData
+        return visibleChartData
             .map((d) => {
                 const lat = d.lat;
                 const lon = d.lon;
@@ -799,10 +858,11 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 };
             })
             .filter((eq): eq is NonNullable<typeof eq> => eq !== null);
-    }, [chartData]);
+    }, [visibleChartData]);
 
     const handleClearSelection = useCallback(() => {
         clearSelection();
+        setIsolatedClusterLabel(null);
     }, [clearSelection]);
 
 
@@ -824,10 +884,11 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             </div>
 
             {/* Selection Status and Controls Bar */}
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                    <div className="flex-1 space-y-2">
-                        <div className="text-sm font-medium text-gray-700">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <div className="grid gap-4 xl:grid-cols-[minmax(220px,0.75fr)_minmax(0,1.65fr)_minmax(260px,0.85fr)] items-start">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3.5 space-y-2.5">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Selection Summary</div>
+                        <div className="text-sm font-medium text-gray-800">
                             {selectedIndices.size > 0 ? (
                                 <span className="flex items-center gap-2">
                                     <span className="inline-block w-3 h-3 bg-red-500 rounded-full"></span>
@@ -844,7 +905,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             )}
                         </div>
                         {clusteringResult && !isClusteringCalculating && (
-                            <div className="text-xs text-gray-500 flex flex-wrap gap-3">
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-gray-500">
                                 <span>
                                     Algorithm: <span className="font-semibold uppercase">{clusteringAlgorithm}</span>
                                 </span>
@@ -868,17 +929,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col md:flex-row gap-4 flex-1 justify-end flex-wrap">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Algorithm</label>
+                    <div className="min-w-0 space-y-3 rounded-lg border border-gray-200 bg-white p-3.5">
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Algorithm</label>
                             <select
                                 value={clusteringAlgorithm}
                                 onChange={(e) => {
                                     const algo = e.target.value as any;
                                     setClusteringAlgorithm(algo);
                                     clearSelection();
+                                    setIsolatedClusterLabel(null);
                                 }}
-                                className="text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                 title="Select clustering algorithm"
                             >
                                 <optgroup label="Density-Based">
@@ -907,7 +969,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 </optgroup>
                             </select>
                         </div>
-                        <div className="flex items-center gap-3 flex-wrap text-xs text-gray-600">
+                        <div className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3 text-xs text-gray-600 [&>div]:min-w-0 [&>div]:rounded-md [&>div]:border [&>div]:border-gray-200 [&>div]:bg-gray-50 [&>div]:px-3 [&>div]:py-2 [&>div]:space-y-1 [&_input[type=range]]:w-full">
                             {(clusteringAlgorithm === 'dbscan' || clusteringAlgorithm === 'optics') && (
                                 <>
                                     <div className="flex flex-col">
@@ -1004,197 +1066,197 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     </div>
                                 </>
                             )}
+                            {(clusteringAlgorithm === 'st-dbscan') && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Spatial Epsilon: <span className="font-semibold">{localEpsilon} km</span></span>
+                                        <input
+                                            type="range"
+                                            min={5}
+                                            max={100}
+                                            step={5}
+                                            value={localEpsilon}
+                                            onChange={(e) => setLocalEpsilon(parseInt(e.target.value))}
+                                            title="Spatial search radius"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Temporal Epsilon: <span className="font-semibold">{localEpsilonTemporal} days</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={30}
+                                            step={1}
+                                            value={localEpsilonTemporal}
+                                            onChange={(e) => setLocalEpsilonTemporal(parseInt(e.target.value))}
+                                            title="Temporal search window"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Min pts: <span className="font-semibold">{localMinSamples}</span></span>
+                                        <input
+                                            type="range"
+                                            min={3}
+                                            max={20}
+                                            step={1}
+                                            value={localMinSamples}
+                                            onChange={(e) => setLocalMinSamples(parseInt(e.target.value))}
+                                            title="Minimum neighbors (space-time)"
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {(clusteringAlgorithm === 'tmc') && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Radius Factor (rfact): <span className="font-semibold">{localTmcRfact}</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={20}
+                                            step={1}
+                                            value={localTmcRfact}
+                                            onChange={(e) => setLocalTmcRfact(parseInt(e.target.value))}
+                                            title="Multiplier for crack radius interaction"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Base Look-ahead (tau0): <span className="font-semibold">{localTmcTau0} days</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.5}
+                                            max={10}
+                                            step={0.5}
+                                            value={localTmcTau0}
+                                            onChange={(e) => setLocalTmcTau0(parseFloat(e.target.value))}
+                                            title="Minimum look-ahead time"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Max Look-ahead: <span className="font-semibold">{localTmcTauMax} days</span></span>
+                                        <input
+                                            type="range"
+                                            min={5}
+                                            max={60}
+                                            step={1}
+                                            value={localTmcTauMax}
+                                            onChange={(e) => setLocalTmcTauMax(parseInt(e.target.value))}
+                                            title="Maximum look-ahead time"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Probability (p1): <span className="font-semibold">{localTmcP1}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.5}
+                                            max={0.999}
+                                            step={0.001}
+                                            value={localTmcP1}
+                                            onChange={(e) => setLocalTmcP1(parseFloat(e.target.value))}
+                                            title="Probability of observing next event in sequence"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Mag Scale (xk): <span className="font-semibold">{localTmcXk.toFixed(2)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.1}
+                                            max={1.0}
+                                            step={0.05}
+                                            value={localTmcXk}
+                                            onChange={(e) => setLocalTmcXk(parseFloat(e.target.value))}
+                                            title="Magnitude scaling factor for interaction zone (xk)"
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {(clusteringAlgorithm === 'hardebeck-2019') && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Min Mag: <span className="font-semibold">{localHardebeckMinMag.toFixed(1)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={4.0}
+                                            max={8.0}
+                                            step={0.1}
+                                            value={localHardebeckMinMag}
+                                            onChange={(e) => setLocalHardebeckMinMag(parseFloat(e.target.value))}
+                                            title="Minimum mainshock magnitude to identifying clusters"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Mainshock Exclusion: <span className="font-semibold">{localHardebeckMainshockTimeYears} years</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={10}
+                                            step={0.5}
+                                            value={localHardebeckMainshockTimeYears}
+                                            onChange={(e) => setLocalHardebeckMainshockTimeYears(parseFloat(e.target.value))}
+                                            title="Time window to exclude events near larger mainshocks"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Aftershock Window: <span className="font-semibold">{localHardebeckTimeWindow} days</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={60}
+                                            step={1}
+                                            value={localHardebeckTimeWindow}
+                                            onChange={(e) => setLocalHardebeckTimeWindow(parseInt(e.target.value))}
+                                            title="Duration after mainshock to associate events"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Rupture Mult: <span className="font-semibold">{localHardebeckRuptureMult}x</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={10}
+                                            step={0.5}
+                                            value={localHardebeckRuptureMult}
+                                            onChange={(e) => setLocalHardebeckRuptureMult(parseFloat(e.target.value))}
+                                            title="Multiplier for Wells & Coppersmith rupture length"
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {(clusteringAlgorithm === 'hdbscan') && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Min Cluster Size: <span className="font-semibold">{localHdbscanMinClusterSize}</span></span>
+                                        <input
+                                            type="range"
+                                            min={2}
+                                            max={50}
+                                            step={1}
+                                            value={localHdbscanMinClusterSize}
+                                            onChange={(e) => setLocalHdbscanMinClusterSize(parseInt(e.target.value))}
+                                            title="Smallest grouping considered a true cluster (larger = fewer, more stable clusters)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Min Samples: <span className="font-semibold">{localHdbscanMinSamples}</span></span>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={30}
+                                            step={1}
+                                            value={localHdbscanMinSamples}
+                                            onChange={(e) => setLocalHdbscanMinSamples(parseInt(e.target.value))}
+                                            title="k-NN neighbourhood size for core-distance (larger = more conservative, fewer noise points)"
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
-                        {(clusteringAlgorithm === 'st-dbscan') && (
-                            <>
-                                <div className="flex flex-col">
-                                    <span>Spatial Epsilon: <span className="font-semibold">{localEpsilon} km</span></span>
-                                    <input
-                                        type="range"
-                                        min={5}
-                                        max={100}
-                                        step={5}
-                                        value={localEpsilon}
-                                        onChange={(e) => setLocalEpsilon(parseInt(e.target.value))}
-                                        title="Spatial search radius"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Temporal Epsilon: <span className="font-semibold">{localEpsilonTemporal} days</span></span>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={30}
-                                        step={1}
-                                        value={localEpsilonTemporal}
-                                        onChange={(e) => setLocalEpsilonTemporal(parseInt(e.target.value))}
-                                        title="Temporal search window"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Min pts: <span className="font-semibold">{localMinSamples}</span></span>
-                                    <input
-                                        type="range"
-                                        min={3}
-                                        max={20}
-                                        step={1}
-                                        value={localMinSamples}
-                                        onChange={(e) => setLocalMinSamples(parseInt(e.target.value))}
-                                        title="Minimum neighbors (space-time)"
-                                    />
-                                </div>
-                            </>
-                        )}
-                        {(clusteringAlgorithm === 'tmc') && (
-                            <>
-                                <div className="flex flex-col">
-                                    <span>Radius Factor (rfact): <span className="font-semibold">{localTmcRfact}</span></span>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={20}
-                                        step={1}
-                                        value={localTmcRfact}
-                                        onChange={(e) => setLocalTmcRfact(parseInt(e.target.value))}
-                                        title="Multiplier for crack radius interaction"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Base Look-ahead (tau0): <span className="font-semibold">{localTmcTau0} days</span></span>
-                                    <input
-                                        type="range"
-                                        min={0.5}
-                                        max={10}
-                                        step={0.5}
-                                        value={localTmcTau0}
-                                        onChange={(e) => setLocalTmcTau0(parseFloat(e.target.value))}
-                                        title="Minimum look-ahead time"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Max Look-ahead: <span className="font-semibold">{localTmcTauMax} days</span></span>
-                                    <input
-                                        type="range"
-                                        min={5}
-                                        max={60}
-                                        step={1}
-                                        value={localTmcTauMax}
-                                        onChange={(e) => setLocalTmcTauMax(parseInt(e.target.value))}
-                                        title="Maximum look-ahead time"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Probability (p1): <span className="font-semibold">{localTmcP1}</span></span>
-                                    <input
-                                        type="range"
-                                        min={0.5}
-                                        max={0.999}
-                                        step={0.001}
-                                        value={localTmcP1}
-                                        onChange={(e) => setLocalTmcP1(parseFloat(e.target.value))}
-                                        title="Probability of observing next event in sequence"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Mag Scale (xk): <span className="font-semibold">{localTmcXk.toFixed(2)}</span></span>
-                                    <input
-                                        type="range"
-                                        min={0.1}
-                                        max={1.0}
-                                        step={0.05}
-                                        value={localTmcXk}
-                                        onChange={(e) => setLocalTmcXk(parseFloat(e.target.value))}
-                                        title="Magnitude scaling factor for interaction zone (xk)"
-                                    />
-                                </div>
-                            </>
-                        )}
-                        {(clusteringAlgorithm === 'hardebeck-2019') && (
-                            <>
-                                <div className="flex flex-col">
-                                    <span>Min Mag: <span className="font-semibold">{localHardebeckMinMag.toFixed(1)}</span></span>
-                                    <input
-                                        type="range"
-                                        min={4.0}
-                                        max={8.0}
-                                        step={0.1}
-                                        value={localHardebeckMinMag}
-                                        onChange={(e) => setLocalHardebeckMinMag(parseFloat(e.target.value))}
-                                        title="Minimum mainshock magnitude to identifying clusters"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Mainshock Exclusion: <span className="font-semibold">{localHardebeckMainshockTimeYears} years</span></span>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={10}
-                                        step={0.5}
-                                        value={localHardebeckMainshockTimeYears}
-                                        onChange={(e) => setLocalHardebeckMainshockTimeYears(parseFloat(e.target.value))}
-                                        title="Time window to exclude events near larger mainshocks"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Aftershock Window: <span className="font-semibold">{localHardebeckTimeWindow} days</span></span>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={60}
-                                        step={1}
-                                        value={localHardebeckTimeWindow}
-                                        onChange={(e) => setLocalHardebeckTimeWindow(parseInt(e.target.value))}
-                                        title="Duration after mainshock to associate events"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Rupture Mult: <span className="font-semibold">{localHardebeckRuptureMult}x</span></span>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={10}
-                                        step={0.5}
-                                        value={localHardebeckRuptureMult}
-                                        onChange={(e) => setLocalHardebeckRuptureMult(parseFloat(e.target.value))}
-                                        title="Multiplier for Wells & Coppersmith rupture length"
-                                    />
-                                </div>
-                            </>
-                        )}
-                        {(clusteringAlgorithm === 'hdbscan') && (
-                            <>
-                                <div className="flex flex-col">
-                                    <span>Min Cluster Size: <span className="font-semibold">{localHdbscanMinClusterSize}</span></span>
-                                    <input
-                                        type="range"
-                                        min={2}
-                                        max={50}
-                                        step={1}
-                                        value={localHdbscanMinClusterSize}
-                                        onChange={(e) => setLocalHdbscanMinClusterSize(parseInt(e.target.value))}
-                                        title="Smallest grouping considered a true cluster (larger = fewer, more stable clusters)"
-                                    />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span>Min Samples: <span className="font-semibold">{localHdbscanMinSamples}</span></span>
-                                    <input
-                                        type="range"
-                                        min={1}
-                                        max={30}
-                                        step={1}
-                                        value={localHdbscanMinSamples}
-                                        onChange={(e) => setLocalHdbscanMinSamples(parseInt(e.target.value))}
-                                        title="k-NN neighbourhood size for core-distance (larger = more conservative, fewer noise points)"
-                                    />
-                                </div>
-                            </>
-                        )}
                     </div>
-                    <div className="flex flex-col gap-3 ml-auto items-end">
-                        <div className="flex flex-col bg-gray-50 px-3 py-2 rounded-md border border-gray-200 w-fit">
-                            <span className="text-xs font-semibold text-gray-500 mb-1">Display Options</span>
+                    <div className="space-y-2.5 rounded-lg border border-gray-200 bg-gray-50 p-3.5">
+                        <div className="space-y-2">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Display Options</span>
                             <select
-                                className={`px-2 py-1 bg-white border border-gray-300 rounded text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${clusteringAlgorithm === 'kmeans' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className={`w-full px-2 py-1.5 bg-white border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${clusteringAlgorithm === 'kmeans' ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 value={includeNoise ? "show" : "hide"}
                                 onChange={(e) => setIncludeNoise(e.target.value === "show")}
                                 disabled={clusteringAlgorithm === 'kmeans'}
@@ -1208,11 +1270,16 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             {clusteringAlgorithm === 'kmeans' && (
                                 <span className="text-xs text-amber-600 mt-1">K-Means has no noise</span>
                             )}
-                            <span className="text-xs font-semibold text-gray-500 mt-3 mb-1">Selection Mode</span>
-                            <div className="flex gap-1" title="Choose whether clicking a point selects the individual event or every event in the same cluster">
+                        </div>
+                        <div className="space-y-2">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Selection Mode</span>
+                            <div className="grid grid-cols-2 gap-2" title="Choose whether clicking a point selects the individual event or every event in the same cluster">
                                 <button
-                                    onClick={() => setSelectionMode('individual')}
-                                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${selectionMode === 'individual'
+                                    onClick={() => {
+                                        setSelectionMode('individual');
+                                        setShowOnlySelectedCluster(false);
+                                    }}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${selectionMode === 'individual'
                                         ? 'bg-blue-600 text-white shadow-sm'
                                         : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
                                     }`}
@@ -1222,7 +1289,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 </button>
                                 <button
                                     onClick={() => setSelectionMode('cluster')}
-                                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${selectionMode === 'cluster'
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${selectionMode === 'cluster'
                                         ? 'bg-purple-600 text-white shadow-sm'
                                         : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
                                     }`}
@@ -1235,23 +1302,61 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 <span className="text-xs text-purple-600 mt-1">Click any point to select its cluster</span>
                             )}
                         </div>
-                        <button
-                            onClick={handleApplyParameters}
-                            disabled={isClusteringCalculating}
-                            className={`px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors w-fit ${isClusteringCalculating
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
-                                }`}
-                        >
-                            {isClusteringCalculating ? (
-                                <span className="flex items-center gap-2">
-                                    <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
-                                    Calculating...
+                        <label className="flex items-start gap-2 rounded-md border border-gray-200 bg-white p-2.5 text-xs text-gray-700">
+                            <input
+                                type="checkbox"
+                                className="mt-0.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                checked={showOnlySelectedCluster}
+                                disabled={!clusteringResult}
+                                onChange={(e) => {
+                                    const enabled = e.target.checked;
+                                    setShowOnlySelectedCluster(enabled);
+                                    if (enabled) {
+                                        setSelectionMode('cluster');
+                                        setIsolatedClusterLabel(selectedClusterLabel);
+                                    } else {
+                                        setIsolatedClusterLabel(null);
+                                    }
+                                }}
+                            />
+                            <span>
+                                <span className="font-semibold">Show Only Selected Cluster</span>
+                                <span className="block text-gray-500">
+                                    {showOnlySelectedCluster
+                                        ? isolatedClusterLabel !== null
+                                            ? `Views isolated to Cluster ${isolatedClusterLabel}`
+                                            : 'Click a clustered event to isolate it in all plots'
+                                        : 'All plots show visible events'}
                                 </span>
-                            ) : (
-                                'Apply Parameters'
+                            </span>
+                        </label>
+                        <div className="grid gap-2 pt-1">
+                            <button
+                                onClick={handleApplyParameters}
+                                disabled={isClusteringCalculating}
+                                className={`w-full px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors ${isClusteringCalculating
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                                    }`}
+                            >
+                                {isClusteringCalculating ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
+                                        Calculating...
+                                    </span>
+                                ) : (
+                                    'Apply Parameters'
+                                )}
+                            </button>
+                            {selectedIndices.size > 0 && (
+                                <button
+                                    onClick={handleClearSelection}
+                                    className="w-full px-4 py-2 text-sm font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg transition-colors shadow-sm"
+                                >
+                                    Clear Selection
+                                </button>
                             )}
-                        </button>
+                        </div>
                     </div>
                     {/* POLYGON SELECTION FEATURE - UI BUTTONS - COMMENTED OUT FOR FUTURE RESTORATION
                         {!isDrawingPolygon ? (
@@ -1279,15 +1384,6 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             </>
                         )}
                         END OF POLYGON UI BUTTONS */}
-                    {selectedIndices.size > 0 && (
-                        <button
-                            onClick={handleClearSelection}
-                            className="px-4 py-2 text-sm font-medium bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors shadow-sm hover:shadow-md"
-                        >
-                            Clear Selection
-                        </button>
-                    )}
-
                 </div>
                 {/* POLYGON SELECTION FEATURE - DRAWING MODE MESSAGE - COMMENTED OUT FOR FUTURE RESTORATION
                 {isDrawingPolygon && (
@@ -1305,7 +1401,9 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 <div className="mb-4">
                     <h3 className="text-xl font-bold text-gray-800 mb-1">Spatial Map</h3>
                     <p className="text-sm text-gray-500">
-                        Click on points to select/deselect earthquakes.
+                        {showOnlySelectedCluster && isolatedClusterLabel !== null
+                            ? `Showing only Cluster ${isolatedClusterLabel}. Turn off the isolate toggle to restore all visible events.`
+                            : 'Click on points to select/deselect earthquakes.'}
                     </p>
                 </div>
                 <div className="h-[600px] border border-gray-200 rounded-lg overflow-hidden relative">
@@ -1322,12 +1420,14 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 <div className="mb-4">
                     <h3 className="text-xl font-bold text-gray-800 mb-1">Temporal Plot</h3>
                     <p className="text-sm text-gray-500">
-                        Click on points to select/deselect earthquakes. Selected events are highlighted in red.
+                        {showOnlySelectedCluster && isolatedClusterLabel !== null
+                            ? `Showing only Cluster ${isolatedClusterLabel}. Turn off the isolate toggle to restore all visible events.`
+                            : 'Click on points to select/deselect earthquakes. Selected events are highlighted in red.'}
                     </p>
                 </div>
                 <div className="h-[500px]">
                     <HighchartsReact
-                        key={`temp-${processedEarthquakes.length}-${clusteringAlgorithm}`}
+                        key={`temp-${processedEarthquakes.length}-${clusteringAlgorithm}-${showOnlySelectedCluster ? isolatedClusterLabel ?? 'pending' : 'all'}`}
                         highcharts={Highcharts}
                         options={temporalPlotOptions}
                         ref={chartRef}
@@ -1335,16 +1435,16 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                 </div>
                 <ChartExportButtons
                     chartRef={chartRef}
-                    data={processedEarthquakes}
+                    data={visibleExportEarthquakes}
                     filename="temporal-spatial-plot"
                     clusteringMetadata={clusteringResult?.metadata}
-                    clusterLabels={clusteringResult?.labels}
+                    clusterLabels={visibleClusterLabels}
                 />
             </div>
 
             {/* Panel 3: 3D Spatial Distribution */}
             <TemporalSpatial3DPlot
-                data={chartData as any}
+                data={visibleChartData as any}
                 onPointClick={handlePointClick}
             />
             {/* Info Card */}
