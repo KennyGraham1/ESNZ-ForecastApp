@@ -1,16 +1,37 @@
 /**
- * OPTIMIZATION: Web Worker for non-blocking spatial clustering
- * Prevents UI freezes during expensive clustering calculations
+ * Web Worker for non-blocking spatial clustering.
+ *
+ * Two input formats are accepted from the main thread:
+ *
+ *   1. Legacy (structured clone):
+ *      { earthquakes: EarthquakeData[], options, requestId }
+ *      Used as a fallback when Transferable support is unavailable.
+ *
+ *   2. Packed (zero-copy Transferable):
+ *      { buf: Float64Array, n: number, options, requestId }
+ *      buf layout per event (5 floats × n):  lat, lon, depth, mag, timeMs
+ *      The ArrayBuffer is transferred — no serialisation overhead.
+ *
+ * The response is always a ClusterResult (structured clone — it is small).
  */
 
-import { EarthquakeData } from '@/types/earthquake';
-import { calculateSpatialClustering, SpatialClusteringOptions, ClusterResult } from './clustering';
+import type { EarthquakeData } from '@/types/earthquake';
+import { calculateSpatialClustering } from './clustering';
+import type { SpatialClusteringOptions, ClusterResult } from './clusteringTypes';
 
-// Worker message types
-interface ClusteringRequest {
+const FIELDS = 5; // lat, lon, depth, mag, timeMs per event
+
+interface PackedRequest {
+    buf: Float64Array;
+    n: number;
+    options: SpatialClusteringOptions;
+    requestId: number;
+}
+
+interface LegacyRequest {
     earthquakes: EarthquakeData[];
     options: SpatialClusteringOptions;
-    requestId?: number; // For race condition handling
+    requestId?: number;
 }
 
 interface ClusteringResponse {
@@ -18,59 +39,69 @@ interface ClusteringResponse {
     result?: ClusterResult;
     error?: string;
     duration?: number;
-    requestId?: number; // Echo back request ID
+    requestId?: number;
 }
 
-// Handle messages from main thread
-self.onmessage = (e: MessageEvent<ClusteringRequest>) => {
-    const { earthquakes, options, requestId } = e.data;
-
-    console.log('🔄 Worker: Starting clustering...', earthquakes.length, 'events', options, 'requestId:', requestId);
+self.onmessage = (e: MessageEvent<PackedRequest | LegacyRequest>) => {
     const startTime = performance.now();
+    const data = e.data;
+    const requestId = (data as any).requestId;
 
     try {
-        // Validate input data
-        if (!earthquakes || !Array.isArray(earthquakes)) {
-            throw new Error('Invalid earthquakes data: expected array');
+        let earthquakes: EarthquakeData[];
+
+        if ('buf' in data && 'n' in data) {
+            // ── Packed format — reconstruct from Float64Array ─────────────────
+            const { buf, n } = data as PackedRequest;
+            earthquakes = new Array(n);
+            for (let i = 0; i < n; i++) {
+                const base = i * FIELDS;
+                const timeMs = buf[base + 4];
+                earthquakes[i] = {
+                    latitude:  buf[base],
+                    longitude: buf[base + 1],
+                    depth:     buf[base + 2],
+                    magnitude: buf[base + 3],
+                    timeMs,
+                    time:      new Date(timeMs),
+                    // Stub string fields — no clustering algorithm reads these
+                    eventID:   String(i),
+                    publicID:  String(i),
+                    locality:  '',
+                } as EarthquakeData;
+            }
+        } else {
+            // ── Legacy format (structured clone) ─────────────────────────────
+            const req = data as LegacyRequest;
+            if (!Array.isArray(req.earthquakes) || req.earthquakes.length === 0) {
+                throw new Error('Invalid or empty earthquakes array');
+            }
+            earthquakes = req.earthquakes;
         }
 
-        if (earthquakes.length === 0) {
-            throw new Error('Empty earthquakes array');
-        }
+        if (!data.options) throw new Error('Missing clustering options');
 
-        if (!options) {
-            throw new Error('Missing clustering options');
-        }
-
-        const result = calculateSpatialClustering(earthquakes, options);
+        const result = calculateSpatialClustering(earthquakes, data.options);
         const duration = performance.now() - startTime;
 
-        console.log(`✅ Worker: Clustering completed in ${duration.toFixed(2)}ms`);
-
-        // Send result back to main thread
         const response: ClusteringResponse = {
             success: true,
-            result: result || undefined,
+            result: result ?? undefined,
             duration,
-            requestId
+            requestId,
         };
-
         self.postMessage(response);
+
     } catch (error) {
         const duration = performance.now() - startTime;
-        console.error('❌ Worker: Clustering failed', error);
-
-        const response: ClusteringResponse = {
+        console.error('Worker: clustering failed', error);
+        self.postMessage({
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
             duration,
-            requestId
-        };
-
-        self.postMessage(response);
+            requestId,
+        } as ClusteringResponse);
     }
 };
 
-// Export empty object to make TypeScript happy
 export {};
-

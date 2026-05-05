@@ -112,7 +112,11 @@ export const PERFORMANCE_CONFIG = {
         TERMINATE_WORKER_AFTER_USE: false,
 
         // Maximum dataset size for clustering (prevent memory issues)
-        MAX_CLUSTERING_SIZE: 50000,
+        MAX_CLUSTERING_SIZE: 100000,
+
+        // Reservoir-sampled event count used by the TemporalSpatial tab.
+        // Raised from 3 000 to 5 000 — transferable ArrayBuffer workers make this affordable.
+        TEMPORAL_SPATIAL_SAMPLE_SIZE: 5000,
     },
 
     /**

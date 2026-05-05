@@ -3,7 +3,8 @@
 import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { FullscreenControl, ScaleControl } from './map/MapControls';
+
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ function ClusterMarkersLayer({
 
         const renderer = L.canvas({ padding: 0.5 });
         let bounds = L.latLngBounds([]);
+        const isTouch = typeof window !== 'undefined' && 'ontouchstart' in window;
 
         // Canvas renderer paints in insertion order — render unselected first so
         // selected points always appear on top.
@@ -121,19 +123,28 @@ function ClusterMarkersLayer({
                 bubblingMouseEvents: false,
             });
 
-            circle.bindTooltip(buildTooltipHTML(p), {
-                sticky: true,
-                className: 'eq-map-tooltip',
-                offset: [10, 0],
-            });
-
-            // Hover effects
-            circle.on('mouseover', function (this: L.CircleMarker) {
-                this.setStyle({ weight: 2, color: '#ffffff', fillOpacity: 1 });
-            });
-            circle.on('mouseout', function (this: L.CircleMarker) {
-                this.setStyle({ weight, color: border, fillOpacity: opacity });
-            });
+            if (isTouch) {
+                // On touch screens use a popup (opened by tap) so it doesn't
+                // compete with pan gestures.
+                circle.bindPopup(buildTooltipHTML(p), {
+                    className: 'eq-map-tooltip',
+                    closeButton: true,
+                    maxWidth: 260,
+                });
+            } else {
+                circle.bindTooltip(buildTooltipHTML(p), {
+                    sticky: true,
+                    className: 'eq-map-tooltip',
+                    offset: [10, 0],
+                });
+                // Hover highlight only makes sense on pointer devices
+                circle.on('mouseover', function (this: L.CircleMarker) {
+                    this.setStyle({ weight: 2, color: '#ffffff', fillOpacity: 1 });
+                });
+                circle.on('mouseout', function (this: L.CircleMarker) {
+                    this.setStyle({ weight, color: border, fillOpacity: opacity });
+                });
+            }
 
             circle.on('click', e => {
                 L.DomEvent.stopPropagation(e);
@@ -207,6 +218,8 @@ export default function LeafletClusterMap({ points, onPointClick, onMapClick }: 
         >
             <MapInstanceCapture />
             <EmptyMapClickHandler onMapClick={onMapClick} />
+            <FullscreenControl />
+            <ScaleControl />
             
             <LayersControl position="topright">
                 <LayersControl.BaseLayer checked name="CartoDB Light">

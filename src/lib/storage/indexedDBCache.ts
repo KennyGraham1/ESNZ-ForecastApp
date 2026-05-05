@@ -5,10 +5,37 @@
  */
 
 const DB_NAME = 'earthquake-forecast-cache';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // bumped: added workspaces + filterPresets stores
 const STORE_EARTHQUAKES = 'earthquakes';
 const STORE_CLUSTERING = 'clustering';
+const STORE_WORKSPACES = 'workspaces';
+const STORE_PRESETS = 'filterPresets';
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+// ── Public workspace / preset types ──────────────────────────────────────────
+
+/** Snapshot of clustering parameters + UI state saved by the user. */
+export interface ClusteringWorkspace {
+    id: string;           // UUID (crypto.randomUUID or timestamp-based)
+    name: string;         // user-defined label
+    savedAt: number;      // Date.now()
+    algorithm: string;
+    params: Record<string, number>;   // all slider values keyed by param name
+    selectionMode: 'individual' | 'cluster';
+}
+
+/** A named set of filter options saved by the user. */
+export interface FilterPreset {
+    id: string;
+    name: string;
+    savedAt: number;
+    minMagnitude: number;
+    maxMagnitude: number;
+    depthCategory: string;
+    startDate: string;
+    endDate: string;
+    polygon?: string;
+}
 
 interface CacheEntry<T> {
     key: string;
@@ -57,6 +84,14 @@ class IndexedDBCache {
                 }
                 if (!db.objectStoreNames.contains(STORE_CLUSTERING)) {
                     db.createObjectStore(STORE_CLUSTERING, { keyPath: 'key' });
+                }
+                if (!db.objectStoreNames.contains(STORE_WORKSPACES)) {
+                    const ws = db.createObjectStore(STORE_WORKSPACES, { keyPath: 'id' });
+                    ws.createIndex('savedAt', 'savedAt');
+                }
+                if (!db.objectStoreNames.contains(STORE_PRESETS)) {
+                    const ps = db.createObjectStore(STORE_PRESETS, { keyPath: 'id' });
+                    ps.createIndex('savedAt', 'savedAt');
                 }
 
                 console.log('📦 IndexedDB object stores created');
@@ -201,6 +236,54 @@ class IndexedDBCache {
     }
 
     /**
+     * Retrieve all records from a store (for stores with non-CacheEntry keyPath like 'id')
+     */
+    async getAll<T>(storeName: string): Promise<T[]> {
+        try {
+            await this.init();
+            if (!this.db) return [];
+
+            return new Promise((resolve, reject) => {
+                const transaction = this.db!.transaction([storeName], 'readonly');
+                const store = transaction.objectStore(storeName);
+                const request = store.getAll();
+
+                request.onsuccess = () => {
+                    resolve(request.result as T[]);
+                };
+
+                request.onerror = () => {
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('IndexedDB getAll error:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Put a record directly (for stores with native keyPath like 'id')
+     */
+    async put<T>(storeName: string, record: T): Promise<void> {
+        try {
+            await this.init();
+            if (!this.db) throw new Error('Database not initialized');
+
+            return new Promise((resolve, reject) => {
+                const transaction = this.db!.transaction([storeName], 'readwrite');
+                const store = transaction.objectStore(storeName);
+                const request = store.put(record);
+
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        } catch (error) {
+            console.error('IndexedDB put error:', error);
+        }
+    }
+
+    /**
      * Get all keys from a store
      */
     async getAllKeys(storeName: string): Promise<string[]> {
@@ -249,3 +332,23 @@ export const clearEarthquakeCache = () =>
 
 export const clearClusteringCache = () =>
     idbCache.clear(STORE_CLUSTERING);
+
+// Workspace convenience functions
+export const saveWorkspace = (ws: ClusteringWorkspace): Promise<void> =>
+    idbCache.put(STORE_WORKSPACES, ws);
+
+export const getWorkspaces = (): Promise<ClusteringWorkspace[]> =>
+    idbCache.getAll<ClusteringWorkspace>(STORE_WORKSPACES);
+
+export const deleteWorkspace = (id: string): Promise<void> =>
+    idbCache.delete(STORE_WORKSPACES, id);
+
+// Filter preset convenience functions
+export const saveFilterPreset = (preset: FilterPreset): Promise<void> =>
+    idbCache.put(STORE_PRESETS, preset);
+
+export const getFilterPresets = (): Promise<FilterPreset[]> =>
+    idbCache.getAll<FilterPreset>(STORE_PRESETS);
+
+export const deleteFilterPreset = (id: string): Promise<void> =>
+    idbCache.delete(STORE_PRESETS, id);

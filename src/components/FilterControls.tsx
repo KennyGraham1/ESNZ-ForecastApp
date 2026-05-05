@@ -27,24 +27,17 @@ interface FilterControlsProps {
 
 export default function FilterControls({ filters, onFilterChange, dataDateRange }: FilterControlsProps) {
     const [isExpanded, setIsExpanded] = useState(false);
-
-    // Local state for pending filter changes (not yet applied)
     const [pendingFilters, setPendingFilters] = useState<FilterOptions>(filters);
-
-    // Track if there are unapplied changes
-    const hasUnappliedChanges = JSON.stringify(pendingFilters) !== JSON.stringify(filters);
-
-    // Modal state
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // Validation state
+    const hasUnappliedChanges = JSON.stringify(pendingFilters) !== JSON.stringify(filters);
+
     const polygonValidation = useMemo(() => {
         if (!pendingFilters.polygon) return { isValid: true, error: null };
         const result = parsePolygonString(pendingFilters.polygon);
         return { isValid: !!result.polygon, error: result.error };
     }, [pendingFilters.polygon]);
 
-    // Sync pending filters when applied filters change externally
     useEffect(() => {
         setPendingFilters(filters);
     }, [filters]);

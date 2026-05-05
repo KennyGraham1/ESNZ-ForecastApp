@@ -4,7 +4,8 @@ import { useRef, useMemo, useState, memo, useEffect, useCallback } from 'react';
 import { EarthquakeData } from '@/types/earthquake';
 import { MapContainer, TileLayer, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { FullscreenControl, ScaleControl } from './map/MapControls';
+
 import { stratifiedSample } from '@/utils/dataOptimization';
 import { SAMPLING_CONFIG, getOptimalSamplingThreshold } from '@/config/performance';
 
@@ -340,6 +341,8 @@ function MapComponent({ earthquakes, onPointClick }: MapProps) {
                     >
                         {/* Capture the live map instance into mapRef */}
                         <MapInstanceCapture mapRef={mapRef} />
+                        <FullscreenControl />
+                        <ScaleControl />
 
                         {/* ── Tile layers ─────────────────────────────────── */}
                         <LayersControl position="topright">

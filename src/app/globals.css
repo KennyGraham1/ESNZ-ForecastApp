@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import 'leaflet/dist/leaflet.css';
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
@@ -61,5 +63,49 @@ body {
 /* Arrow colour to match the border */
 .eq-map-tooltip::before {
   border-right-color: #e5e7eb !important;
+}
+
+/* ── Leaflet fullscreen control ──────────────────────────────────────────── */
+
+/* The anchor element inside the control bar */
+.leaflet-control-fullscreen-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 30px !important;
+  height: 30px !important;
+  background-color: #fff;
+  color: #333;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.leaflet-control-fullscreen-btn:hover {
+  background-color: #f4f4f4;
+  color: #000;
+}
+
+.leaflet-control-fullscreen-btn svg {
+  display: block;
+  pointer-events: none;
+}
+
+/* When the map container is fullscreen, fill the viewport */
+.leaflet-container:fullscreen {
+  width:  100vw !important;
+  height: 100vh !important;
+  z-index: 9999;
+}
+
+/* Scale bar polish */
+.leaflet-control-scale-line {
+  font-family: 'Inter', 'Segoe UI', sans-serif !important;
+  font-size: 10px !important;
+  border-color: #555 !important;
+  color: #333 !important;
+  background: rgba(255,255,255,0.85) !important;
+  padding: 1px 5px !important;
+  border-radius: 0 0 3px 3px !important;
+  backdrop-filter: blur(2px);
 }
 

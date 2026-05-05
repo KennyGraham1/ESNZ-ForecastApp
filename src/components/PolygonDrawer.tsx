@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap, LayersControl, Polygon, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { X, Save, Eraser } from 'lucide-react';
 import { parsePolygonString } from '@/lib/polygonUtils';

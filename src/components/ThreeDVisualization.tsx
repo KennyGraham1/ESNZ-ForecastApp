@@ -122,7 +122,7 @@ const ThreeDVisualization = memo(function ThreeDVisualization({
         return {
             chart: {
                 type: 'scatter3d',
-                height: 500,
+                height: 600,
                 backgroundColor: 'white',
                 margin: 100,
                 style: {

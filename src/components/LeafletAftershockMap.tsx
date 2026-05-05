@@ -3,7 +3,8 @@
 import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { FullscreenControl, ScaleControl } from './map/MapControls';
+
 import { ColorPaletteName, getColorStops } from '@/utils/colorPalette';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -279,7 +280,9 @@ export default function LeafletAftershockMap({
             zoomControl={true}
         >
             <MapInstanceCapture />
-            
+            <FullscreenControl />
+            <ScaleControl />
+
             <LayersControl position="topright">
                 <LayersControl.BaseLayer checked name="CartoDB Light">
                     <TileLayer

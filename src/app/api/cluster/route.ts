@@ -14,12 +14,49 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { calculateSpatialClustering } from '@/lib/analysis/clustering';
 import type { SpatialClusteringOptions } from '@/lib/analysis/clusteringTypes';
+import type { ClusterResult } from '@/lib/analysis/clusteringTypes';
 import type { EarthquakeData } from '@/types/earthquake';
 
 // Extend Vercel's function timeout for long-running algorithms
 export const maxDuration = 60;
+
+// ── Server-side in-memory LRU cache ──────────────────────────────────────────
+// Keyed by SHA-256(sortedEventIDs + algorithm + params).
+// Survives multiple requests on the same Node.js instance (single Vercel function
+// invocation) — gives instant responses for identical repeated queries from
+// different browser sessions without re-running O(n²) algorithms.
+
+const SERVER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const SERVER_CACHE_MAX = 30;
+
+interface ServerCacheEntry { result: ClusterResult; expiresAt: number; }
+const serverCache = new Map<string, ServerCacheEntry>();
+
+function serverCacheKey(earthquakes: EarthquakeData[], options: SpatialClusteringOptions): string {
+    const payload = JSON.stringify({
+        algo: options.algorithm,
+        opts: options,
+        ids: earthquakes.map(e => e.eventID).sort(),
+    });
+    return createHash('sha256').update(payload).digest('hex').slice(0, 16);
+}
+
+function serverCacheGet(key: string): ClusterResult | null {
+    const entry = serverCache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) { serverCache.delete(key); return null; }
+    return entry.result;
+}
+
+function serverCacheSet(key: string, result: ClusterResult): void {
+    if (serverCache.size >= SERVER_CACHE_MAX) {
+        serverCache.delete(serverCache.keys().next().value as string);
+    }
+    serverCache.set(key, { result, expiresAt: Date.now() + SERVER_CACHE_TTL });
+}
 
 export async function POST(request: NextRequest) {
     let body: unknown;
@@ -64,11 +101,17 @@ export async function POST(request: NextRequest) {
                 : undefined,
     }));
 
+    const clusterOptions = options as SpatialClusteringOptions;
+
+    // Check server-side cache first — avoids recomputing expensive O(n²) algorithms
+    const cacheKey = serverCacheKey(earthquakes, clusterOptions);
+    const cached = serverCacheGet(cacheKey);
+    if (cached) {
+        return NextResponse.json(cached, { headers: { 'X-Cluster-Cache': 'HIT' } });
+    }
+
     try {
-        const result = calculateSpatialClustering(
-            earthquakes,
-            options as SpatialClusteringOptions
-        );
+        const result = calculateSpatialClustering(earthquakes, clusterOptions);
 
         if (!result) {
             return NextResponse.json(
@@ -77,7 +120,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        return NextResponse.json(result);
+        serverCacheSet(cacheKey, result);
+        return NextResponse.json(result, { headers: { 'X-Cluster-Cache': 'MISS' } });
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Internal clustering error';
         console.error('[/api/cluster] Clustering failed:', err);

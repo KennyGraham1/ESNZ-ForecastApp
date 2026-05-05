@@ -13,6 +13,7 @@ import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
 import dynamic from 'next/dynamic';
 import { useDebounce } from '@/hooks/useDebounce';
 import { applyChartOptimizations } from '@/utils/highchartsOptimization';
+import { CLUSTERING_CONFIG } from '@/config/performance';
 
 const LeafletClusterMap = dynamic(() => import('@/components/LeafletClusterMap'), {
     ssr: false,
@@ -195,21 +196,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHdbscanMinSamples(localHdbscanMinSamples);
     };
 
-    // Performance optimization: Sample data for large datasets
-    // Uses reservoir sampling (random) so aftershock bursts are not systematically thinned.
-    const SAMPLE_THRESHOLD = 3000;
+    // Reservoir-sample incoming events to keep the clustering + rendering budget manageable.
+    // Threshold comes from centralised config (was hard-coded 3 000; now 5 000 by default).
     const processedEarthquakes = useMemo(() => {
-        if (earthquakes.length > SAMPLE_THRESHOLD) {
-            // Reservoir sampling: every event has an equal chance of being included,
-            // so dense aftershock clusters are not disproportionately discarded.
+        const threshold = CLUSTERING_CONFIG.TEMPORAL_SPATIAL_SAMPLE_SIZE;
+        if (earthquakes.length > threshold) {
             const sampled = [...earthquakes];
-            for (let i = SAMPLE_THRESHOLD; i < sampled.length; i++) {
+            for (let i = threshold; i < sampled.length; i++) {
                 const j = Math.floor(Math.random() * (i + 1));
-                if (j < SAMPLE_THRESHOLD) {
-                    sampled[j] = earthquakes[i];
-                }
+                if (j < threshold) sampled[j] = earthquakes[i];
             }
-            const result = sampled.slice(0, SAMPLE_THRESHOLD);
+            const result = sampled.slice(0, threshold);
             console.log(`TemporalSpatial: Reservoir-sampled ${result.length} from ${earthquakes.length} events`);
             return result;
         }

@@ -130,7 +130,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
         return {
             chart: {
                 type: 'scatter3d',
-                height: 500,
+                height: 600,
                 backgroundColor: 'white',
                 margin: 100,
                 options3d: {
@@ -408,7 +408,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                     Click on points to select/deselect earthquakes. Drag to rotate, scroll to zoom. Selected events are highlighted in red.
                 </p>
             </div>
-            <div className="h-[500px] cursor-grab active:cursor-grabbing">
+            <div className="w-full h-[600px] overflow-hidden touch-none cursor-grab active:cursor-grabbing">
                 <HighchartsReact
                     highcharts={Highcharts}
                     options={chartOptions}
