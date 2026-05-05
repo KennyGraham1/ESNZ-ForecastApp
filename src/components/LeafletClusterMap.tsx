@@ -24,6 +24,7 @@ export interface ClusterMapPoint {
 interface LeafletClusterMapProps {
     points: ClusterMapPoint[];
     onPointClick: (index: number) => void;
+    onMapClick?: () => void;
 }
 
 // ── Tooltip generator ────────────────────────────────────────────────────────
@@ -170,9 +171,27 @@ function MapInstanceCapture() {
     return null;
 }
 
+function EmptyMapClickHandler({ onMapClick }: { onMapClick?: () => void }) {
+    const map = useMap();
+    useEffect(() => {
+        if (!onMapClick) return;
+
+        const handleClick = () => {
+            onMapClick();
+        };
+
+        map.on('click', handleClick);
+        return () => {
+            map.off('click', handleClick);
+        };
+    }, [map, onMapClick]);
+
+    return null;
+}
+
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export default function LeafletClusterMap({ points, onPointClick }: LeafletClusterMapProps) {
+export default function LeafletClusterMap({ points, onPointClick, onMapClick }: LeafletClusterMapProps) {
     const onPointClickRef = useRef(onPointClick);
     onPointClickRef.current = onPointClick;
 
@@ -187,6 +206,7 @@ export default function LeafletClusterMap({ points, onPointClick }: LeafletClust
             zoomControl={true}
         >
             <MapInstanceCapture />
+            <EmptyMapClickHandler onMapClick={onMapClick} />
             
             <LayersControl position="topright">
                 <LayersControl.BaseLayer checked name="CartoDB Light">
