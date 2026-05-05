@@ -24,13 +24,21 @@ export interface StoredEarthquake {
     depth: number;
     magnitude: number;
     locality: string;
+    eventType?: string;
+    magnitudeType?: string;
+    evaluationStatus?: string;
+    evaluationMode?: string;
+    modificationTime?: string;
+    earthModel?: string;
     azimuthalGap?: number;
+    magnitudeUncertainty?: number;
     magnitudeStationCount?: number;
     minimumDistance?: number;
     standardError?: number;
     originError?: number;
     evaluationMethod?: string;
     usedPhaseCount?: number;
+    usedStationCount?: number;
 }
 
 /** Full catalog entry stored per minMagnitude key. */
@@ -43,32 +51,52 @@ export interface StoredCatalog {
 }
 
 // Singleton DB promise — opened once, reused across all operations.
+// null  → not yet attempted
+// Promise → in-flight or settled (resolved = open, rejected = unavailable)
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function getDB(): Promise<IDBDatabase> {
-    if (!dbPromise) {
-        dbPromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
+    if (dbPromise) return dbPromise;
 
-            request.onupgradeneeded = () => {
-                const db = request.result;
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    db.createObjectStore(STORE_NAME, { keyPath: 'minMagnitude' });
-                }
-            };
-
-            request.onsuccess = () => resolve(request.result);
-
-            request.onerror = () => {
-                dbPromise = null; // reset so next call retries the open
-                reject(request.error);
-            };
-
-            request.onblocked = () => {
-                console.warn('IndexedDB open blocked — another tab may have an older version open');
-            };
-        });
+    // Not in a browser, or storage is explicitly absent (e.g. Firefox strict mode).
+    if (typeof window === 'undefined' || !window.indexedDB) {
+        dbPromise = Promise.reject(new Error('IndexedDB not available'));
+        // Attach a no-op catch so the Promise is never "unhandled" at the engine level.
+        dbPromise.catch(() => {});
+        return dbPromise;
     }
+
+    dbPromise = new Promise((resolve, reject) => {
+        let request: IDBOpenDBRequest;
+        try {
+            request = indexedDB.open(DB_NAME, DB_VERSION);
+        } catch (err) {
+            // Thrown synchronously in restricted browser contexts
+            // (e.g. Safari Private Browsing, Chrome with strict storage block).
+            dbPromise = null; // allow retry if context changes
+            reject(err);
+            return;
+        }
+
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'minMagnitude' });
+            }
+        };
+
+        request.onsuccess = () => resolve(request.result);
+
+        request.onerror = () => {
+            dbPromise = null; // reset so next call retries the open
+            reject(request.error);
+        };
+
+        request.onblocked = () => {
+            console.warn('IndexedDB open blocked — another tab may have an older version open');
+        };
+    });
+
     return dbPromise;
 }
 
@@ -99,19 +127,5 @@ export async function saveCatalog(catalog: StoredCatalog): Promise<void> {
     } catch (err) {
         console.error('IndexedDB write error:', err);
         // Non-fatal — app continues; next load will re-fetch from GeoNet
-    }
-}
-
-export async function clearCatalog(minMagnitude: number): Promise<void> {
-    try {
-        const db = await getDB();
-        await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            const req = tx.objectStore(STORE_NAME).delete(minMagnitude);
-            req.onsuccess = () => resolve();
-            req.onerror = () => reject(req.error);
-        });
-    } catch (err) {
-        console.error('IndexedDB delete error:', err);
     }
 }

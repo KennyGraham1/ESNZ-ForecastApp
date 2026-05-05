@@ -2,11 +2,6 @@ export type ClusteringAlgorithm =
     | 'dbscan'
     | 'optics'
     | 'kmeans'
-    // HIERARCHICAL CLUSTERING TYPES - COMMENTED OUT FOR FUTURE RESTORATION
-    // | 'hierarchical-single'
-    // | 'hierarchical-complete'
-    // | 'hierarchical-average'
-    // | 'hierarchical-ward'
     | 'step-mag'          // STEP Magnitude clustering (seismology)
     | 'step-time'         // STEP Time clustering (seismology)
     | 'nearest-neighbor'

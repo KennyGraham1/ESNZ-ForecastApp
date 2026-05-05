@@ -15,7 +15,7 @@ import CacheIndicator from '@/components/CacheIndicator';
 import { PerformanceDebugPanel } from '@/components/PerformanceDebugPanel';
 import CatalogUpload from '@/components/CatalogUpload';
 import { EarthquakeData } from '@/types/earthquake';
-import { Upload, CalendarDays } from 'lucide-react';
+import { Upload, CalendarDays, X } from 'lucide-react';
 
 const TABS = [
   { id: 'basic', label: 'Basic Dashboard' },
@@ -53,6 +53,7 @@ export default function PageClient() {
   const [uploadedData, setUploadedData] = useState<EarthquakeData[] | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string>('');
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [fetchWarningDismissed, setFetchWarningDismissed] = useState(false);
 
   // Refs for custom date pickers
   const startPickerRef = useRef<HTMLInputElement>(null);
@@ -281,6 +282,7 @@ export default function PageClient() {
   }, [tempOptions.startDate, tempOptions.endDate, tempOptions.mode]);
 
   const handleRefresh = useCallback(async () => {
+    setFetchWarningDismissed(false);
     try {
       await refetch();
     } catch (err) {
@@ -570,16 +572,37 @@ export default function PageClient() {
           <div className="space-y-6">
             {/* Cache Indicator - only show for GeoNet data */}
             {dataSource === 'geonet' && (
-              <CacheIndicator
-                lastUpdated={cacheInfo.lastUpdated}
-                initialFetchDate={cacheInfo.initialFetchDate}
-                totalEvents={cacheInfo.totalEvents}
-                onRefresh={handleRefresh}
-                isRefreshing={isRefreshing}
-                newEventsAdded={cacheInfo.newEventsAdded}
-                filteredCount={cacheInfo.filteredCount}
-                returnedCount={cacheInfo.returnedCount}
-              />
+              <>
+                <CacheIndicator
+                  lastUpdated={cacheInfo.lastUpdated}
+                  initialFetchDate={cacheInfo.initialFetchDate}
+                  totalEvents={cacheInfo.totalEvents}
+                  onRefresh={handleRefresh}
+                  isRefreshing={isRefreshing}
+                  newEventsAdded={cacheInfo.newEventsAdded}
+                  filteredCount={cacheInfo.filteredCount}
+                  returnedCount={cacheInfo.returnedCount}
+                />
+                {response?.fetchWarnings?.length && !fetchWarningDismissed ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-semibold">GeoNet catalog warning</div>
+                      <button
+                        onClick={() => setFetchWarningDismissed(true)}
+                        className="shrink-0 rounded p-0.5 hover:bg-amber-200 transition-colors"
+                        aria-label="Dismiss warning"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <ul className="mt-1 list-disc list-inside space-y-1">
+                      {response.fetchWarnings.map((warning, index) => (
+                        <li key={index}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
             )}
 
             {/* Uploaded Data Info */}

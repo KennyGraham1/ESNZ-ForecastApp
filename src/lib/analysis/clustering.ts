@@ -125,132 +125,6 @@ function dbscanWithRTree(
     return { clusters, noiseIndices };
 }
 
-/* HIERARCHICAL CLUSTERING FUNCTION - COMMENTED OUT FOR FUTURE RESTORATION
- * Hierarchical Agglomerative Clustering
- * Implements Single, Complete, Average, and Ward linkage methods
- * Commonly used in seismology for identifying earthquake clusters
- *
-function hierarchicalClustering(
-    dataset: number[][],
-    nClusters: number,
-    linkage: 'single' | 'complete' | 'average' | 'ward'
-): { clusters: number[][], noiseIndices: number[] } {
-    const n = dataset.length;
-
-    // Initialize: each point is its own cluster
-    const clusters: Set<number>[] = dataset.map((_, i) => new Set([i]));
-    const clusterCentroids: number[][] = dataset.map(p => [...p]);
-
-    // Distance matrix (upper triangular)
-    const distances: Map<string, number> = new Map();
-
-    const getKey = (i: number, j: number) => {
-        const [a, b] = i < j ? [i, j] : [j, i];
-        return `${a},${b}`;
-    };
-
-    const euclideanDistance = (p1: number[], p2: number[]): number => {
-        const dx = p1[0] - p2[0];
-        const dy = p1[1] - p2[1];
-        return Math.sqrt(dx * dx + dy * dy);
-    };
-
-    // Calculate cluster distance based on linkage method
-    const clusterDistance = (c1: Set<number>, c2: Set<number>): number => {
-        if (linkage === 'single') {
-            // Single linkage: minimum distance between any two points
-            let minDist = Infinity;
-            for (const i of c1) {
-                for (const j of c2) {
-                    const dist = euclideanDistance(dataset[i], dataset[j]);
-                    minDist = Math.min(minDist, dist);
-                }
-            }
-            return minDist;
-        } else if (linkage === 'complete') {
-            // Complete linkage: maximum distance between any two points
-            let maxDist = -Infinity;
-            for (const i of c1) {
-                for (const j of c2) {
-                    const dist = euclideanDistance(dataset[i], dataset[j]);
-                    maxDist = Math.max(maxDist, dist);
-                }
-            }
-            return maxDist;
-        } else if (linkage === 'average') {
-            // Average linkage: average distance between all pairs
-            let sumDist = 0;
-            let count = 0;
-            for (const i of c1) {
-                for (const j of c2) {
-                    sumDist += euclideanDistance(dataset[i], dataset[j]);
-                    count++;
-                }
-            }
-            return sumDist / count;
-        } else {
-            // Ward linkage: minimize within-cluster variance
-            // Calculate centroids
-            const centroid1 = [0, 0];
-            const centroid2 = [0, 0];
-
-            for (const i of c1) {
-                centroid1[0] += dataset[i][0];
-                centroid1[1] += dataset[i][1];
-            }
-            centroid1[0] /= c1.size;
-            centroid1[1] /= c1.size;
-
-            for (const j of c2) {
-                centroid2[0] += dataset[j][0];
-                centroid2[1] += dataset[j][1];
-            }
-            centroid2[0] /= c2.size;
-            centroid2[1] /= c2.size;
-
-            // Ward distance: weighted squared distance between centroids
-            const dist = euclideanDistance(centroid1, centroid2);
-            return (c1.size * c2.size / (c1.size + c2.size)) * dist * dist;
-        }
-    };
-
-    // Agglomerative clustering: merge closest clusters until we have nClusters
-    while (clusters.length > nClusters) {
-        let minDist = Infinity;
-        let mergeI = -1;
-        let mergeJ = -1;
-
-        // Find closest pair of clusters
-        for (let i = 0; i < clusters.length; i++) {
-            for (let j = i + 1; j < clusters.length; j++) {
-                const dist = clusterDistance(clusters[i], clusters[j]);
-                if (dist < minDist) {
-                    minDist = dist;
-                    mergeI = i;
-                    mergeJ = j;
-                }
-            }
-        }
-
-        // Merge clusters
-        if (mergeI >= 0 && mergeJ >= 0) {
-            const merged = new Set([...clusters[mergeI], ...clusters[mergeJ]]);
-            clusters.splice(mergeJ, 1); // Remove j first (higher index)
-            clusters.splice(mergeI, 1); // Then remove i
-            clusters.push(merged);
-        } else {
-            break; // No more clusters to merge
-        }
-    }
-
-    // Convert to output format
-    const outputClusters: number[][] = clusters.map(c => Array.from(c));
-    const noiseIndices: number[] = []; // Hierarchical clustering doesn't produce noise
-
-    return { clusters: outputClusters, noiseIndices };
-}
-END OF HIERARCHICAL CLUSTERING FUNCTION */
-
 /**
  * Nearest-Neighbor Clustering (Zaliapin-Ben-Zion method)
  * Identifies earthquake clusters based on nearest-neighbor distances in space-time-magnitude domain
@@ -1784,11 +1658,6 @@ function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
         'dbscan': 'DBSCAN (Density-Based Spatial Clustering) - Identifies clusters of arbitrary shape based on density',
         'optics': 'OPTICS (Ordering Points To Identify Clustering Structure) - Density-based clustering with variable density',
         'kmeans': 'K-Means - Partitions data into k clusters by minimizing within-cluster variance',
-        // HIERARCHICAL CLUSTERING DESCRIPTIONS - COMMENTED OUT FOR FUTURE RESTORATION
-        // 'hierarchical-single': 'Hierarchical Clustering (Single Linkage) - Merges clusters based on minimum distance between points',
-        // 'hierarchical-complete': 'Hierarchical Clustering (Complete Linkage) - Merges clusters based on maximum distance between points',
-        // 'hierarchical-average': 'Hierarchical Clustering (Average Linkage) - Merges clusters based on average distance between points',
-        // 'hierarchical-ward': 'Hierarchical Clustering (Ward Linkage) - Merges clusters to minimize within-cluster variance',
         'step-mag': 'STEP Magnitude Clustering - Clusters earthquakes starting from largest magnitude, using Wells-Coppersmith spatial radius and sliding time windows',
         'step-time': 'STEP Time Clustering - Clusters earthquakes in temporal order, extending clusters based on magnitude-dependent spatial windows',
         'nearest-neighbor': 'Nearest-Neighbor Clustering (Zaliapin-Ben-Zion) - Identifies clusters based on space-time-magnitude nearest-neighbor distances',
@@ -1956,14 +1825,6 @@ export function calculateSpatialClustering(
         clusters = kmeans.run(dataset, k);
         // K-means assigns every point to some cluster; no noise
         noiseIndices = [];
-        /* HIERARCHICAL CLUSTERING BRANCH - COMMENTED OUT FOR FUTURE RESTORATION
-        } else if (algorithm.startsWith('hierarchical-')) {
-            // Hierarchical clustering
-            const linkageType = algorithm.split('-')[1] as 'single' | 'complete' | 'average' | 'ward';
-            const result = hierarchicalClustering(dataset, k, linkageType);
-            clusters = result.clusters;
-            noiseIndices = result.noiseIndices;
-        END OF HIERARCHICAL CLUSTERING BRANCH */
     } else if (algorithm === 'step-mag') {
         // STEP Magnitude clustering (seismology) - Starts with largest earthquake
         const result = stepMagnitudeClustering(earthquakes, stepMinMag, stepT1, stepT2);
@@ -2049,11 +1910,6 @@ export function calculateSpatialClustering(
         }
     } else if (algorithm === 'kmeans') {
         parameters.k = k;
-        /* HIERARCHICAL CLUSTERING PARAMETERS - COMMENTED OUT FOR FUTURE RESTORATION
-        } else if (algorithm.startsWith('hierarchical-')) {
-            parameters.k = k;
-            parameters.linkage = algorithm.split('-')[1];
-        END OF HIERARCHICAL CLUSTERING PARAMETERS */
     } else if (algorithm === 'step-mag' || algorithm === 'step-time') {
         parameters.stepMinMag = stepMinMag;
         parameters.stepT1 = stepT1;

@@ -26,7 +26,7 @@ import {
     StoredCatalog,
     StoredEarthquake,
 } from '@/lib/earthquakeCache';
-import { fetchFromGeoNet } from '@/lib/geonetClient';
+import { fetchFromGeoNetWithReport, GeoNetFetchReport } from '@/lib/geonetClient';
 
 // Default initial fetch window (matches the old server-side INITIAL_FETCH_DAYS).
 const DEFAULT_FETCH_DAYS = 365;
@@ -51,6 +51,8 @@ export interface CatalogResponse {
     filteredCount: number;
     returnedCount: number;
     cached: boolean;
+    fetchReport?: GeoNetFetchReport;
+    fetchWarnings: string[];
 }
 
 export interface UseGeoNetDataResult {
@@ -109,6 +111,29 @@ function mergeEvents(
     return [...existing, ...unique].sort((a, b) => b.timeMs - a.timeMs);
 }
 
+function buildFetchWarnings(report?: GeoNetFetchReport): string[] {
+    if (!report) return [];
+
+    const warnings: string[] = [];
+    if (report.partial) {
+        warnings.push('GeoNet catalog may be incomplete because one or more chunks failed or hit the service result limit.');
+    }
+    if (report.chunksFailed > 0) {
+        warnings.push(`${report.chunksFailed} GeoNet chunk${report.chunksFailed === 1 ? '' : 's'} failed after retries.`);
+    }
+    if (report.truncatedChunks > 0) {
+        warnings.push(`${report.truncatedChunks} GeoNet chunk${report.truncatedChunks === 1 ? '' : 's'} still reached the 20,000-event limit after splitting.`);
+    }
+    if (report.invalidFeatures > 0) {
+        warnings.push(`${report.invalidFeatures} GeoNet feature${report.invalidFeatures === 1 ? '' : 's'} were skipped because required fields were invalid.`);
+    }
+    if (report.duplicateEvents > 0) {
+        warnings.push(`${report.duplicateEvents} duplicate GeoNet event${report.duplicateEvents === 1 ? '' : 's'} were removed by public ID.`);
+    }
+
+    return warnings;
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useGeoNetData({
@@ -123,9 +148,11 @@ export function useGeoNetData({
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState<Error | null>(null);
     const [newEventsAdded, setNewEventsAdded] = useState(0);
+    const [fetchReport, setFetchReport] = useState<GeoNetFetchReport | undefined>(undefined);
 
     // Guard against concurrent loads for the same magnitude.
     const loadingRef = useRef(false);
+    const gapFillRef = useRef(false);
     // Track which minMagnitude is currently mounted so async callbacks don't
     // apply results for a stale magnitude after a rapid switch.
     const magnitudeRef = useRef(minMagnitude);
@@ -147,8 +174,10 @@ export function useGeoNetData({
             filteredCount: filtered.length,
             returnedCount: filtered.length,
             cached: true,
+            fetchReport,
+            fetchWarnings: buildFetchWarnings(fetchReport),
         };
-    }, [catalog, daysBack, startDate, endDate, newEventsAdded]);
+    }, [catalog, daysBack, startDate, endDate, newEventsAdded, fetchReport]);
 
     // ── Load / gap-fill catalog ───────────────────────────────────────────────
     const loadCatalog = useCallback(async (magnitude: number) => {
@@ -158,6 +187,7 @@ export function useGeoNetData({
         setIsLoading(true);
         setError(null);
         setNewEventsAdded(0);
+        setFetchReport(undefined);
 
         try {
             // 1. Try IndexedDB first — instant if data is already there.
@@ -168,19 +198,20 @@ export function useGeoNetData({
                 console.log(`📥 No IndexedDB data for M${magnitude}+. Fetching initial ${DEFAULT_FETCH_DAYS} days…`);
                 const now = new Date();
                 const fetchStart = new Date(Date.now() - DEFAULT_FETCH_DAYS * 24 * 60 * 60 * 1000);
-                const events = await fetchFromGeoNet(magnitude, fetchStart, now);
+                const report = await fetchFromGeoNetWithReport(magnitude, fetchStart, now);
 
                 if (magnitudeRef.current !== magnitude) return; // stale, abort
+                setFetchReport(report);
 
                 cached = {
                     minMagnitude: magnitude,
-                    earthquakes: events,
+                    earthquakes: report.events,
                     initialFetchDate: fetchStart.toISOString(),
                     lastUpdated: now.toISOString(),
-                    totalEvents: events.length,
+                    totalEvents: report.events.length,
                 };
                 await saveCatalog(cached);
-                console.log(`💾 Saved ${events.length} events to IndexedDB (M${magnitude}+)`);
+                console.log(`💾 Saved ${report.events.length} events to IndexedDB (M${magnitude}+)`);
             } else {
                 console.log(`✅ IndexedDB hit: ${cached.totalEvents} events for M${magnitude}+ (since ${cached.initialFetchDate.slice(0, 10)})`);
             }
@@ -203,9 +234,11 @@ export function useGeoNetData({
         existingCatalog: StoredCatalog,
         requestedStart: Date
     ) => {
+        if (gapFillRef.current) return;
         const cacheStart = new Date(existingCatalog.initialFetchDate);
         if (requestedStart >= cacheStart) return; // nothing to fill
 
+        gapFillRef.current = true;
         const magnitude = existingCatalog.minMagnitude;
         console.log(
             `📊 Gap-fill needed for M${magnitude}+: ` +
@@ -213,11 +246,12 @@ export function useGeoNetData({
         );
 
         try {
-            const gapEvents = await fetchFromGeoNet(magnitude, requestedStart, cacheStart);
+            const report = await fetchFromGeoNetWithReport(magnitude, requestedStart, cacheStart);
 
             if (magnitudeRef.current !== magnitude) return;
+            setFetchReport(report);
 
-            const merged = mergeEvents(existingCatalog.earthquakes, gapEvents);
+            const merged = mergeEvents(existingCatalog.earthquakes, report.events);
             const updated: StoredCatalog = {
                 ...existingCatalog,
                 earthquakes: merged,
@@ -226,10 +260,12 @@ export function useGeoNetData({
             };
             await saveCatalog(updated);
             setCatalog(updated);
-            console.log(`💾 Gap-fill complete: +${gapEvents.length} events, total ${merged.length}`);
+            console.log(`💾 Gap-fill complete: +${report.events.length} events, total ${merged.length}`);
         } catch (err) {
             console.error('❌ Gap-fill fetch failed:', err);
             // Non-fatal — user sees whatever data is already cached.
+        } finally {
+            gapFillRef.current = false;
         }
     }, []);
 
@@ -275,8 +311,10 @@ export function useGeoNetData({
             );
             console.log(`🔄 Incremental refresh: fetching ~${daysSince} days of new events…`);
 
-            const newEvents = await fetchFromGeoNet(catalog.minMagnitude, lastUpdated, now);
-            const merged = mergeEvents(catalog.earthquakes, newEvents);
+            const report = await fetchFromGeoNetWithReport(catalog.minMagnitude, lastUpdated, now);
+            setFetchReport(report);
+
+            const merged = mergeEvents(catalog.earthquakes, report.events);
             const added = merged.length - catalog.earthquakes.length;
 
             const updated: StoredCatalog = {
