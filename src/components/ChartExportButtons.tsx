@@ -7,7 +7,7 @@ import { formatDateForCSV } from '@/utils/dateFormat';
 import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface ChartExportButtonsProps {
-    chartRef: React.RefObject<HighchartsReact.RefObject>;
+    chartRef: React.RefObject<HighchartsReact.RefObject | null>;
     data?: EarthquakeData[] | any[];
     filename?: string;
     clusteringMetadata?: ClusteringMetadata; // Clustering metadata for exports
