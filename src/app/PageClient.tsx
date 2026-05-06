@@ -102,6 +102,26 @@ export default function PageClient() {
     endDate: initialEnd,
   });
 
+  // ── Auto-reload when a stale deployment causes a ChunkLoadError ─────────────
+  // After a new Vercel deployment the old chunk hashes no longer exist on the
+  // CDN. The browser's cached page references those old hashes → 404 → this
+  // error. We reload once to fetch the new bundle; sessionStorage guards against
+  // an infinite reload loop if the chunk is genuinely absent.
+  useEffect(() => {
+    const handleChunkError = (event: ErrorEvent) => {
+      if (event.error instanceof Error && event.error.name === 'ChunkLoadError') {
+        const GUARD_KEY = 'chunkErrorReload';
+        const last = Number(sessionStorage.getItem(GUARD_KEY) ?? 0);
+        if (Date.now() - last > 10_000) {
+          sessionStorage.setItem(GUARD_KEY, String(Date.now()));
+          window.location.reload();
+        }
+      }
+    };
+    window.addEventListener('error', handleChunkError);
+    return () => window.removeEventListener('error', handleChunkError);
+  }, []);
+
   // ── Sync URL whenever tab or fetch options change ────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams();
