@@ -12,7 +12,7 @@ When loading 10 years of earthquake data, the app was **extremely slow** (60-90 
 
 ### Root Cause
 
-The GeoNet API fetcher in [src/lib/geonet.ts](../src/lib/geonet.ts) was fetching data **sequentially**:
+The GeoNet API fetcher in `src/lib/geonetClient.ts` (replaced `geonet.ts`) was fetching data **sequentially**:
 
 ```typescript
 // OLD CODE (SLOW)
@@ -85,7 +85,7 @@ Total: 6s (all at once!)
 
 ## Code Changes
 
-**File**: [src/lib/geonet.ts](../src/lib/geonet.ts)
+**File**: `src/lib/geonetClient.ts` (replaced `geonet.ts`)
 
 ### Before (Sequential):
 ```typescript
@@ -250,7 +250,7 @@ If you need even faster loading:
 - 🚀 **10x faster!**
 
 **Files Modified**:
-- [src/lib/geonet.ts](../src/lib/geonet.ts) - Lines 62-120
+- `src/lib/geonetClient.ts` (replaced `geonet.ts`) - Lines 62-120
 
 **Status**: ✅ Production ready
 **Testing**: Refresh your app and load 10 years of data - should complete in ~6-9 seconds
