@@ -1,206 +1,276 @@
 # Clustering Algorithms
 
-The application implements ten spatial and spatio-temporal clustering algorithms. Six run in a Web Worker (light algorithms); four are routed to the server API (heavy algorithms). All algorithms operate on the same five-dimensional point representation: `[latitude, longitude, depth, magnitude, timeMs]`.
+Ten spatial and spatio-temporal clustering algorithms are implemented. Six run in a Web Worker (light); four are routed to the server API (heavy).
 
 ---
 
-## Algorithm summary
-
-| Algorithm | Type | Execution | Primary use case |
-|---|---|---|---|
-| DBSCAN | Density-based | Worker | General spatial clusters of arbitrary shape |
-| OPTICS | Density-based | Worker | Variable-density clusters |
-| k-Means | Partition-based | Worker | Fixed number of compact clusters |
-| ST-DBSCAN | Spatio-temporal | Worker | Clusters with both spatial and temporal coherence |
-| STEP-Mag | Seismology | Worker | Mainshock–aftershock windows by magnitude scaling |
-| STEP-Time | Seismology | Worker | Fixed time window around each event |
-| HDBSCAN | Hierarchical density | Server | Robust clusters with soft membership probabilities |
-| Nearest-Neighbor | Seismology | Server | Zaliapin–Ben-Zion interevent distance method |
-| TMC | Seismology | Server | Reasenberg-style time–magnitude clustering |
-| Hardebeck-2019 | Seismology | Server | Updated window method for aftershock identification |
-
----
-
-## Light algorithms (Web Worker)
-
-### DBSCAN
-
-Density-Based Spatial Clustering of Applications with Noise. Groups points that are reachable within `epsilon` km of each other with at least `minSamples` neighbours. Points that cannot be assigned to any cluster are labelled noise (−1).
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Spatial radius | `epsilon` | 50 km | Core-point neighbourhood radius |
-| Min neighbours | `minSamples` | 5 | Minimum points to form a core point |
-| R-tree index | `useRTree` | `true` | 90–95% faster range queries (see [Performance](performance.md)) |
-
-**When to use:** Identifying seismic clusters of irregular shape where cluster count is unknown.
-
----
-
-### OPTICS
-
-Ordering Points To Identify the Clustering Structure. An extension of DBSCAN that produces a reachability plot, allowing variable-density cluster extraction. Uses the same `epsilon` and `minSamples` parameters as DBSCAN.
-
-**Parameters:** identical to DBSCAN.
-
-**When to use:** Datasets with clusters of varying density — e.g. dense mainshock sequences embedded in sparse background seismicity.
-
----
-
-### k-Means
-
-Partitions events into exactly `k` clusters by minimising within-cluster variance. Requires the number of clusters to be specified in advance. Does not produce noise points.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Number of clusters | `k` | 5 | Target cluster count |
-
-**When to use:** When the number of distinct seismic zones or sequences is known.
-
----
-
-### ST-DBSCAN (Spatio-Temporal DBSCAN)
-
-Extends DBSCAN with a second temporal epsilon, so two events are considered neighbours only if they are within `epsilon` km **and** `epsilonTemporal` days of each other.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Spatial radius | `epsilon` | 50 km | Spatial neighbourhood radius |
-| Temporal radius | `epsilonTemporal` | 7 days | Temporal neighbourhood window |
-| Min neighbours | `minSamples` | 5 | Minimum points to form a core point |
-
-**When to use:** Aftershock sequences and swarms where spatial proximity alone is insufficient.
-
----
-
-### STEP-Mag (STEP Magnitude Clustering)
-
-A seismology-specific window method that associates events with a potential mainshock based on magnitude-scaled look-ahead and look-back time windows:
-
-- Look-back: `T1` days (default 1 day)
-- Look-forward: `T2` days (default 30 days), scaled by the mainshock magnitude
-
-Events within the combined space–time window are assigned to the same cluster as the triggering mainshock.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Min mainshock mag | `stepMinMag` | 2.0 | Minimum magnitude to act as cluster seed |
-| Look-back window | `stepT1` | 1 day | Days before a candidate mainshock |
-| Look-forward window | `stepT2` | 30 days | Base days after a candidate mainshock |
-
----
-
-### STEP-Time (STEP Time Clustering)
-
-A simplified variant of STEP-Mag using a fixed time window rather than a magnitude-scaled one. Useful for identifying short-duration swarms without a clear mainshock–aftershock hierarchy.
-
-**Parameters:** same as STEP-Mag.
-
----
-
-## Heavy algorithms (server API)
-
-These algorithms are routed to `POST /api/cluster` because their computational complexity or memory profile makes Web Worker execution impractical for large catalogs. Results are cached server-side (SHA-256 key, 15-min TTL, 30-entry LRU).
-
-### HDBSCAN (Hierarchical DBSCAN)
-
-Campello et al. (2013). Builds a hierarchy of DBSCAN clusterings across all density thresholds and extracts the most stable clusters. Produces soft membership probabilities and GLOSH-style outlier scores per event.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Min cluster size | `hdbscanMinClusterSize` | 5 | Smallest grouping considered a true cluster |
-| Min samples | `hdbscanMinSamples` | 5 | Core-distance neighbourhood size |
-
-**Extras in ClusterResult:**
-
-- `probabilities[i]` — soft cluster membership [0, 1] for event *i*
-- `outlierScores[i]` — GLOSH anomaly score [0, 1] for event *i* (higher = more anomalous)
-
-**When to use:** When robust cluster extraction across a range of densities is needed, or when per-event outlier scores are useful for identifying isolated anomalous events.
-
----
-
-### Nearest-Neighbor (Zaliapin–Ben-Zion)
-
-Zaliapin & Ben-Zion (2013). Computes normalised interevent distances in space–time–magnitude space. Pairs of events whose distance falls below a threshold are linked as parent–child (mainshock–aftershock). Clusters correspond to connected components of these links.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Distance threshold | `nnThreshold` | 0.1 | Normalised interevent distance cutoff |
-
-**When to use:** Declustering to separate background seismicity from triggered sequences, consistent with the Zaliapin–Ben-Zion statistical framework.
-
----
-
-### TMC (Time Magnitude Clustering — Reasenberg-style)
-
-A probabilistic look-ahead clustering approach inspired by Reasenberg (1985). Each event opens a time window whose length grows with the running maximum magnitude of the current cluster. New events entering the window are added to the cluster; the window resets on each addition.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Spatial radius multiplier | `tmcRfact` | 10 | Multiplier for interaction radius |
-| Base look-ahead time | `tmcTau0` | 2 days | Minimum cluster look-ahead |
-| Maximum look-ahead time | `tmcTauMax` | 10 days | Cap on look-ahead window |
-| Probability threshold | `tmcP1` | 0.99 | Interaction probability cutoff |
-| Magnitude scaling factor | `tmcXk` | 0.5 | Controls how magnitude grows the window |
-| Effective min magnitude | `tmcMinMag` | 1.5 | Events below this are not seeds |
-
----
-
-### Hardebeck-2019
-
-Hardebeck (2019) updated window method. Defines aftershock zones using a rupture-length-scaled spatial radius and a fixed time window. Events within the zone of a qualifying mainshock are classified as aftershocks.
-
-**Parameters:**
-
-| Parameter | Key | Default | Description |
-|---|---|---|---|
-| Min mainshock magnitude | `hardebeckMinMag` | 5.0 | Minimum mainshock magnitude |
-| Aftershock time window | `hardebeckTimeWindow` | 10 days | Days after mainshock to collect aftershocks |
-| Rupture length multiplier | `hardebeckRuptureMult` | 3 | Spatial radius = multiplier × rupture length |
-| Mainshock exclusion period | `hardebeckMainshockTimeYears` | 3 years | Events within this period before mainshock are excluded as foreshocks |
-
----
-
-## R-tree spatial acceleration
-
-For algorithms that perform repeated range or nearest-neighbour lookups (DBSCAN, OPTICS, ST-DBSCAN), the application uses **RBush** (`rbush ^4.0.1`), an R-tree spatial index.
-
-Without an index, each range query scans all *n* events — O(n²) total for the full DBSCAN run. With the R-tree, each query narrows candidates to a small geographic rectangle in O(log n), reducing total complexity to approximately O(n log n).
-
-In practice this yields **90–95% faster** clustering for catalogs of 5,000+ events. The index is built once per clustering run and discarded afterwards.
-
-Enable via `useRTree: true` (the default) in `SpatialClusteringOptions`.
-
----
-
-## Worker routing logic
-
-The routing decision in `src/lib/analysis/clustering.ts`:
+## Routing decision
 
 ```typescript
 const HEAVY_ALGORITHMS = ['hdbscan', 'nearest-neighbor', 'tmc', 'hardebeck-2019'];
 
 if (HEAVY_ALGORITHMS.includes(algorithm)) {
-    // POST /api/cluster
+    // POST /api/cluster  (server-side, LRU cached)
 } else {
-    // postMessage to Web Worker
+    // postMessage → clustering.worker.ts  (Web Worker, 30s timeout)
 }
 ```
+
+---
+
+## Coordinate system
+
+### Equirectangular projection
+
+All distance-based algorithms project geographic coordinates to a flat kilometre plane centred on the mean coordinates \((\bar{\phi}, \bar{\lambda})\) of the dataset:
+
+$$x = (\lambda - \bar{\lambda}) \times 111.32 \times \cos\!\left(\bar{\phi}\,\frac{\pi}{180}\right) \quad [\text{km}]$$
+
+$$y = (\phi - \bar{\phi}) \times 110.57 \quad [\text{km}]$$
+
+### Haversine great-circle distance
+
+Used for exact distances in STEP, TMC, and Hardebeck algorithms:
+
+$$\Delta\phi = (\phi_2 - \phi_1)\frac{\pi}{180}, \qquad \Delta\lambda = (\lambda_2 - \lambda_1)\frac{\pi}{180}$$
+
+$$a = \sin^2\!\frac{\Delta\phi}{2} + \cos\phi_1 \cos\phi_2 \sin^2\!\frac{\Delta\lambda}{2}$$
+
+$$d = 2R\arctan2\!\left(\sqrt{a},\,\sqrt{1-a}\right), \qquad R = 6{,}371\ \text{km}$$
+
+### Wells-Coppersmith rupture length
+
+Used by STEP, TMC, and Hardebeck to scale spatial windows to earthquake size:
+
+$$\mathrm{RL}(M) = 10^{-2.44 + 0.59M} \quad [\text{km}]$$
+
+---
+
+## Algorithm summary
+
+| Algorithm | Worker/Server | Key parameters | Noise label |
+|---|---|---|---|
+| DBSCAN | Worker | \(\varepsilon\) (km), `minSamples` | \(-1\) |
+| OPTICS | Worker | \(\varepsilon\) (km), `minSamples` | \(-1\) |
+| k-Means | Worker | \(k\) | none |
+| ST-DBSCAN | Worker | \(\varepsilon\), \(\varepsilon_t\) (days), `minSamples` | \(-1\) |
+| STEP-Mag | Worker | \(M_{\min}\), \(T_1\), \(T_2\) | \(-1\) |
+| STEP-Time | Worker | \(M_{\min}\), \(T_1\), \(T_2\) | \(-1\) |
+| HDBSCAN | Server | `minClusterSize`, `minSamples` | \(-1\) |
+| Nearest-Neighbor | Server | \(\eta_{\text{threshold}}\) | \(-1\) |
+| TMC | Server | \(r_{\text{fact}}\), \(\tau_0\), \(\tau_{\max}\), \(p_1\), \(x_k\), \(M_{\min}\) | \(-1\) |
+| Hardebeck-2019 | Server | \(M_{\min}\), \(T_w\), \(r_{\text{mult}}\), \(T_{\text{excl}}\) | \(-1\) |
+
+---
+
+## DBSCAN
+
+Groups points reachable within \(\varepsilon\) km with at least `minSamples` neighbours. Unreachable points are labelled \(-1\) (noise).
+
+**R-tree optimisation (`useRTree: true`, default):** Range queries use a **RBush** spatial index, reducing complexity from \(\mathcal{O}(n^2)\) to \(\mathcal{O}(n \log n)\). See [Performance](performance.md#5-r-tree-spatial-indexing) for details.
+
+| Key | Default | Description |
+|---|---|---|
+| `epsilon` | 25 km | Core-point neighbourhood radius \(\varepsilon\) |
+| `minSamples` | 5 | Minimum points to form a core point |
+| `useRTree` | `true` | Enable R-tree acceleration |
+
+---
+
+## OPTICS
+
+Extends DBSCAN to produce a reachability plot for variable-density cluster extraction. Implemented via the `density-clustering` library.
+
+**Parameters:** identical to DBSCAN.
+
+---
+
+## k-Means
+
+Partitions events into exactly \(k\) clusters by minimising within-cluster variance. No noise points.
+
+| Key | Default | Description |
+|---|---|---|
+| `k` | 5 | Number of clusters |
+
+---
+
+## ST-DBSCAN
+
+Extends DBSCAN with a temporal epsilon \(\varepsilon_t\). Two events are neighbours only if they satisfy both:
+
+$$d_{\text{spatial}}(i, j) \leq \varepsilon \quad \text{and} \quad |t_i - t_j| \leq \varepsilon_t$$
+
+Event timestamps are converted to fractional days from epoch for the temporal comparison.
+
+| Key | Default | Description |
+|---|---|---|
+| `epsilon` | 25 km | Spatial neighbourhood radius \(\varepsilon\) |
+| `epsilonTemporal` | 7 days | Temporal neighbourhood window \(\varepsilon_t\) |
+| `minSamples` | 5 | Minimum neighbours (both conditions must hold) |
+
+---
+
+## STEP-Mag
+
+Events are associated to mainshock clusters based on magnitude-scaled look-back and look-forward windows. Events are processed largest-magnitude first.
+
+**Spatial window** uses the Wells-Coppersmith rupture length:
+
+$$\mathrm{RL}(M) = 10^{-2.44 + 0.59M} \quad [\text{km}]$$
+
+Only events with magnitude strictly above \(M_{\min}\) can seed or extend a cluster.
+
+| Key | Default | Description |
+|---|---|---|
+| `stepMinMag` | 2.0 | Minimum mainshock magnitude \(M_{\min}\) |
+| `stepT1` | 1 day | Look-back window \(T_1\) |
+| `stepT2` | 30 days | Look-forward window \(T_2\) |
+
+---
+
+## STEP-Time
+
+Identical to STEP-Mag but events are processed in **temporal order**. The cluster reference location and radius update when a larger event is found within it.
+
+**Parameters:** same as STEP-Mag.
+
+---
+
+## HDBSCAN — *server only*
+
+Campello et al. (2013). Builds a hierarchy of DBSCAN clusterings across all density thresholds and extracts the most stable clusters via the *Excess of Mass* criterion.
+
+### Phase 1 — Core distances
+
+For each point \(i\), compute its core distance: the Euclidean distance to its \(k\)-th nearest neighbour, denoted \(\text{core}_k(i)\).
+
+### Phase 2 — Mutual-reachability graph and MST
+
+Define the mutual-reachability distance:
+
+$$d_{\text{mreach}}(i,j) = \max\!\bigl(\text{core}_k(i),\;\text{core}_k(j),\;d_{\text{eucl}}(i,j)\bigr)$$
+
+Build a minimum spanning tree (MST) on the complete graph weighted by \(d_{\text{mreach}}\) using **Prim's algorithm**.
+
+### Phase 3 — Single-linkage dendrogram
+
+Sort MST edges by weight and merge components in ascending order to produce a full dendrogram.
+
+### Phase 4 — Condense tree
+
+Walk the dendrogram bottom-up. At each split, if one side has fewer than `minClusterSize` points, those points *fall out* (their death level \(\lambda_{\text{death}}\) is recorded, where \(\lambda = 1/d\)). Otherwise a new sub-cluster is created.
+
+### Phase 5 — Cluster stability (Excess of Mass)
+
+$$\text{stability}(C) = \sum_{p \in C} \bigl(\lambda_{\text{death}}(p) - \lambda_{\text{birth}}(C)\bigr)$$
+
+### Phase 6 — Cluster selection (bottom-up DP)
+
+For each cluster, keep it if its own stability exceeds the sum of its children's stabilities:
+
+$$\text{keep } C \iff \text{stability}(C) \geq \sum_{\text{child}} \text{stability}(\text{child})$$
+
+### Phase 7 — Membership probabilities and GLOSH outlier scores
+
+$$\text{prob}(p) = \frac{\lambda_{\text{death}}(p)}{\lambda_{\max}(\text{assigned cluster})}$$
+
+$$\text{outlier}(p) = 1 - \frac{\lambda_{\text{death}}(p)}{\lambda_{\max}(\text{drop cluster})}$$
+
+Higher outlier score indicates a more anomalous event.
+
+| Key | Default | Description |
+|---|---|---|
+| `hdbscanMinClusterSize` | 5 | Smallest grouping considered a true cluster |
+| `hdbscanMinSamples` | 5 | \(k\)-NN neighbourhood size for core-distance computation |
+
+**Extra `ClusterResult` fields:** `probabilities[]`, `outlierScores[]`
+
+---
+
+## Nearest-Neighbor (Zaliapin–Ben-Zion) — *server only*
+
+Zaliapin & Ben-Zion (2013). Computes normalised interevent distances in joint space–time–magnitude space:
+
+$$\eta(i,j) = \frac{t_{ij} \cdot r_{ij}^{d}}{10^{b\, m_i}}$$
+
+| Symbol | Value | Meaning |
+|---|---|---|
+| \(t_{ij}\) | — | Time difference in days (only earlier events considered as parents) |
+| \(r_{ij}\) | — | Spatial distance in km |
+| \(d\) | 1.6 | Fractal dimension constant |
+| \(b\) | 1.0 | Gutenberg-Richter b-value constant |
+| \(m_i\) | — | Magnitude of the candidate parent event |
+
+Each event is linked to its parent with the smallest \(\eta\). If \(\eta < \eta_{\text{threshold}}\), the pair is clustered. Clusters are connected components of these links.
+
+| Key | Default | Description |
+|---|---|---|
+| `nnThreshold` | 1.0 | Normalised interevent distance cutoff \(\eta_{\text{threshold}}\) |
+
+---
+
+## TMC (Time-Magnitude Clustering — Reasenberg-style) — *server only*
+
+A probabilistic look-ahead approach inspired by Reasenberg (1985).
+
+**Interaction radius** (capped at 30 km):
+
+$$r(M) = r_{\text{fact}} \times 0.011 \times 10^{0.4M}, \qquad r \leq 30\ \text{km}$$
+
+**Reasenberg look-ahead time:**
+
+$$\Delta M = (1 - x_k)\,M_{\max} - M_{\min}$$
+
+$$\tau = \frac{-\ln(1 - p_1)\,t}{10^{(\Delta M - 1)\,2/3}}, \qquad \tau = \max\!\bigl(\tau_0,\,\min(\tau, \tau_{\max})\bigr)$$
+
+where \(t\) is time elapsed since the largest event in the cluster, \(M_{\max}\) is the magnitude of the largest event, and \(M_{\min}\) is `tmcMinMag`.
+
+Events are processed chronologically. Two events bridge separate clusters: clusters are merged.
+
+| Key | Default | Description |
+|---|---|---|
+| `tmcRfact` | 10 | Spatial radius multiplier \(r_{\text{fact}}\) |
+| `tmcTau0` | 2 days | Minimum look-ahead time \(\tau_0\) |
+| `tmcTauMax` | 10 days | Maximum look-ahead time \(\tau_{\max}\) |
+| `tmcP1` | 0.99 | Interaction probability threshold \(p_1\) |
+| `tmcXk` | 0.5 | Magnitude scaling factor \(x_k\) |
+| `tmcMinMag` | 1.5 | Effective minimum seed magnitude \(M_{\min}\) |
+
+---
+
+## Hardebeck-2019 — *server only*
+
+Hardebeck (2019) updated window method based on Wells-Coppersmith (1994) rupture lengths.
+
+**Rupture length** (Wells-Coppersmith 1994):
+
+$$\mathrm{RL}(M) = 10^{-2.44 + 0.59M} \quad [\text{km}]$$
+
+**Algorithm** (largest mainshocks processed first):
+
+1. Skip any candidate mainshock that falls within \(T_{\text{excl}}\) years and \(5 \times \mathrm{RL}\) of a larger event — it is itself an aftershock
+2. Tag all events within \(T_w\) days and \(r_{\text{mult}} \times \mathrm{RL}\) km as aftershocks of the mainshock
+
+| Key | Default | Description |
+|---|---|---|
+| `hardebeckMinMag` | 5.0 | Minimum mainshock magnitude |
+| `hardebeckTimeWindow` | 10 days | Aftershock collection window \(T_w\) |
+| `hardebeckRuptureMult` | 3 | Spatial radius multiplier \(r_{\text{mult}}\) |
+| `hardebeckMainshockTimeYears` | 3 years | Mainshock exclusion look-back \(T_{\text{excl}}\) |
+
+---
+
+## Client-side result cache
+
+Clustering results are cached in `src/lib/analysis/clusteringCache.ts` (separate from the server LRU):
+
+| Property | Value |
+|---|---|
+| Max entries | 10 |
+| TTL | 5 minutes |
+| Key | `dataHash : JSON.stringify(options)` |
+| Data hash | \(\mathcal{O}(1)\) sample — array length + first/last/middle `timeMs` + sample magnitudes |
 
 ---
 
@@ -208,37 +278,45 @@ if (HEAVY_ALGORITHMS.includes(algorithm)) {
 
 ```typescript
 interface SpatialClusteringOptions {
-    algorithm: ClusteringAlgorithm;
-    epsilon: number;               // km  — DBSCAN / OPTICS / ST-DBSCAN
-    minSamples: number;            // DBSCAN / OPTICS / HDBSCAN
-    k: number;                     // k-Means cluster count
-    useRTree?: boolean;            // default true
-    nnThreshold?: number;          // Nearest-Neighbor distance threshold
+    algorithm: ClusteringAlgorithm;   // required
 
-    // STEP
-    stepMinMag?: number;           // default 2.0
-    stepT1?: number;               // days — default 1
-    stepT2?: number;               // days — default 30
+    epsilon?: number;           // km  — DBSCAN / OPTICS / ST-DBSCAN  (default 25)
+    minSamples?: number;        // DBSCAN / OPTICS / HDBSCAN           (default 5)
+    k?: number;                 // k-Means cluster count               (default 5)
+    useRTree?: boolean;         // R-tree acceleration                 (default true)
+    nnThreshold?: number;       // Nearest-Neighbor η cutoff           (default 1.0)
+    epsilonTemporal?: number;   // days — ST-DBSCAN                    (default 7)
 
-    // ST-DBSCAN
-    epsilonTemporal?: number;      // days — default 7
+    stepMinMag?: number;        // STEP min mainshock magnitude        (default 2.0)
+    stepT1?: number;            // STEP look-back days                 (default 1)
+    stepT2?: number;            // STEP look-forward days              (default 30)
 
-    // TMC
-    tmcRfact?: number;             // default 10
-    tmcTau0?: number;              // days — default 2
-    tmcTauMax?: number;            // days — default 10
-    tmcP1?: number;                // default 0.99
-    tmcXk?: number;                // default 0.5
-    tmcMinMag?: number;            // default 1.5
+    tmcRfact?: number;          // TMC radius multiplier               (default 10)
+    tmcTau0?: number;           // TMC min look-ahead days             (default 2)
+    tmcTauMax?: number;         // TMC max look-ahead days             (default 10)
+    tmcP1?: number;             // TMC probability threshold           (default 0.99)
+    tmcXk?: number;             // TMC magnitude scaling               (default 0.5)
+    tmcMinMag?: number;         // TMC min seed magnitude              (default 1.5)
 
-    // Hardebeck-2019
-    hardebeckMinMag?: number;      // default 5.0
-    hardebeckTimeWindow?: number;  // days — default 10
-    hardebeckRuptureMult?: number; // default 3
+    hardebeckMinMag?: number;             // default 5.0
+    hardebeckTimeWindow?: number;         // days, default 10
+    hardebeckRuptureMult?: number;        // default 3
     hardebeckMainshockTimeYears?: number; // default 3
 
-    // HDBSCAN
-    hdbscanMinClusterSize?: number; // default 5
-    hdbscanMinSamples?: number;     // default 5
+    hdbscanMinClusterSize?: number;       // default 5
+    hdbscanMinSamples?: number;           // default 5
 }
 ```
+
+---
+
+## Selection modes in Temporal-Spatial tab
+
+After clustering, two selection modes are available:
+
+| Mode | Behaviour |
+|---|---|
+| `individual` | Click a point to toggle it; noise points (\(-1\)) always use this mode |
+| `cluster` | Click any point to select all events with the same cluster label |
+
+A **"Show only this cluster"** toggle isolates one cluster across all three linked views (Leaflet map, temporal scatter, 3D plot).

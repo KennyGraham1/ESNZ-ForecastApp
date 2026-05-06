@@ -2,73 +2,155 @@
 
 ## High-level structure
 
-ESNZ-ForecastApp is a **Next.js 13 App Router** application. All data fetching and analysis runs in the browser; the server provides only two thin API proxy routes. There is no database on the server side — earthquake catalogs are persisted in browser **IndexedDB**.
+ESNZ-ForecastApp is a **Next.js 13 App Router** application. All analysis runs in the browser; the server provides two thin API routes. There is no server-side database — earthquake catalogs persist in **browser IndexedDB**.
 
 ```
-Browser                              Next.js server (Vercel / Node)
-────────────────────────────────     ──────────────────────────────
-React UI  ←→  IndexedDB              /api/earthquakes/proxy   (CORS proxy → GeoNet)
-              ↑                      /api/cluster/route        (CPU-heavy clustering with LRU cache)
-         Web Worker
-         (clustering.worker.ts)
+Browser                                   Next.js server
+──────────────────────────────────────    ─────────────────────────────────────
+PageClient.tsx (React state + hooks)  →   /api/earthquakes/proxy  (CORS proxy)
+  ├── useGeoNetData hook                  /api/cluster            (heavy clustering
+  ├── IndexedDB (earthquakeCache.ts)                               + LRU cache)
+  └── Web Worker (clustering.worker.ts)
 ```
 
 ---
 
-## App Router layout
+## App Router directory layout
 
 ```
-src/app/
-├── layout.tsx            # Root layout — wraps <Providers> (QueryClient, theme)
-├── page.tsx              # RSC shell — reads URL search params, renders <Suspense>
-├── PageClient.tsx        # "use client" — entire interactive UI lives here
-└── api/
-    ├── earthquakes/
-    │   └── proxy/route.ts    # CORS proxy → GeoNet quakesearch API
-    └── cluster/route.ts      # Clustering endpoint with server-side LRU cache
+src/
+├── app/
+│   ├── layout.tsx              # Root layout — wraps <Providers>
+│   ├── page.tsx                # RSC shell — reads searchParams, renders <Suspense>
+│   ├── PageClient.tsx          # 'use client' — entire interactive UI
+│   └── api/
+│       ├── earthquakes/
+│       │   └── proxy/route.ts  # CORS proxy → GeoNet quakesearch API
+│       └── cluster/route.ts    # Clustering endpoint with server LRU cache
+├── components/
+│   ├── tabs/
+│   │   ├── BasicDashboard.tsx
+│   │   ├── AdvancedStatistics.tsx
+│   │   ├── AftershockSequence.tsx
+│   │   └── TemporalSpatial.tsx
+│   ├── FilterControls.tsx
+│   ├── Statistics.tsx
+│   ├── CacheIndicator.tsx
+│   ├── LoadingProgress.tsx
+│   ├── OmoriLawPlot.tsx
+│   ├── GutenbergRichterPlot.tsx
+│   ├── LeafletClusterMap.tsx
+│   ├── LeafletAftershockMap.tsx
+│   ├── ChartExportButtons.tsx
+│   ├── CatalogUpload.tsx
+│   └── Providers.tsx
+├── hooks/
+│   └── useGeoNetData.ts
+├── lib/
+│   ├── geonetClient.ts
+│   ├── earthquakeCache.ts
+│   └── analysis/
+│       ├── clustering.ts
+│       ├── clustering.worker.ts
+│       ├── clusteringCache.ts
+│       ├── clusteringTypes.ts
+│       ├── omori.ts
+│       ├── gutenbergRichter.ts
+│       └── referenceModels.ts
+├── types/
+│   └── earthquake.ts
+└── utils/
+    └── earthquakeEnhancement.ts
 ```
 
-### `page.tsx` — RSC shell
+---
 
-`page.tsx` is a React Server Component. Its only job is to read `searchParams` from the URL (e.g. `?days=365&mag=2`) and pass them as props to `<PageClient>` inside a `<Suspense>` boundary. This pattern avoids the `useSearchParams()` hydration penalty on the client.
+## `page.tsx` — RSC shell
 
-### `PageClient.tsx` — interactive root
+`page.tsx` is a React Server Component. Its sole responsibility is reading `searchParams` from the URL and passing them as props to `<PageClient>` wrapped in a `<Suspense>` boundary. This pattern avoids the `useSearchParams()` hydration penalty on the client.
 
-`PageClient.tsx` is marked `'use client'` and owns all React state and hooks:
+---
 
-- `useGeoNetData` — catalog fetch/cache lifecycle
-- `useState` for active tab, filter state, clustering params, and UI toggles
-- `useEffect` to synchronise filter state with date-range changes
-- Tab rendering via `<TabNavigation>` and conditional component mounting
+## `PageClient.tsx` — interactive root
+
+`'use client'` component that owns all application state. URL state is read on mount and written back via `router.replace` whenever it changes.
+
+### URL search parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `tab` | string | Active tab ID (`basic`, `advanced`, `aftershock`, `temporal-spatial`, `sandbox`) |
+| `days` | number | Days of data to show (daysBack mode) |
+| `mag` | number | Minimum magnitude threshold |
+| `start` | YYYY-MM-DD | Range start (used when `days` is absent) |
+| `end` | YYYY-MM-DD | Range end |
+
+### State variables
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `activeTab` | string | Currently rendered tab |
+| `dataSource` | `'geonet' \| 'uploaded'` | Whether data comes from GeoNet or a user file |
+| `uploadedData` | `EarthquakeData[] \| null` | Catalog loaded from file upload |
+| `filterOptions` | `GeoNetFilterOptions` | Magnitude threshold + date window sent to `useGeoNetData` |
+| `filters` | `FilterOptions` | Applied post-fetch filters (mag range, depth, dates, polygon) |
+| `tempOptions` | local object | Slider values before Apply is clicked; tracks `'preset' \| 'custom'` mode |
+| `fetchWarningDismissed` | boolean | Whether the amber GeoNet warning panel has been closed |
+
+### Derived values (useMemo)
+
+**`dataDateRange`** — scans all earthquakes, finds min/max timestamps:
+- Handles both `Date` objects and ISO strings
+- Returns `{ min: string, max: string }` in YYYY-MM-DD format
+- Used to seed the date pickers when switching to date-range mode
+
+**`filteredEarthquakes`** — applies four independent filters in sequence:
+1. Magnitude range: `filters.minMagnitude ≤ eq.magnitude ≤ filters.maxMagnitude`
+2. Depth category: `shallow` (0–70 km), `intermediate` (70–300 km), `deep` (> 300 km)
+3. Date range: start date 00:00 → end date 23:59:59.999
+4. Polygon: `isPointInPolygon([lon, lat], polygon)` when a polygon is drawn
+
+### Date display helpers
+
+| Function | Input | Output |
+|---|---|---|
+| `toDisplayDate(isoDate)` | `YYYY-MM-DD` | `DD/MM/YYYY` |
+| `parseDisplayDate(d)` | `DD/MM/YYYY` | `YYYY-MM-DD` (validates parts, d≤31, m∈[1,12], 4-digit year) |
 
 ---
 
 ## Component hierarchy
 
 ```
-<Providers>                        # QueryClient + ThemeProvider
+<Providers>                          # QueryClient + ThemeProvider
 └── <PageClient>
-    ├── <FilterControls>           # Magnitude, date range, days-back inputs
-    ├── <CacheIndicator>           # IndexedDB hit/miss badge, "Check for New Events"
-    ├── <LoadingProgress>          # Chunk-level GeoNet fetch progress bar
-    ├── <Statistics>               # Summary counts, magnitude/depth stats
-    ├── <TabNavigation>            # Tab bar — renders active tab label
-    └── [active tab]
-        ├── <BasicDashboard>       # Map + MagnitudeDistribution + TemporalAnalysis
-        │   ├── <Map>              # Highcharts map (NZ base layer)
+    ├── Header
+    │   ├── Tab selector (5 tabs)
+    │   └── Data source toggle (GeoNet / Upload)
+    ├── <CacheIndicator>             # IndexedDB hit/miss, "Check for New Events"
+    ├── GeoNet warning panel         # Dismissable amber panel (fetchWarnings)
+    ├── <LoadingProgress>            # Chunk-level fetch progress bar
+    ├── <FilterControls>             # Mag range, depth, dates, polygon
+    ├── <Statistics>                 # Event count, max mag, avg depth
+    └── [active tab component]
+        ├── <BasicDashboard>
+        │   ├── <Map>                # Highcharts NZ map (SSR disabled)
         │   ├── <MagnitudeDistribution>
         │   └── <TemporalAnalysis>
-        ├── <AdvancedStatistics>   # GR plot, depth profile, 3D viz, temporal stats
+        ├── <AdvancedStatistics>     # 6 panels
         │   ├── <GutenbergRichterPlot>
         │   ├── <DepthProfilePlot>
+        │   ├── <MagnitudeDistribution>
+        │   ├── <TemporalAnalysis>
         │   ├── <ThreeDVisualization>
         │   └── <TemporalStatistics>
-        ├── <AftershockSequence>   # Omori's Law + aftershock plots
-        │   ├── <OmoriLawPlot>
+        ├── <AftershockSequence>
         │   ├── <AftershockSequencePlot>
-        │   ├── <CumulativeAftershockPlot>
-        │   └── <LeafletAftershockMap>
-        └── <TemporalSpatial>      # Linked temporal + spatial clustering
+        │   ├── <ThreeDVisualization>
+        │   ├── <OmoriLawPlot>
+        │   ├── <GutenbergRichterPlot>
+        │   └── <CumulativeAftershockPlot>
+        └── <TemporalSpatial>
             ├── <LeafletClusterMap>
             ├── <TemporalSpatial3DPlot>
             └── <ClusteringProgressPanel>
@@ -80,73 +162,117 @@ src/app/
 
 ### `GET /api/earthquakes/proxy`
 
-A thin CORS proxy that rewrites requests to `https://quakesearch.geonet.org.nz/geojson`.
+A CORS proxy that forwards requests to `https://quakesearch.geonet.org.nz/geojson`. All query parameters are forwarded verbatim.
 
-**Accepted query parameters:**
+**Headers sent to GeoNet:**
+```
+Accept: application/json
+User-Agent: ESNZ-ForecastApp GeoNet catalog proxy
+```
 
-| Parameter | Type | Description |
-|---|---|---|
-| `bbox` | `minLon,minLat,maxLon,maxLat` | Bounding box (NZ default: `163.0,-49.0,179.9,-27.0`) |
-| `minmag` | number | Minimum magnitude |
-| `startdate` | ISO datetime | Range start |
-| `enddate` | ISO datetime | Range end |
+**Cache strategy:** `cache: 'no-store'` — Next.js's incremental cache has a 2 MB per-entry limit, which GeoNet monthly chunks frequently exceed. All caching is handled client-side via IndexedDB.
 
-> **Note:** GeoNet's quakesearch API does not support an `eventtype` query parameter — requests including it return HTTP 400. Event-type filtering is performed client-side after the response arrives.
+**Error handling:**
+- Non-200 response from GeoNet → returns HTTP 502, error body capped at 500 chars
+- Network error → returns HTTP 502 with message
 
-**Response:** raw GeoJSON `FeatureCollection` from GeoNet, forwarded as-is.
+> **Important:** GeoNet does not support an `eventtype` query parameter — requests including it return HTTP 400. Event-type filtering is performed client-side after the response arrives.
+
+---
 
 ### `POST /api/cluster`
 
-Runs computationally heavy clustering algorithms server-side to avoid blocking the main thread for algorithms that are too large for the Web Worker budget.
+Runs computationally heavy clustering algorithms server-side. Serverless function timeout: **60 seconds**.
 
 **Request body:**
-
-```json
+```typescript
 {
-  "algorithm": "hdbscan",
-  "points": [[lat, lon, depth, mag, timeMs], ...],
-  "options": { "hdbscanMinClusterSize": 5, "epsilon": 50 }
+  earthquakes: EarthquakeData[],  // dates arrive as ISO strings, re-hydrated server-side
+  options: SpatialClusteringOptions
 }
 ```
 
-**Response:** `ClusterResult` JSON (labels, nClusters, clusters, optional probabilities).
+**Validation:**
+- `earthquakes` must be a non-empty array
+- `options.algorithm` must be present
 
-**Caching:** Results are cached server-side using an in-memory LRU cache keyed by SHA-256 of the request body. Cache TTL is 15 minutes; maximum 30 entries.
+**Response headers:**
+- `X-Cluster-Cache: 'HIT'` — result served from LRU cache
+- `X-Cluster-Cache: 'MISS'` — result freshly computed
+
+**Response body:** `ClusterResult` JSON, or `{ error: string }` on failure.
+
+**Server-side LRU cache:**
+
+| Property | Value |
+|---|---|
+| Cache key | SHA-256(sorted event IDs + algorithm + params).slice(0, 16) |
+| TTL | 15 minutes |
+| Max entries | 30 |
+| Eviction | Oldest entry removed on overflow |
+| Scope | In-process (resets on Vercel cold start) |
 
 ---
 
 ## State management
 
-The application does not use a global state library. State is distributed across three tiers:
+The application does not use a global state library. State is distributed across four tiers:
 
 | Tier | Mechanism | Scope |
 |---|---|---|
-| **Catalog state** | `useGeoNetData` hook + browser IndexedDB | Persists across page loads |
-| **UI / filter state** | `useState` in `PageClient.tsx` | Single session |
-| **Clustering results** | `useState` in `TemporalSpatial.tsx`, computed by worker or server | Single analysis run |
+| **Catalog state** | `useGeoNetData` hook + browser IndexedDB | Persists across page loads per magnitude level |
+| **URL state** | `useSearchParams` + `router.replace` | Preserved in browser history |
+| **UI / filter state** | `useState` in `PageClient.tsx` | Session only |
+| **Clustering results** | `useState` in `TemporalSpatial.tsx` | Single analysis run |
 
-### `useGeoNetData` hook
-
-Located at `src/hooks/useGeoNetData.ts`. Manages the full catalog lifecycle:
-
-1. **Mount** — reads IndexedDB for the requested magnitude level
-2. **Cache miss** — fetches the last 365 days from GeoNet, saves to IndexedDB
-3. **Gap-fill** — if the requested date range precedes the cached `initialFetchDate`, fetches only the missing historical window and merges
-4. **Refresh** — user-triggered incremental fetch from `lastUpdated` to now
-
-The hook returns a `CatalogResponse` object with a `data: EarthquakeData[]` array pre-filtered to the requested date window.
+TanStack Query (`@tanstack/react-query`) is installed and a `QueryClient` is configured in `Providers.tsx`, but the main data-fetching logic uses the custom `useGeoNetData` hook directly — not `useQuery`.
 
 ---
 
-## Data types
+## All data types
 
-### `StoredEarthquake` (IndexedDB record)
+### `EarthquakeData` (runtime)
+
+```typescript
+interface EarthquakeData {
+    eventID: string;
+    time: Date;                      // runtime Date object
+    timeMs?: number;                 // pre-computed Unix ms (added by enhanceEarthquakeData)
+    latitude: number;
+    longitude: number;
+    depth: number;
+    magnitude: number;
+    locality: string;
+    mmi?: number;
+    azimuthalGap?: number;
+    magnitudeStationCount?: number;
+    minimumDistance?: number;
+    standardError?: number;
+    originError?: number;
+    evaluationMethod?: string;
+    usedPhaseCount?: number;
+    [key: string]: any;             // allows arbitrary catalog fields from uploads
+}
+```
+
+### `EnhancedEarthquakeData` (post-enhancement)
+
+```typescript
+extends EarthquakeData {
+    timeMs: number;                 // always present after enhanceEarthquakeData()
+    magBin: number;                 // Math.floor(magnitude)
+    depthCategory: 'shallow' | 'intermediate' | 'deep';  // 0–70, 70–300, >300 km
+    year: number;
+}
+```
+
+### `StoredEarthquake` (IndexedDB)
 
 ```typescript
 interface StoredEarthquake {
     eventID: string;
-    time: string;        // ISO 8601
-    timeMs: number;      // pre-computed ms (for fast filter)
+    time: string;                   // ISO 8601 string (Date not serialisable in IDB)
+    timeMs: number;                 // pre-computed ms for fast filtering
     latitude: number;
     longitude: number;
     depth: number;
@@ -157,26 +283,69 @@ interface StoredEarthquake {
     evaluationStatus?: string;
     evaluationMode?: string;
     modificationTime?: string;
-    // ... 8 more optional quality fields
+    earthModel?: string;
+    azimuthalGap?: number;
+    magnitudeUncertainty?: number;
+    magnitudeStationCount?: number;
+    minimumDistance?: number;
+    standardError?: number;
+    originError?: number;
+    evaluationMethod?: string;
+    usedPhaseCount?: number;
+    usedStationCount?: number;
 }
 ```
 
-### `EarthquakeData` (runtime / chart input)
+### `StoredCatalog` (IndexedDB record)
 
-Identical to `StoredEarthquake` but with `time: Date` instead of `time: string`. Conversion happens in `useGeoNetData` when data is read from IndexedDB.
+```typescript
+interface StoredCatalog {
+    minMagnitude: number;           // keyPath
+    earthquakes: StoredEarthquake[];
+    initialFetchDate: string;       // earliest event date loaded (ISO)
+    lastUpdated: string;            // last refresh timestamp (ISO)
+    totalEvents: number;
+}
+```
+
+### `FilterOptions`
+
+```typescript
+interface FilterOptions {
+    minMagnitude: number;
+    maxMagnitude: number;
+    depthCategory: 'all' | 'shallow' | 'intermediate' | 'deep';
+    startDate: string;              // YYYY-MM-DD
+    endDate: string;
+    polygon?: string;               // CSV of "lon,lat" pairs
+}
+```
 
 ### `ClusterResult`
 
 ```typescript
 interface ClusterResult {
-    labels: number[];        // per-event cluster label (-1 = noise)
+    labels: number[];               // -1 = noise, 0,1,2,… = cluster ID
     nClusters: number;
-    clusterPercent: number;
+    clusterPercent: number;         // % of events in any cluster
     noisePercent: number;
-    clusters: number[][];    // indices grouped by cluster
-    probabilities?: number[]; // HDBSCAN soft membership
-    outlierScores?: number[]; // HDBSCAN GLOSH scores
+    clusters: number[][];           // event indices grouped by cluster
+    probabilities?: number[];       // HDBSCAN: soft membership [0,1]
+    outlierScores?: number[];       // HDBSCAN: GLOSH anomaly score [0,1]
     metadata?: ClusteringMetadata;
+}
+```
+
+### `ClusteringMetadata`
+
+```typescript
+interface ClusteringMetadata {
+    algorithm: ClusteringAlgorithm;
+    algorithmDescription: string;
+    parameters: Record<string, any>;
+    timestamp: string;              // ISO
+    datasetSize: number;
+    computationTime?: number;       // ms
 }
 ```
 
@@ -188,14 +357,60 @@ interface ClusterResult {
 Database:  esnz-earthquake-catalog  (version 1)
 Store:     catalogs                 (keyPath: minMagnitude)
 
-Record per magnitude level:
+One record per magnitude threshold (2, 3, 4 …):
 {
-    minMagnitude:    number,   // 2, 3, 4, …  (keyPath)
-    earthquakes:     StoredEarthquake[],
-    initialFetchDate: string,  // earliest event date loaded
-    lastUpdated:     string,   // last refresh timestamp
-    totalEvents:     number,
+    minMagnitude:     number,
+    earthquakes:      StoredEarthquake[],
+    initialFetchDate: string,   // ISO — oldest event date in catalog
+    lastUpdated:      string,   // ISO — when catalog was last extended
+    totalEvents:      number,
 }
 ```
 
-One record exists per magnitude threshold the user has queried. Selecting M3+ creates a separate record from M2+; they do not share data.
+Selecting M3+ creates a record that is entirely independent of the M2+ record — they do not share events.
+
+---
+
+## Catalog upload
+
+`CatalogUpload.tsx` implements a **4-step wizard**:
+
+1. **Select File** — drag-drop or file input, max 200 MB. Supported formats: CSV, TSV, JSON, GeoJSON, XLSX, QuakeML.
+2. **Map Columns** — auto-suggests mappings from detected column names. Required fields: `time`, `latitude`, `longitude`, `magnitude`, `depth`. Optional: `eventID`, `locality`, `mmi`, and others.
+3. **Import Options** — date/coordinate format, validation rules (min/max magnitude, depth, date range).
+4. **Preview & Import** — shows sample rows and statistics. On confirm calls `enhanceEarthquakeData()` and hands off to `PageClient` via `onDataLoaded`.
+
+QuakeML files skip the column-mapping step (self-describing format).
+
+---
+
+## Components reference
+
+### `CacheIndicator`
+
+Displays catalog age and provides the **"Check for New Events"** refresh button.
+
+- Auto-refreshes the displayed age every **60 seconds** via `setInterval`
+- Age display format: `Xd Yh ago` / `Xh Ym ago` / `Xm ago`
+- Props: `lastUpdated`, `initialFetchDate`, `totalEvents`, `onRefresh`, `isRefreshing`, `newEventsAdded`, `filteredCount`, `returnedCount`
+
+### `LoadingProgress`
+
+Animated progress panel shown during GeoNet fetches and clustering.
+
+- Props: `operation`, `total`, `current`, `progress` (0–100), `details`, `overlay` (default `true`), `icon`
+- Shows indeterminate bouncing-dot animation when `progress` is absent
+- Shows percentage and filled bar when `progress` is provided
+
+### `ChartExportButtons`
+
+Exports Highcharts charts and data.
+
+- **Image export**: PNG / JPEG / SVG at 1920×1080, scale 2×
+- **CSV export**: data rows with metadata header
+- **JSON export**: structured object with `ClusteringMetadata`
+- Validates that `clusterLabels.length === data.length` before export
+
+### `PolygonDrawer`
+
+Dynamically imported (SSR disabled). Lets users draw a polygon on the map to spatially filter earthquakes. The polygon is serialised as a CSV string of `lon,lat` pairs and stored in `filters.polygon`.

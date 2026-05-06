@@ -1,212 +1,241 @@
 # Performance Optimizations
 
-## Overview
-
-The application is designed to remain responsive with catalogs of 10,000–50,000+ events. Performance work is concentrated in four areas:
-
-1. **Browser-side IndexedDB caching** — eliminates repeated GeoNet fetches
-2. **Server-side LRU cache** — reuses expensive clustering results
-3. **Web Workers with Transferable buffers** — keeps the main thread unblocked during clustering
-4. **R-tree spatial indexing** — reduces DBSCAN/OPTICS complexity from O(n²) to O(n log n)
-5. **Highcharts Boost module** — canvas rendering for charts with 50,000+ data points
-6. **Reservoir sampling** — bounds memory for the Temporal-Spatial 3D plot
+The application targets smooth interaction with catalogs of 10,000–50,000+ events across six complementary optimisation strategies.
 
 ---
 
-## 1. Browser IndexedDB caching
+## 1. Browser IndexedDB catalog cache
 
 ### Problem
 
-The GeoNet quakesearch API has no CDN caching and enforces a 20,000-feature limit per request. Fetching a year of M2+ data requires ~12 monthly HTTP requests totalling several seconds on every page load.
+GeoNet's quakesearch API has no CDN caching and enforces a 20,000-feature limit per request. Fetching a year of M2+ data requires ~12 monthly HTTP requests totalling several seconds — on every page load if no caching exists.
 
 ### Solution
 
-`src/lib/earthquakeCache.ts` wraps the browser **IndexedDB** API to persist the full catalog between sessions.
+`src/lib/earthquakeCache.ts` wraps the browser **IndexedDB** API to persist the full catalog across sessions.
 
-On first visit for a given magnitude:
-1. The hook detects no cached data and fetches the last 365 days from GeoNet.
-2. The catalog is written to IndexedDB under the key `minMagnitude`.
+- **Schema:** `esnz-earthquake-catalog` (v1), object store `catalogs`, keyPath `minMagnitude`
+- **One record per magnitude threshold:** M2+, M3+, M4+ are stored independently
+- **First visit:** fetches 365 days, saves to IndexedDB
+- **Subsequent visits:** `getCachedCatalog(magnitude)` returns immediately, no network request
+- **Refresh:** incremental fetch from `lastUpdated` to now; only new events downloaded
 
-On subsequent visits:
-1. `getCachedCatalog(magnitude)` returns the stored catalog immediately.
-2. The UI renders with no network request.
-3. An incremental refresh (user-triggered) fetches only events since `lastUpdated`.
+### Pre-computed `timeMs`
 
-**IndexedDB schema:** One record per magnitude level (keyPath: `minMagnitude`). Separate magnitude thresholds (M2+, M3+, etc.) are stored independently.
+Every `StoredEarthquake` stores a `timeMs: number` field — Unix milliseconds pre-computed at ingest time. Date-range filtering compares `timeMs` numerically rather than parsing ISO strings with `new Date()`. This is approximately **95% faster** for bulk filter operations on 20,000+ event arrays.
 
-### Pre-computed timestamps
+### IndexedDB availability guard
 
-Each `StoredEarthquake` carries a `timeMs: number` field (Unix milliseconds, pre-computed on ingest). Date-range filtering uses `timeMs` comparisons rather than `new Date(string)` parsing — approximately 95% faster for bulk filter operations on large arrays.
+`earthquakeCache.ts` handles all known failure modes:
+
+- **SSR / no window:** early-bail with `Promise.reject` + no-op `.catch()` to prevent unhandled rejection warnings
+- **Synchronous throw from `indexedDB.open()`:** caught inside the Promise constructor (Safari Private Browsing, Chrome strict storage block)
+- **`request.onerror`:** resets `dbPromise = null` so the next call retries
+- **`request.onblocked`:** logs a warning (another tab has an older schema version open)
+
+When IndexedDB is unavailable, the catalog is fetched from GeoNet on every page load without error.
 
 ---
 
-## 2. Server-side LRU cache (`/api/cluster`)
+## 2. Server-side LRU cache for clustering
 
 ### Problem
 
-Heavy clustering algorithms (HDBSCAN, Nearest-Neighbor, TMC, Hardebeck-2019) can take several seconds per run. Re-running the same algorithm on the same data (e.g. navigating away and back) wastes server CPU.
+Heavy algorithms (HDBSCAN, Nearest-Neighbor, TMC, Hardebeck-2019) running on 20,000+ events can take several seconds per invocation. Re-running with identical inputs is pure waste.
 
 ### Solution
 
-`src/app/api/cluster/route.ts` maintains an in-process LRU (Least Recently Used) cache:
+`/api/cluster/route.ts` maintains an **in-process LRU cache**:
 
 | Property | Value |
 |---|---|
-| Cache key | SHA-256 hash of the full JSON request body |
+| Cache key | SHA-256(sorted event IDs + algorithm + serialised params).slice(0, 16) |
 | TTL | 15 minutes |
 | Max entries | 30 |
-| Storage | In-process memory (no Redis required) |
+| Eviction | Oldest entry removed on overflow |
+| Response header | `X-Cluster-Cache: HIT` or `MISS` |
 
-The cache key is content-addressed: the same algorithm, same points, and same options always produce the same key, even across different client sessions.
+The key is content-addressed: same algorithm + same events + same options always produce the same key regardless of client session.
 
 ```mermaid
 flowchart LR
-    A[POST /api/cluster] --> B{SHA-256 key\nin LRU?}
-    B -- Hit, TTL valid --> C[Return cached ClusterResult]
-    B -- Miss or expired --> D[Run clustering algorithm]
-    D --> E[Store result in LRU]
+    A[POST /api/cluster] --> B{Key in LRU?\nTTL valid?}
+    B -- HIT --> C[Return cached ClusterResult\nX-Cluster-Cache: HIT]
+    B -- MISS --> D[Run algorithm]
+    D --> E[Store in LRU]
     E --> C
 ```
 
----
-
-## 3. Web Workers with Transferable buffers
-
-### Problem
-
-Clustering 10,000+ events synchronously on the main thread blocks all UI interaction (scrolling, tab switching, input) for the duration of the calculation.
-
-### Solution
-
-Light algorithms are offloaded to a dedicated **Web Worker** (`src/lib/analysis/clustering.worker.ts`). Communication uses **Transferable objects** to achieve zero-copy data transfer.
-
-### Encoding
-
-Before posting to the worker, each earthquake is packed into a flat `Float64Array` with 5 values per event:
-
-```
-[lat₀, lon₀, depth₀, mag₀, timeMs₀,  lat₁, lon₁, depth₁, mag₁, timeMs₁,  ...]
-```
-
-The buffer is transferred (not copied) via `postMessage`:
-
-```typescript
-const buf = new Float64Array(events.length * 5);
-// ... fill buf ...
-worker.postMessage({ algorithm, options, points: buf }, [buf.buffer]);
-```
-
-After transfer, `buf.buffer` is detached — the main thread can no longer read it, and the worker owns the memory. No serialisation, no heap copy.
-
-### Timeout
-
-If a worker run exceeds **30 seconds**, the worker is terminated and an error is returned to the UI.
-
-### Result
-
-The worker posts back a plain `ClusterResult` object, which React serialises normally (labels are small integer arrays, not large buffers).
+> **Serverless note:** This cache is in-process. It resets on Vercel cold starts (scale-to-zero). Within a warm function instance it works across all requests.
 
 ---
 
-## 4. R-tree spatial indexing
+## 3. Client-side clustering result cache
+
+A **second, separate cache** in `src/lib/analysis/clusteringCache.ts` prevents re-running algorithms in the Web Worker when the user toggles unrelated UI controls:
+
+| Property | Value |
+|---|---|
+| Max entries | 10 |
+| TTL | 5 minutes |
+| Key | `dataHash : JSON.stringify(options)` |
+
+**Data hash (O(1) — does not iterate all events):**
+
+```typescript
+hash = `${events.length}:${events[0].timeMs}:${events[mid].timeMs}:${events[last].timeMs}:${sample_magnitudes}`
+```
+
+Sampling avoids O(n) hashing while still detecting changes to the dataset.
+
+---
+
+## 4. Web Workers with Transferable buffers
 
 ### Problem
 
-DBSCAN requires an ε-radius neighbourhood query for every point. Naïve brute-force is O(n²): 10,000 events → 100,000,000 distance comparisons per clustering run.
+Clustering 10,000+ events synchronously on the main thread blocks all UI interaction for the duration of the calculation — scrolling, tab switching, and input all freeze.
 
 ### Solution
 
-**RBush** (`rbush ^4.0.1`) builds an R-tree over the event coordinates before the first neighbourhood query. Each subsequent range query is O(log n) in the tree height rather than O(n).
+Light algorithms run in **`clustering.worker.ts`**, a dedicated Web Worker:
+
+1. **Encoding:** each earthquake is packed into a flat `Float64Array` with 5 values per event:
+   ```
+   [lat, lon, depth, mag, timeMs,  lat, lon, depth, mag, timeMs,  ...]
+   ```
+2. **Zero-copy transfer:**
+   ```typescript
+   worker.postMessage({ buf, n: events.length, options, requestId }, [buf.buffer]);
+   ```
+   After transfer, `buf.buffer` is detached in the main thread — no heap copy, no serialisation.
+3. **Timeout:** if the worker takes > **30 seconds**, it is terminated and an error is returned to the UI.
+4. **Result:** the worker posts back a plain `ClusterResult` object (labels are small integer arrays, not large buffers — standard structured-clone is fine for the response).
+
+The worker also accepts a legacy format `{ earthquakes: EarthquakeData[], options }` for callers that do not use the packed format.
+
+> **No SharedArrayBuffer:** communication uses Transferable `ArrayBuffer` (one-way ownership transfer), not SharedArrayBuffer. SharedArrayBuffer requires `Cross-Origin-Opener-Policy` headers; Transferable needs no special configuration.
+
+---
+
+## 5. R-tree spatial indexing
+
+### Problem
+
+DBSCAN and similar algorithms must perform an ε-radius neighbourhood query for every point. Brute-force is O(n²): 10,000 events → 100,000,000 distance comparisons.
+
+### Solution
+
+**RBush** (`rbush ^4.0.1`) builds an R-tree spatial index over projected (x, y) coordinates before the first query. Each range query is O(log n):
 
 ```typescript
-// Index built once per clustering run
 const tree = new RBush();
-tree.load(events.map(e => ({
-    minX: e.longitude, maxX: e.longitude,
-    minY: e.latitude,  maxY: e.latitude,
+tree.load(events.map((e, i) => ({
+    minX: x[i], maxX: x[i],
+    minY: y[i], maxY: y[i],
     index: i,
 })));
 
-// Per-point neighbourhood query during DBSCAN
-const neighbours = tree.search({
-    minX: lon - eps, maxX: lon + eps,
-    minY: lat - eps, maxY: lat + eps,
+// Per-point query during DBSCAN core-point test
+const candidates = tree.search({
+    minX: x[p] - epsilon, maxX: x[p] + epsilon,
+    minY: y[p] - epsilon, maxY: y[p] + epsilon,
 });
 ```
 
-**Measured improvement:** 90–95% faster for catalogs ≥ 5,000 events.
+Candidates are then distance-filtered exactly (the R-tree returns a bounding-box superset).
 
-Enable with `useRTree: true` (the default in `SpatialClusteringOptions`). Set to `false` only for small catalogs or debugging.
+**Measured improvement: 90–95% faster** for catalogs ≥ 5,000 events.
+
+Enabled via `useRTree: true` (the default). Set to `false` only for very small catalogs or debugging.
 
 ---
 
-## 5. Highcharts Boost module
+## 6. Highcharts Boost module (canvas rendering)
 
 ### Problem
 
-Highcharts renders charts using SVG by default. SVG performance degrades visibly above ~5,000 data points: each point is a DOM element, and animations/redraws cause layout thrashing.
+Highcharts renders charts using SVG by default. SVG degrades visibly above ~5,000 data points — each point is a DOM element; redraws cause layout thrashing.
 
 ### Solution
 
-The **Highcharts Boost module** switches the rendering backend to an **HTML5 Canvas** context when a series exceeds 50,000 data points. Canvas draws all points in a single rasterisation pass, with no per-point DOM nodes.
+The **Highcharts Boost module** switches the rendering backend to an **HTML5 Canvas 2D context** when a series exceeds **50,000 data points**. All points are rasterised in a single canvas pass with no per-point DOM nodes.
 
-> **Important:** This is canvas-based acceleration, not GPU/WebGL. Highcharts Boost draws to a `<canvas>` element using the 2D context API.
-
-**Boost threshold:** 50,000 points per series.
+> **This is canvas-based acceleration, not GPU/WebGL.** Highcharts Boost uses the `<canvas>` 2D context API — hardware-accelerated compositing happens at the OS level as a side effect of canvas compositing, but the drawing itself is CPU-driven.
 
 Charts that benefit most:
-- Temporal analysis time-series (can have 30,000+ daily event counts)
-- 3D scatter plots with depth/magnitude overlay
-- Magnitude distribution histograms for long catalogs
+- Temporal analysis time-series (can exceed 30,000 daily-count points for long catalogs)
+- Magnitude distribution histograms
+- 3D scatter plots with depth and magnitude overlays
 
 ---
 
-## 6. Reservoir sampling (Temporal-Spatial 3D plot)
+## 7. Reservoir sampling
 
 ### Problem
 
-The `TemporalSpatial3DPlot` renders a three-dimensional scatter plot of up to the full catalog. Sending all 30,000+ events to Highcharts simultaneously causes perceptible frame drops even with Boost enabled.
+The `TemporalSpatial3DPlot` renders a three-dimensional scatter plot. Sending 30,000+ events to Highcharts simultaneously causes perceptible frame drops even with Boost enabled.
 
 ### Solution
 
-A **reservoir sampling** pass caps the input at **5,000 events** before the data is handed to Highcharts:
+**Knuth reservoir sampling** caps the input at **5,000 events** (`TEMPORAL_SPATIAL_SAMPLE_SIZE`) before rendering:
 
 ```typescript
-const SAMPLE_THRESHOLD = 5_000;
-
-function reservoirSample<T>(arr: T[], k: number): T[] {
-    if (arr.length <= k) return arr;
-    const reservoir = arr.slice(0, k);
-    for (let i = k; i < arr.length; i++) {
-        const j = Math.floor(Math.random() * (i + 1));
-        if (j < k) reservoir[j] = arr[i];
-    }
-    return reservoir;
+const reservoir = arr.slice(0, k);                      // fill reservoir
+for (let i = k; i < arr.length; i++) {
+    const j = Math.floor(Math.random() * (i + 1));      // random index 0..i
+    if (j < k) reservoir[j] = arr[i];                   // replace with probability k/(i+1)
 }
 ```
 
-Reservoir sampling gives each event an equal probability of inclusion regardless of time ordering, preserving the statistical distribution of the full catalog.
+Every event has equal probability `k/n` of being in the final sample, preserving the statistical distribution of the full catalog regardless of time ordering.
 
 ---
 
-## 7. Bounded concurrency for GeoNet fetches
+## 8. Bounded concurrency for GeoNet fetches
 
-Monthly chunk fetches are parallelised but limited to **5 concurrent requests** (`MAX_CONCURRENT = 5`) to avoid saturating GeoNet's API or the browser's HTTP/2 connection pool.
+Monthly chunks are parallelised with a manual concurrency pool capped at **`MAX_CONCURRENT = 5`**:
 
-The concurrency pool is managed manually (no external library) using a running `executing: Promise[]` array and `Promise.race` to drain a slot before adding the next chunk.
+```typescript
+const executing: Promise<void>[] = [];
+for (let i = 0; i < chunks.length; i++) {
+    const p = fetchChunkRecursive(chunks[i], ...)
+        .then(result => { ... })
+        .finally(() => { executing.splice(executing.indexOf(p), 1); });
+
+    executing.push(p);
+    if (executing.length >= MAX_CONCURRENT) {
+        await Promise.race(executing);   // wait for one slot to free
+    }
+}
+await Promise.all(executing);
+```
+
+This prevents saturating GeoNet's API and avoids exhausting the browser's HTTP/2 connection pool (browsers allow 6 simultaneous connections per origin).
 
 ---
 
-## Summary table
+## 9. Memoisation and debouncing
 
-| Optimisation | Mechanism | Benefit |
+- **`filteredEarthquakes`** in `PageClient.tsx` is a `useMemo` that only recomputes when `earthquakes`, `filters`, or date parameters change
+- **`Statistics`** component is wrapped in `React.memo` to prevent re-renders when unrelated state changes
+- **Clustering slider changes** in `TemporalSpatial.tsx` use a **600 ms debounce** — the algorithm does not re-run until the user stops adjusting a slider
+- **`CacheIndicator`** age display auto-refreshes via `setInterval` every 60 seconds without triggering a catalog reload
+
+---
+
+## Summary
+
+| Optimisation | Mechanism | Measured benefit |
 |---|---|---|
 | IndexedDB catalog cache | Browser persistent storage | Eliminates full re-fetch on repeat visits |
 | Pre-computed `timeMs` | Stored numeric timestamps | ~95% faster date-range filtering |
-| Server LRU cache | In-memory SHA-256 keyed store | Eliminates repeated heavy clustering calls |
-| Web Worker | Background thread | Keeps main thread responsive during clustering |
-| Transferable ArrayBuffer | Zero-copy `postMessage` | Eliminates serialisation overhead for point data |
-| R-tree (RBush) | Spatial index | 90–95% faster DBSCAN/OPTICS for n ≥ 5,000 |
-| Highcharts Boost | Canvas rendering | Smooth charts above 50,000 points |
-| Reservoir sampling | Statistical subsampling | Bounded 3D plot at 5,000 events |
-| Bounded fetch concurrency | Promise pool (max 5) | Prevents API rate-limit and connection saturation |
+| Server LRU cache | SHA-256 keyed in-process store (30 entries, 15 min) | Eliminates repeated heavy clustering runs |
+| Client clustering cache | O(1)-hashed in-memory store (10 entries, 5 min) | Prevents redundant Worker calls for same input |
+| Web Worker | Background thread + 30s timeout | Main thread stays responsive during clustering |
+| Transferable ArrayBuffer | Zero-copy `postMessage` | No serialisation overhead for point data |
+| R-tree (RBush) | Spatial index for range queries | 90–95% faster DBSCAN/OPTICS for n ≥ 5,000 |
+| Highcharts Boost | Canvas rendering above 50k points | Smooth charts for large catalogs |
+| Reservoir sampling | Knuth's algorithm at 5,000 events | Bounded 3D plot memory and render time |
+| Bounded fetch concurrency | Promise pool, max 5 | Prevents GeoNet rate-limit and connection saturation |
+| Slider debounce | 600 ms delay before re-clustering | Eliminates mid-drag recalculations |

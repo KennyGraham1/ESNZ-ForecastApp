@@ -2,112 +2,142 @@
 
 ## GeoNet fetch and caching pipeline
 
-The full lifecycle from page load to rendered data, including cache hits and misses:
-
 ```mermaid
 flowchart TD
-    A([Page load / magnitude change]) --> B[useGeoNetData hook mounts]
-    B --> C[getCachedCatalog\nfrom IndexedDB]
+    A([Page load / magnitude change]) --> B[useGeoNetData mounts\nfor minMagnitude]
+    B --> C[getCachedCatalog\nIndexedDB read]
     C --> D{Cache hit?}
 
-    D -- Yes --> E[Set catalog state\nrender immediately]
+    D -- Yes --> E[Set catalog state\nUI renders immediately]
     D -- No --> F[fetchFromGeoNetWithReport\nstart = now − 365 days\nend = now]
 
     F --> G[buildMonthlyChunks\none chunk per calendar month]
-    G --> H[Bounded concurrency queue\nMAX_CONCURRENT = 5]
-    H --> I[fetchChunkRecursive]
+    G --> H[Bounded concurrency pool\nMAX_CONCURRENT = 5]
+    H --> I[fetchChunkRecursive\ndepth = 0]
 
-    I --> J{Features ≥ 20,000?}
-    J -- Yes, interval > 1 day --> K[splitChunk in half\nrecurse on both halves]
-    J -- Yes, interval ≤ 1 day --> L[Emit truncated issue\nreturn empty]
-    J -- No --> M[parseGeoNetFeature\nfor each feature]
-    K --> I
+    I --> J[fetchJsonWithRetry\nmax 3 attempts\n600ms × 2^attempt + 0–250ms jitter]
+    J --> K{Features ≥ 20,000?}
+    K -- Yes\ninterval > 24h --> L[splitChunk bisect\nrecurse both halves\ndepth + 1]
+    L --> I
+    K -- Yes\ninterval ≤ 24h --> M[Emit 'truncated' issue\nreturn empty result]
+    K -- No --> N[parseGeoNetFeature\nfor each feature]
 
-    M --> N{Parse result?}
-    N -- invalid\nmissing fields --> O[invalidFeatures++]
-    N -- skipped\nbbox / event-type mismatch --> P[skippedFeatures++]
-    N -- accepted --> Q[events array]
+    N --> O{Parse outcome?}
+    O -- 'invalid'\nmissing required field --> P[invalidFeatures++]
+    O -- 'skipped'\nbbox/event-type mismatch --> Q[skippedFeatures++]
+    O -- StoredEarthquake --> R[events array]
 
-    Q --> R[Merge all chunk results\ndeduplicate by eventID\nnewest modificationTime wins]
-    R --> S[saveCatalog to IndexedDB]
-    S --> E
+    R --> S[Merge all chunk results\ndeduplicate by eventID\nnewest modificationTime wins]
+    S --> T[saveCatalog to IndexedDB]
+    T --> E
 
-    E --> T{Date range\nprecedes initialFetchDate?}
-    T -- Yes --> U[gapFill: fetch missing\nhistorical window only]
-    U --> V[mergeEvents + saveCatalog]
-    V --> E
-    T -- No --> W[applyDateFilter\non in-memory catalog]
-    W --> X[toEarthquakeData\ntime string → Date]
-    X --> Y[enhanceEarthquakeData]
-    Y --> Z([CatalogResponse rendered])
+    E --> U{Requested date range\nbefore initialFetchDate?}
+    U -- Yes --> V[gapFill\nfetch missing window]
+    V --> W[mergeEvents + saveCatalog]
+    W --> E
+    U -- No --> X[applyDateFilter\ntimeMs comparisons]
+    X --> Y[toEarthquakeData\ntime string → Date]
+    Y --> Z[enhanceEarthquakeData\nadd timeMs, magBin,\ndepthCategory, year]
+    Z --> AA([CatalogResponse returned\nto PageClient])
 ```
 
 ---
 
-## GeoNet fetch internals
+## Monthly chunking
 
-### Monthly chunking
+`buildMonthlyChunks(startDate, endDate)` uses `date-fns/addMonths` to produce one chunk per calendar month. A 12-month window produces ~12 chunks processed with up to 5 concurrent requests.
 
-`buildMonthlyChunks(startDate, endDate)` produces one chunk per calendar month using `date-fns/addMonths`. A 12-month window produces ~12 chunks processed with up to 5 running concurrently.
+---
 
-### Recursive date-splitting
+## Retry policy
 
-When GeoNet returns ≥ 20,000 features for a chunk (its hard API limit), `fetchChunkRecursive` bisects the time interval and recurses on both halves. This continues until either:
+Each HTTP request passes through `fetchJsonWithRetry`:
 
-- The chunk returns < 20,000 features, or
-- The interval falls below `MIN_SPLIT_INTERVAL_MS` (24 hours), in which case a `truncated` issue is recorded.
-
-### Retry policy
-
-Each HTTP request goes through `fetchJsonWithRetry` with up to 3 attempts. Retryable status codes: 429, 500, 502, 503, 504. Back-off: `600ms × 2^(attempt−1)` plus up to 250ms jitter.
-
-An HTTP 400 on a chunk (not a parse error) also triggers date-splitting before failing — this handles GeoNet's undocumented request-size rejections.
-
-### Feature parsing
-
-`parseGeoNetFeature` validates each GeoJSON feature and returns one of three values:
-
-| Return value | Meaning |
+| Attempt | Delay before retry |
 |---|---|
-| `StoredEarthquake` | Accepted — required fields present and within NZ bbox |
-| `'invalid'` | Missing or unparseable required fields (eventID, time, lat, lon, depth, magnitude) |
-| `'skipped'` | Valid record excluded by bbox or event-type filter |
+| 1 → 2 | \(600\ \text{ms} + \mathrm{Uniform}(0, 250)\ \text{ms}\) |
+| 2 → 3 | \(1{,}200\ \text{ms} + \mathrm{Uniform}(0, 250)\ \text{ms}\) |
 
-Events with a null or absent `eventtype` field are **included** — GeoNet omits this field for unreviewed automatic solutions, which are overwhelmingly real earthquakes.
+Retryable status codes: **429, 500, 502, 503, 504**.
 
-### Deduplication
+An HTTP **400** on a chunk also triggers date-splitting before failing — this handles GeoNet's undocumented request-size rejections for very active periods.
 
-After all chunks complete, `deduplicate()` merges by `eventID`. When the same event appears in overlapping chunk ranges (e.g. during a refresh that overlaps the previous fetch window), the copy with the newer `modificationTime` is kept.
+---
+
+## Recursive date splitting
+
+When GeoNet returns \(\geq 20{,}000\) features for a chunk:
+
+1. If the interval is \(> \mathrm{MIN\_SPLIT\_INTERVAL\_MS}\) (24 hours): bisect the interval into two equal halves, run both concurrently, merge results.
+2. If the interval is \(\leq 24\) hours: record a `truncated` issue and return empty — the data for that window is genuinely too dense to retrieve in full.
+
+---
+
+## Feature parsing
+
+`parseGeoNetFeature(feature, eventType?)` returns one of three values:
+
+| Return | Condition | Counter |
+|---|---|---|
+| `StoredEarthquake` | All required fields present and within NZ bbox | — |
+| `'invalid'` | Missing or unparseable: `eventID`, `time`, lat, lon, depth, or magnitude | `invalidFeatures++` |
+| `'skipped'` | Valid record excluded by bbox or event-type filter | `skippedFeatures++` |
+
+**Null `eventtype` events are included.** GeoNet omits `eventtype` for unreviewed automatic solutions, which are overwhelmingly real earthquakes. The filter only rejects records where `eventtype` is explicitly set to a different type.
+
+---
+
+## Deduplication
+
+After all chunks complete, `deduplicate()` merges by `eventID`. When the same event appears in two overlapping chunks, the copy with the newer `modificationTime` is kept. The final array is sorted by `timeMs` descending.
+
+---
+
+## Fetch report
+
+```typescript
+interface GeoNetFetchReport {
+    events:           StoredEarthquake[];
+    chunksTotal:      number;
+    chunksSucceeded:  number;
+    chunksFailed:     number;
+    chunksEmpty:      number;        // chunks with 0 valid events after filters
+    chunksSplit:      number;        // total bisections performed
+    truncatedChunks:  number;        // chunks hitting 20,000 limit at ≤1 day interval
+    invalidFeatures:  number;        // missing/unparseable required fields
+    skippedFeatures:  number;        // valid records excluded by bbox or event-type
+    duplicateEvents:  number;
+    partial:          boolean;       // true if chunksFailed > 0 || truncatedChunks > 0
+    issues:           GeoNetFetchIssue[];
+}
+```
+
+`partial: true` causes a dismissable amber warning panel in the UI. `skippedFeatures` is **not** shown as a warning — it is expected behaviour.
 
 ---
 
 ## Incremental refresh
-
-When the user clicks **"Check for New Events"**, `refetch()` runs an incremental fetch:
 
 ```mermaid
 sequenceDiagram
     participant UI
     participant useGeoNetData
     participant GeoNet
+    participant IndexedDB
 
-    UI->>useGeoNetData: refetch()
-    useGeoNetData->>useGeoNetData: Guard: isRefreshingRef.current = true
-    useGeoNetData->>GeoNet: fetchFromGeoNetWithReport\n(lastUpdated → now)
+    UI->>useGeoNetData: refetch() called
+    useGeoNetData->>useGeoNetData: isRefreshingRef.current = true
+    useGeoNetData->>GeoNet: fetchFromGeoNetWithReport\n(catalog.lastUpdated → now)
     GeoNet-->>useGeoNetData: new events
-    useGeoNetData->>useGeoNetData: mergeEvents(existing, new)
-    useGeoNetData->>useGeoNetData: saveCatalog to IndexedDB
-    useGeoNetData->>UI: updated catalog + newEventsAdded count
+    useGeoNetData->>useGeoNetData: mergeEvents(existing, incoming)
+    useGeoNetData->>IndexedDB: saveCatalog (updated lastUpdated)
+    useGeoNetData->>UI: setCatalog + setNewEventsAdded
     useGeoNetData->>useGeoNetData: isRefreshingRef.current = false
 ```
-
-The refresh fetches from the catalog's `lastUpdated` timestamp to the current time, so only genuinely new events are downloaded regardless of how much time has elapsed.
 
 ---
 
 ## Gap-fill
-
-Gap-fill triggers automatically when the user requests a date window that extends before `initialFetchDate`:
 
 ```mermaid
 sequenceDiagram
@@ -115,7 +145,7 @@ sequenceDiagram
     participant GeoNet
     participant IndexedDB
 
-    Note over useGeoNetData: User sets startDate earlier\nthan catalog.initialFetchDate
+    Note over useGeoNetData: User requests date earlier\nthan catalog.initialFetchDate
     useGeoNetData->>useGeoNetData: gapFillRef.current = true
     useGeoNetData->>GeoNet: fetch(requestedStart → cacheStart)
     GeoNet-->>useGeoNetData: historical events
@@ -124,7 +154,26 @@ sequenceDiagram
     useGeoNetData->>useGeoNetData: gapFillRef.current = false
 ```
 
-Gap-fill is non-fatal: if the historical fetch fails, the user sees whatever data is already cached and no error is thrown.
+---
+
+## Magnitude switch behaviour
+
+When `minMagnitude` changes, `loadingMagRef` tracks the in-flight magnitude number. In-flight callbacks check `magnitudeRef.current !== magnitude` before applying results, discarding stale responses if the user switches rapidly.
+
+---
+
+## Uploaded catalog flow
+
+```mermaid
+flowchart LR
+    A([User selects file]) --> B[CatalogUpload wizard\n4 steps]
+    B --> C[Parse CSV / TSV / JSON\nGeoJSON / XLSX / QuakeML]
+    C --> D[Column mapping\nRequired: time, lat, lon, mag, depth]
+    D --> E[Validation rules applied]
+    E --> F[enhanceEarthquakeData\nadd timeMs, magBin, depthCategory, year]
+    F --> G[PageClient.setUploadedData\ndataSource = 'uploaded']
+    G --> H([All tabs render upload data\nno IndexedDB involved])
+```
 
 ---
 
@@ -134,62 +183,58 @@ Gap-fill is non-fatal: if the historical fetch fails, the user sees whatever dat
 flowchart TD
     A([User clicks Run Clustering]) --> B{Algorithm type?}
 
-    B -- Light algorithm\ndbscan / optics / kmeans\nstep-mag / step-time\nst-dbscan --> C[useClusteringWorker\npost to Web Worker]
+    B -- Light\ndbscan / optics / kmeans\nstep-mag / step-time / st-dbscan --> C[Encode events as Float64Array\n5 values per event]
+    C --> D[Transferable postMessage\nzero-copy to clustering.worker.ts]
+    D --> E{Timeout > 30s?}
+    E -- Yes --> F[terminate worker\nreturn error]
+    E -- No --> G[ClusterResult postMessage back]
 
-    B -- Heavy algorithm\nhdbscan / nearest-neighbor\ntmc / hardebeck-2019 --> D[POST /api/cluster\nJSON body]
+    B -- Heavy\nhdbscan / nearest-neighbor\ntmc / hardebeck-2019 --> H[POST /api/cluster]
+    H --> I{SHA-256 key\nin server LRU?}
+    I -- HIT --> J[Return cached result\nX-Cluster-Cache: HIT]
+    I -- MISS --> K[Run algorithm server-side]
+    K --> L[Store in LRU\n30 entries, 15 min TTL]
+    L --> J
 
-    C --> E[clustering.worker.ts\nreceives Float64Array\nvia Transferable transfer]
-    E --> F[runClustering\nselect algorithm]
-    F --> G{Timeout > 30s?}
-    G -- Yes --> H[terminate worker\nreturn error]
-    G -- No --> I[ClusterResult\npostMessage back]
-
-    D --> J[/api/cluster/route.ts]
-    J --> K{SHA-256 hash\nin LRU cache?}
-    K -- Hit\nTTL < 15 min --> L[Return cached result]
-    K -- Miss --> M[runClustering\nserver-side]
-    M --> N[Store in LRU\nmax 30 entries]
-    N --> L
-
-    I --> O[setClusters in\nTemporalSpatial state]
-    L --> O
-    O --> P[LeafletClusterMap\ncolour by label]
-    O --> Q[TemporalSpatial3DPlot\ncolour by label]
+    G --> M[Update TemporalSpatial state]
+    J --> M
+    M --> N[LeafletClusterMap\ncolour by label]
+    M --> O[3D plot + temporal scatter\ncolour by label]
 ```
 
-### Data encoding for the worker
+### Data encoding for the Web Worker
 
-Each earthquake is encoded as 5 `float64` values in a `Float64Array` before being sent to the Web Worker:
+Each earthquake is packed into a flat `Float64Array` with 5 values per event:
 
-```
-[latitude, longitude, depth, magnitude, timeMs]
-```
+$$\underbrace{\phi_0,\;\lambda_0,\;z_0,\;M_0,\;t_0}_{\text{event 0}},\;\underbrace{\phi_1,\;\lambda_1,\;z_1,\;M_1,\;t_1}_{\text{event 1}},\;\ldots$$
 
-The buffer is transferred (not copied) via `postMessage(request, [buffer.buffer])`, giving zero-copy handoff. The worker re-inflates the flat array back into point objects before running the algorithm.
+The buffer is **transferred** (not copied) via `postMessage`, giving zero-copy handoff. After transfer, `buf.buffer` is detached in the main thread.
+
+### Reservoir sampling before clustering
+
+If \(n > 5{,}000\), events are subsampled using **Knuth's reservoir algorithm** before encoding. Each event has equal probability \(5000/n\) of inclusion, preserving the statistical distribution of the full catalog.
 
 ---
 
-## Fetch report and warnings
+## Aftershock declustering
 
-`fetchFromGeoNetWithReport` returns a `GeoNetFetchReport` alongside the event array:
+### SRL / Hardebeck window method
 
-```typescript
-interface GeoNetFetchReport {
-    events: StoredEarthquake[];
-    chunksTotal: number;
-    chunksSucceeded: number;
-    chunksFailed: number;
-    chunksEmpty: number;
-    chunksSplit: number;
-    truncatedChunks: number;
-    invalidFeatures: number;   // missing/unparseable required fields
-    skippedFeatures: number;   // valid records excluded by bbox or event-type
-    duplicateEvents: number;
-    partial: boolean;
-    issues: GeoNetFetchIssue[];
-}
-```
+**Rupture length** (Wells-Coppersmith 1994):
 
-`partial` is `true` when `chunksFailed > 0` or `truncatedChunks > 0`. The UI renders a dismissable amber warning panel when `partial` is `true`.
+$$\mathrm{RL}(M) = 10^{-2.44 + 0.59M} \quad [\text{km}]$$
 
-`skippedFeatures` (bbox/event-type mismatches) are **not** shown as UI warnings — they are expected and not errors.
+**Algorithm** (events processed largest-first):
+
+1. Skip candidate if within \(T_{\text{excl}} = 3\) years and \(5 \times \mathrm{RL}\) of a larger event
+2. Tag events within \(T_w = 10\) days and \(3 \times \mathrm{RL}\) km as aftershocks
+
+### Gardner-Knopoff window method
+
+**Spatial and temporal windows** as a function of magnitude:
+
+$$W_s(M) = 10^{aM + b} \quad [\text{km}]$$
+
+$$W_t(M) = 10^{cM + d} \quad [\text{days}]$$
+
+Events within both windows of a larger event are marked as dependent. The parameters \(a\), \(b\), \(c\), \(d\) follow the original Gardner-Knopoff (1974) table values.
