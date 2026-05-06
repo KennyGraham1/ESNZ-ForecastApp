@@ -147,7 +147,10 @@ export default function PageClient() {
   });
 
   const geonetEarthquakes = response?.data || [];
-  const earthquakes = dataSource === 'uploaded' && uploadedData ? uploadedData : geonetEarthquakes;
+  const earthquakes = useMemo(
+    () => dataSource === 'uploaded' && uploadedData ? uploadedData : geonetEarthquakes,
+    [dataSource, uploadedData, geonetEarthquakes]
+  );
 
   const cacheInfo = {
     lastUpdated: response?.lastUpdated || new Date().toISOString(),
@@ -214,13 +217,12 @@ export default function PageClient() {
 
   useEffect(() => {
     if (dataDateRange.min && dataDateRange.max) {
-      setFilters(prev => ({
-        ...prev,
-        startDate: dataDateRange.min,
-        endDate: dataDateRange.max
-      }));
+      setFilters(prev => {
+        if (prev.startDate === dataDateRange.min && prev.endDate === dataDateRange.max) return prev;
+        return { ...prev, startDate: dataDateRange.min, endDate: dataDateRange.max };
+      });
     }
-  }, [dataDateRange]);
+  }, [dataDateRange.min, dataDateRange.max]);
 
   const filteredEarthquakes = useMemo(() => {
     if (!earthquakes || earthquakes.length === 0) return [];

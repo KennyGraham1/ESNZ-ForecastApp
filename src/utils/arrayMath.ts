@@ -1,12 +1,6 @@
 /**
- * Safe replacements for Math.min and Math.max that avoid call stack overflow errors
- * when processing large arrays (which can happen with spread syntax ...arr).
- */
-
-/**
- * Calculates the minimum value in an array of numbers.
- * Safe for large arrays where Math.min(...arr) would stack overflow.
- * Returns Infinity for empty arrays, matching Math.min() behavior.
+ * Safe replacements for Math.min/max — avoids call stack overflow on large arrays
+ * where spread syntax (Math.min(...arr)) would throw.
  */
 export function safeMin(arr: number[]): number {
     if (!arr || arr.length === 0) return Infinity;

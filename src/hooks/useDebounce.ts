@@ -17,10 +17,7 @@ export function useDebounce<T>(value: T, delay: number = 500): T {
             setDebouncedValue(value);
         }, delay);
 
-        // Clean up the timeout if value changes before delay expires
-        return () => {
-            clearTimeout(handler);
-        };
+        return () => clearTimeout(handler);
     }, [value, delay]);
 
     return debouncedValue;
@@ -43,9 +40,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => any>(
     useEffect(() => {
         // Cleanup on unmount
         return () => {
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
     }, []);
 

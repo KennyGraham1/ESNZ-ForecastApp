@@ -10,6 +10,7 @@ import RBush from 'rbush';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { formatDate } from '@/utils/dateFormat';
 import { getColorStops, getColorForValue, ColorPaletteName } from '@/utils/colorPalette';
+import { safeMinMax } from '@/utils/arrayMath';
 import { registerChart, unregisterChart } from '@/utils/chartRegistry';
 import dynamic from 'next/dynamic';
 
@@ -398,17 +399,8 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
         }
 
         // Calculate dynamic ranges
-        // FIXED: Use iterative approach to avoid stack overflow on large datasets
-        let maxDays = -Infinity;
-        let minDays = Infinity;
-        let maxMag = -Infinity;
-        let minMag = Infinity;
-        for (const eq of sequenceData) {
-            if (eq.daysSince > maxDays) maxDays = eq.daysSince;
-            if (eq.daysSince < minDays) minDays = eq.daysSince;
-            if (eq.magnitude > maxMag) maxMag = eq.magnitude;
-            if (eq.magnitude < minMag) minMag = eq.magnitude;
-        }
+        const { min: minDays, max: maxDays } = safeMinMax(sequenceData.map(eq => eq.daysSince));
+        const { min: minMag, max: maxMag } = safeMinMax(sequenceData.map(eq => eq.magnitude));
 
         // Find 6 largest events for labeling
         const sortedByMag = [...sequenceData].sort((a, b) => b.magnitude - a.magnitude);

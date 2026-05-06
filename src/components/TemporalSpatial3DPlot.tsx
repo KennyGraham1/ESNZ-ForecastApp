@@ -7,7 +7,7 @@ import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { stratifiedSample } from '@/utils/dataOptimization';
 import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
-import { formatDateForTooltip } from '@/utils/dateFormat';
+import { formatDateTime } from '@/utils/dateFormat';
 
 // Define the data interface expected by the component
 export interface PlotDataPoint {
@@ -204,7 +204,7 @@ const TemporalSpatial3DPlot = memo(function TemporalSpatial3DPlot({
                 formatter: function (this: any) {
                     const point = this.point;
                     const custom = point.custom;
-                    const timeStr = formatDateForTooltip(custom.time);
+                    const timeStr = formatDateTime(custom.time);
                     const clusterText = custom.cluster >= 0 ? `Cluster ${custom.cluster}` : 'Noise';
                     return `
                         <div style="padding: 8px;">

@@ -8,7 +8,7 @@ import ChartExportButtons from '../ChartExportButtons';
 import { useClusteringWorker } from '@/hooks/useClusteringWorker';
 import ClusteringProgressPanel from '@/components/ClusteringProgressPanel';
 import { useClusteringContext } from '@/contexts/ClusteringContext';
-import { formatDateForTooltip } from '@/utils/dateFormat';
+import { formatDateTime } from '@/utils/dateFormat';
 import TemporalSpatial3DPlot from '../TemporalSpatial3DPlot';
 import dynamic from 'next/dynamic';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -542,7 +542,7 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                     const point = this.point;
                     const custom = point.custom;
                     const time = new Date(custom.timeStr);
-                    const timeStr = formatDateForTooltip(time);
+                    const timeStr = formatDateTime(time);
                     const clusterText = custom.cluster >= 0 ? `Cluster ${custom.cluster}` : 'Noise';
                     return `
                         <div style="padding: 8px; min-width: 200px;">

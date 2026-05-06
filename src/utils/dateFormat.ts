@@ -86,33 +86,6 @@ export function parseDate(dateStr: string): Date {
 }
 
 /**
- * Format a date for CSV export (dd/mm/yyyy HH:mm:ss)
- * @param date - Date object, ISO string, or timestamp
- * @returns Formatted date string for CSV
- */
-export function formatDateForCSV(date: Date | string | number): string {
-    return formatDateTime(date);
-}
-
-/**
- * Format a date for JSON export (ISO 8601 format but with dd/mm/yyyy display)
- * @param date - Date object, ISO string, or timestamp
- * @returns Formatted date string for JSON
- */
-export function formatDateForJSON(date: Date | string | number): string {
-    return formatDateTime(date);
-}
-
-/**
- * Format a date for tooltips and displays (dd/mm/yyyy HH:mm:ss)
- * @param date - Date object, ISO string, or timestamp
- * @returns Formatted date string for tooltips
- */
-export function formatDateForTooltip(date: Date | string | number): string {
-    return formatDateTime(date);
-}
-
-/**
  * Convert ISO date string (yyyy-MM-dd) to dd/mm/yyyy for display
  * @param isoDate - ISO date string (yyyy-MM-dd)
  * @returns Date string in dd/mm/yyyy format

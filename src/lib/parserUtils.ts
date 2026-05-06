@@ -1,5 +1,6 @@
 import { EarthquakeData } from '@/types/earthquake';
 import { parse as dateFnsParse } from 'date-fns';
+import { safeMinMax } from '@/utils/arrayMath';
 import {
     ColumnMapping,
     DateFormatOption,
@@ -356,23 +357,9 @@ export function validateEarthquakeData(earthquakes: EarthquakeData[]): { valid: 
         return { valid: false, errors };
     }
 
-    let minMag = Infinity;
-    let maxMag = -Infinity;
-    let minDepth = Infinity;
-    let maxDepth = -Infinity;
-    let minTime = Infinity;
-    let maxTime = -Infinity;
-
-    for (const eq of earthquakes) {
-        if (eq.magnitude < minMag) minMag = eq.magnitude;
-        if (eq.magnitude > maxMag) maxMag = eq.magnitude;
-        if (eq.depth < minDepth) minDepth = eq.depth;
-        if (eq.depth > maxDepth) maxDepth = eq.depth;
-
-        const time = eq.time.getTime();
-        if (time < minTime) minTime = time;
-        if (time > maxTime) maxTime = time;
-    }
+    const { min: minMag, max: maxMag } = safeMinMax(earthquakes.map(eq => eq.magnitude));
+    const { min: minDepth, max: maxDepth } = safeMinMax(earthquakes.map(eq => eq.depth));
+    const { min: minTime, max: maxTime } = safeMinMax(earthquakes.map(eq => eq.time.getTime()));
 
     if (minMag < -2 || maxMag > 10) {
         errors.push(`Magnitude range (${minMag.toFixed(1)} - ${maxMag.toFixed(1)}) is outside reasonable bounds (-2 to 10)`);

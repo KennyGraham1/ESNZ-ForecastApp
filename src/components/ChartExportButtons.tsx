@@ -3,7 +3,7 @@
 import { EarthquakeData } from '@/types/earthquake';
 import HighchartsReact from 'highcharts-react-official';
 import { ClusteringMetadata } from '@/lib/analysis/clustering';
-import { formatDateForCSV } from '@/utils/dateFormat';
+import { formatDateTime } from '@/utils/dateFormat';
 import { safeMin, safeMax } from '@/utils/arrayMath';
 
 interface ChartExportButtonsProps {
@@ -204,12 +204,12 @@ export default function ChartExportButtons({
 
                 // Handle dates - format as dd/mm/yyyy HH:mm:ss
                 if (value instanceof Date) {
-                    return formatDateForCSV(value);
+                    return formatDateTime(value);
                 }
 
                 // Handle date strings (ISO format)
                 if (header === 'time' && typeof value === 'string') {
-                    return formatDateForCSV(value);
+                    return formatDateTime(value);
                 }
 
                 // Handle strings with commas or quotes
@@ -254,7 +254,7 @@ export default function ChartExportButtons({
 
             // Format date fields to dd/mm/yyyy HH:mm:ss
             if ((enriched as any).time) {
-                (enriched as any).time = formatDateForCSV((enriched as any).time);
+                (enriched as any).time = formatDateTime((enriched as any).time);
             }
 
             if (clusterLabels && index < clusterLabels.length) {

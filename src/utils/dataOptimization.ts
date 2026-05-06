@@ -12,14 +12,15 @@ export function stratifiedSample(
         return earthquakes;
     }
 
-    // Group by magnitude bins for stratified sampling
     const bins = new Map<number, EarthquakeData[]>();
     earthquakes.forEach(eq => {
         const bin = Math.floor(eq.magnitude);
-        if (!bins.has(bin)) {
-            bins.set(bin, []);
+        let binArray = bins.get(bin);
+        if (!binArray) {
+            binArray = [];
+            bins.set(bin, binArray);
         }
-        bins.get(bin)?.push(eq);
+        binArray.push(eq);
     });
 
     // Calculate samples per bin proportionally

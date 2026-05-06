@@ -65,13 +65,6 @@ export const getColorStops = (palette: ColorPaletteName): [number, string][] => 
                 [0, 'rgba(51, 34, 136, 0.7)'], // Indigo
                 [0.5, 'rgba(255, 255, 255, 0.7)'], // White middle to separate
                 [1, 'rgba(204, 170, 0, 0.7)'] // Gold/Yellow
-            ]; // Simplified divergent, or use linear:
-            /* Better linear: Dark Blue -> Light Blue -> Light Orange -> Dark Orange */
-            return [
-                [0, 'rgba(0, 0, 0, 0.7)'],
-                [0.33, 'rgba(26, 133, 255, 0.7)'],
-                [0.66, 'rgba(212, 17, 89, 0.7)'],
-                [1, 'rgba(255, 194, 10, 0.7)']
             ];
         case 'tritan': // Tritanopia Safe (Red-Teal/Blue)
             return [

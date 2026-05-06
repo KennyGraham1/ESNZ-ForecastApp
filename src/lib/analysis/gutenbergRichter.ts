@@ -1,5 +1,6 @@
 import { linearRegression } from 'simple-statistics';
 import { EarthquakeData } from '@/types/earthquake';
+import { safeMinMax } from '@/utils/arrayMath';
 
 export interface GutenbergRichterResult {
     bValue: number;
@@ -33,13 +34,7 @@ export function calculateGutenbergRichter(
     }
 
     const magnitudes = earthquakes.map(eq => eq.magnitude);
-    // FIXED: Use iterative approach instead of spread operator to avoid stack overflow on large datasets
-    let minMag = Infinity;
-    let maxMag = -Infinity;
-    for (const mag of magnitudes) {
-        if (mag < minMag) minMag = mag;
-        if (mag > maxMag) maxMag = mag;
-    }
+    const { min: minMag, max: maxMag } = safeMinMax(magnitudes);
 
     // Create magnitude bins
     const numBins = Math.ceil((maxMag - minMag) / binWidth) + 1;
@@ -59,12 +54,11 @@ export function calculateGutenbergRichter(
         }
     });
 
-    // Calculate cumulative counts (N >= M)
+    // Calculate cumulative counts (N >= M) using suffix sum — O(n) instead of O(n²)
     const cumulativeCounts: number[] = new Array(numBins).fill(0);
-    for (let i = 0; i < numBins; i++) {
-        for (let j = i; j < numBins; j++) {
-            cumulativeCounts[i] += bins[j];
-        }
+    cumulativeCounts[numBins - 1] = bins[numBins - 1];
+    for (let i = numBins - 2; i >= 0; i--) {
+        cumulativeCounts[i] = bins[i] + cumulativeCounts[i + 1];
     }
 
     // Determine magnitude of completeness (Mc)
@@ -84,8 +78,7 @@ export function calculateGutenbergRichter(
                 mcIndex = idx;
             }
         });
-        // Ensure mc matches a bin center strictly if needed, but for now closest bin is fine
-        // Actually, let's just trust the user provided value but we need an index for the loop below
+        // Use closest bin center as proxy index for the regression loop below
     } else if (completenessMethod === 'maximum_curvature') {
         // Mc is the magnitude bin with the maximum count
         // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
