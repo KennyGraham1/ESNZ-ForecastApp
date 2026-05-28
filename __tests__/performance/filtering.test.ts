@@ -56,9 +56,9 @@ function filterEarthquakes(
 
         // Depth filter
         if (filters.depthCategory && filters.depthCategory !== 'all') {
-            if (filters.depthCategory === 'shallow' && eq.depth >= 70) continue;
-            if (filters.depthCategory === 'intermediate' && (eq.depth < 70 || eq.depth >= 300)) continue;
-            if (filters.depthCategory === 'deep' && eq.depth < 300) continue;
+            if (filters.depthCategory === 'shallow' && eq.depth > 70) continue;
+            if (filters.depthCategory === 'intermediate' && (eq.depth <= 70 || eq.depth > 300)) continue;
+            if (filters.depthCategory === 'deep' && eq.depth <= 300) continue;
         }
 
         result.push(eq);
@@ -118,8 +118,8 @@ describe('Filtering Performance', () => {
             const shallow = filterEarthquakes(testData, { depthCategory: 'shallow' });
             const deep = filterEarthquakes(testData, { depthCategory: 'deep' });
 
-            expect(shallow.every(eq => eq.depth < 70)).toBe(true);
-            expect(deep.every(eq => eq.depth >= 300)).toBe(true);
+            expect(shallow.every(eq => eq.depth <= 70)).toBe(true);
+            expect(deep.every(eq => eq.depth > 300)).toBe(true);
         });
 
         it('should handle combined filters correctly', () => {
@@ -132,7 +132,7 @@ describe('Filtering Performance', () => {
 
             expect(filtered.every(eq =>
                 eq.magnitude >= 4.0 &&
-                eq.depth < 70 &&
+                eq.depth <= 70 &&
                 (eq.timeMs || (eq.time as Date).getTime()) >= new Date('2024-01-01').getTime()
             )).toBe(true);
         });

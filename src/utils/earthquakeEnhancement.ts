@@ -170,11 +170,12 @@ export function getEnhancementStats(earthquakes: EnhancedEarthquakeData[]): {
     }
     const yearRange: [number, number] = [minYear, maxYear];
 
-    const depthCategories = {
-        shallow: earthquakes.filter(eq => eq.depthCategory === 'shallow').length,
-        intermediate: earthquakes.filter(eq => eq.depthCategory === 'intermediate').length,
-        deep: earthquakes.filter(eq => eq.depthCategory === 'deep').length,
-    };
+    const depthCategories = { shallow: 0, intermediate: 0, deep: 0 };
+    for (const eq of earthquakes) {
+        if (eq.depthCategory === 'shallow') depthCategories.shallow++;
+        else if (eq.depthCategory === 'intermediate') depthCategories.intermediate++;
+        else if (eq.depthCategory === 'deep') depthCategories.deep++;
+    }
 
     return {
         totalEvents: earthquakes.length,

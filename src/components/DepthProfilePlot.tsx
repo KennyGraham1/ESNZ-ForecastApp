@@ -141,14 +141,8 @@ const DepthProfilePlot = memo(function DepthProfilePlot({ earthquakes }: DepthPr
                 }
             },
             colorAxis: {
-                // CRITICAL FIX: Don't use spread operator with large arrays (causes stack overflow)
-                // Use reduce to find min/max, with fallback values if array is empty
-                min: processedEarthquakes.length > 0
-                    ? processedEarthquakes.reduce((min, eq) => Math.min(min, eq.magnitude), processedEarthquakes[0].magnitude)
-                    : 0,
-                max: processedEarthquakes.length > 0
-                    ? processedEarthquakes.reduce((max, eq) => Math.max(max, eq.magnitude), processedEarthquakes[0].magnitude)
-                    : 10,
+                min: processedEarthquakes.length > 0 ? safeMin(processedEarthquakes.map(eq => eq.magnitude)) : 0,
+                max: processedEarthquakes.length > 0 ? safeMax(processedEarthquakes.map(eq => eq.magnitude)) : 10,
                 stops: [
                     [0, '#0d0887'],
                     [0.2, '#6a00a8'],

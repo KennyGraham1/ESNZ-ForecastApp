@@ -6,7 +6,9 @@ import { EarthquakeData } from '@/types/earthquake';
 import GenericScatterPlot from '@/components/sandbox/GenericScatterPlot';
 import GenericHistogram from '@/components/sandbox/GenericHistogram';
 import StatsPanel from '@/components/sandbox/StatsPanel';
+import FieldSelect from '@/components/sandbox/FieldSelect';
 import { safeMinMax } from '@/utils/arrayMath';
+import { stratifiedSample } from '@/utils/dataOptimization';
 
 // Leaflet requires browser APIs — must be loaded client-side only.
 const Map = dynamic(() => import('@/components/Map'), {
@@ -27,6 +29,17 @@ interface SandboxProps {
 
 type PlotType = 'scatter' | 'map' | 'histogram' | '3d' | 'multi-panel';
 
+// Maximum points rendered per plot type. null = no sampling (renders the full
+// filtered set): the Map draws every marker and histograms aggregate into bins,
+// so neither benefits from point sampling.
+const SAMPLING_THRESHOLDS: Record<PlotType, number | null> = {
+    scatter: 5000,
+    '3d': 2500,
+    'multi-panel': 2000,
+    map: null,
+    histogram: null,
+};
+
 // Color Palettes
 const PALETTES = {
     'Viridis': ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde724'],
@@ -38,19 +51,10 @@ const PALETTES = {
     'Twilight': ['#e2d9e2', '#9a7e9e', '#59446d', '#2e214d', '#130c2c', '#292135', '#5c546b', '#8d869e', '#bfb9c6', '#f2f2f2']
 };
 
+const PALETTE_NAMES = Object.keys(PALETTES);
+
 export default function Sandbox({ earthquakes }: SandboxProps) {
     // ---- State ----
-
-    // DEBUG: Inspect incoming earthquake data fields
-    useMemo(() => {
-        if (earthquakes && earthquakes.length > 0) {
-            console.log('🔍 Sandbox received data:', {
-                count: earthquakes.length,
-                keys: Object.keys(earthquakes[0]),
-                sample: earthquakes[0]
-            });
-        }
-    }, [earthquakes]);
 
     // Filters
     const [minMag, setMinMag] = useState<number>(0);
@@ -73,7 +77,6 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const [histBins, setHistBins] = useState<number>(20);
 
     // 3D Config
-    // 3D Config
     const [threeDX, setThreeDX] = useState<keyof EarthquakeData>('longitude');
     const [threeDY, setThreeDY] = useState<keyof EarthquakeData>('latitude');
     const [threeDZ, setThreeDZ] = useState<keyof EarthquakeData>('depth');
@@ -83,7 +86,6 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const [multiField1, setMultiField1] = useState<keyof EarthquakeData>('longitude');
     const [multiField2, setMultiField2] = useState<keyof EarthquakeData>('latitude');
     const [multiField3, setMultiField3] = useState<keyof EarthquakeData>('depth');
-
     const [multiAxisX, setMultiAxisX] = useState<keyof EarthquakeData>('time');
 
     // Multi-Panel Styling
@@ -94,9 +96,11 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     // Sampling Config (Fast Render)
     const [isSamplingEnabled, setIsSamplingEnabled] = useState<boolean>(true);
 
-    // Dynamic threshold based on plot type
-    // 3D plots are more resource intensive, so we sample more aggressively (2500 vs 5000)
-    const SAMPLING_THRESHOLD = plotType === '3d' ? 2500 : 5000;
+    const samplingThreshold = SAMPLING_THRESHOLDS[plotType];
+
+    // Helper to cast a raw select value to an optional field key.
+    const toOptionalField = (v: string): keyof EarthquakeData | undefined =>
+        v ? (v as keyof EarthquakeData) : undefined;
 
     // ---- Data Filtering Logic ----
     const filteredData = useMemo(() => {
@@ -116,25 +120,23 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     }, [earthquakes, minMag, maxDepth, startDate, endDate]);
 
     // ---- Sampling Logic ----
-    const { displayData, exportData } = useMemo(() => {
-        // If sampling is disabled or data is small, use full data for both
-        if (!isSamplingEnabled || filteredData.length <= SAMPLING_THRESHOLD) {
-            return { displayData: filteredData, exportData: filteredData };
+    // displayData = what the active plot actually renders; exportData = the full
+    // filtered set (used for high-resolution exports and for binned views).
+    // Because the per-plot threshold is null for map/histogram, displayData equals
+    // the full set for those views — so displayData.length is the truthful rendered
+    // count for every plot type.
+    const { displayData, exportData, isSampled } = useMemo(() => {
+        if (!isSamplingEnabled || samplingThreshold === null || filteredData.length <= samplingThreshold) {
+            return { displayData: filteredData, exportData: filteredData, isSampled: false };
         }
-
-        // Random sampling
-        // We create a random subset of SAMPLING_THRESHOLD events
-        const sampled = [];
-        const step = Math.max(1, Math.floor(filteredData.length / SAMPLING_THRESHOLD));
-
-        // Use systematic sampling with random start for better distribution/performance than pure random shuffle
-        for (let i = 0; i < filteredData.length; i += step) {
-            if (sampled.length >= SAMPLING_THRESHOLD) break;
-            sampled.push(filteredData[i]);
-        }
-
-        return { displayData: sampled, exportData: filteredData };
-    }, [filteredData, isSamplingEnabled, SAMPLING_THRESHOLD]); // Added SAMPLING_THRESHOLD dependency
+        // Magnitude-stratified sampling preserves the size distribution (keeps rare
+        // large events visible) better than truncation or systematic striding.
+        return {
+            displayData: stratifiedSample(filteredData, samplingThreshold),
+            exportData: filteredData,
+            isSampled: true,
+        };
+    }, [filteredData, isSamplingEnabled, samplingThreshold]);
 
     // ---- Dynamic Field Extraction ----
     const numericFields = useMemo(() => {
@@ -154,7 +156,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                 if (core.has(key)) return;
 
                 // Check if value is number
-                const val = (eq as any)[key];
+                const val = (eq as Record<string, unknown>)[key];
                 if (typeof val === 'number') {
                     dynamicFields.add(key);
                 }
@@ -168,13 +170,18 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     const globalDateRange = useMemo(() => {
         if (!earthquakes || earthquakes.length === 0) return { min: Date.now(), max: Date.now() };
         const times = earthquakes.map(eq => new Date(eq.time).getTime());
-        // Use safeMinMax to avoid stack overflow with large arrays
-        // was: Math.min(...times)
+        // Use safeMinMax to avoid stack overflow with large arrays (was: Math.min(...times))
         const { min, max } = safeMinMax(times);
         return { min, max };
     }, [earthquakes]);
 
-
+    const plotTitles: Record<PlotType, string> = {
+        scatter: 'Scatter Analysis',
+        map: 'Geospatial View',
+        histogram: 'Distribution Analysis',
+        '3d': '3D Visualization',
+        'multi-panel': 'Multi-Panel Analysis',
+    };
 
     return (
         <div className="flex flex-col h-full gap-4">
@@ -192,18 +199,19 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                         <p className="text-sm text-gray-500 mb-6">
                             Experiment with data filters and visualization axes. These filters are local to this tab.
                         </p>
-
                     </div>
+
                     {/* Data Filters */}
                     <div className="space-y-4">
                         <h4 className="font-semibold text-gray-700 border-b pb-2">Data Filters</h4>
 
                         <div>
                             <div className="flex justify-between mb-1">
-                                <label className="text-sm font-medium text-gray-700">Min Magnitude</label>
+                                <label htmlFor="sandbox-min-mag" className="text-sm font-medium text-gray-700">Min Magnitude</label>
                                 <span className="text-sm font-bold text-blue-600">{minMag}</span>
                             </div>
                             <input
+                                id="sandbox-min-mag"
                                 type="range"
                                 min="0"
                                 max="9"
@@ -216,13 +224,14 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
 
                         <div>
                             <div className="flex justify-between mb-1">
-                                <label className="text-sm font-medium text-gray-700">Max Depth (km)</label>
+                                <label htmlFor="sandbox-max-depth" className="text-sm font-medium text-gray-700">Max Depth (km)</label>
                                 <span className="text-sm font-bold text-blue-600">{maxDepth}</span>
                             </div>
                             <input
+                                id="sandbox-max-depth"
                                 type="range"
                                 min="0"
-                                max="700"
+                                max="1000"
                                 step="10"
                                 value={maxDepth}
                                 onChange={(e) => setMaxDepth(parseInt(e.target.value))}
@@ -234,24 +243,26 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                         <div className="flex items-center justify-between pt-2 border-t">
                             <div>
                                 <label className="text-sm font-medium text-gray-700 block">Fast Render</label>
-                                <span className="text-xs text-gray-500">Show sample ({SAMPLING_THRESHOLD}) points</span>
+                                <span className="text-xs text-gray-500">
+                                    {samplingThreshold === null
+                                        ? 'Full data (sampling not needed here)'
+                                        : `Cap to ~${samplingThreshold.toLocaleString()} points`}
+                                </span>
                             </div>
                             <button
                                 type="button"
                                 role="switch"
                                 aria-checked={isSamplingEnabled}
+                                aria-label="Toggle fast render sampling"
                                 onClick={() => setIsSamplingEnabled(!isSamplingEnabled)}
-                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${isSamplingEnabled ? 'bg-indigo-600' : 'bg-gray-200'
-                                    }`}
+                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${isSamplingEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
                             >
                                 <span
                                     aria-hidden="true"
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isSamplingEnabled ? 'translate-x-5' : 'translate-x-0'
-                                        }`}
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isSamplingEnabled ? 'translate-x-5' : 'translate-x-0'}`}
                                 />
                             </button>
                         </div>
-                        {/* Removed duplicate count display */}
 
                         <div className="grid grid-cols-1 gap-2">
                             <div>
@@ -297,70 +308,13 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                         {plotType === 'scatter' && (
                             <div className="space-y-4 border-t pt-4">
                                 <h4 className="font-medium text-gray-700">Scatter Configuration</h4>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">X Axis</label>
-                                    <select
-                                        value={xAxisField}
-                                        onChange={(e) => setXAxisField(e.target.value as any)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        {numericFields.map(field => (
-                                            <option key={field} value={field}>{field}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Y Axis</label>
-                                    <select
-                                        value={yAxisField}
-                                        onChange={(e) => setYAxisField(e.target.value as any)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        {numericFields.map(field => (
-                                            <option key={field} value={field}>{field}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Color By</label>
-                                    <select
-                                        value={colorField || ''}
-                                        onChange={(e) => setColorField(e.target.value ? e.target.value as any : undefined)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        <option value="">None (Single Color)</option>
-                                        {numericFields.map(field => (
-                                            <option key={field} value={field}>{field}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <FieldSelect label="X Axis" value={xAxisField} onChange={(v) => setXAxisField(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Y Axis" value={yAxisField} onChange={(v) => setYAxisField(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Color By" value={colorField || ''} onChange={(v) => setColorField(toOptionalField(v))} options={numericFields} includeNone noneLabel="None (Single Color)" />
                                 {colorField && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-500 mb-1">Color Palette</label>
-                                        <select
-                                            value={scatterPalette}
-                                            onChange={(e) => setScatterPalette(e.target.value)}
-                                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                        >
-                                            {Object.keys(PALETTES).map(p => (
-                                                <option key={p} value={p}>{p}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    <FieldSelect label="Color Palette" value={scatterPalette} onChange={setScatterPalette} options={PALETTE_NAMES} />
                                 )}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Size By (Dynamic)</label>
-                                    <select
-                                        value={scatterSizeField || ''}
-                                        onChange={(e) => setScatterSizeField(e.target.value ? e.target.value as any : undefined)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        <option value="">None (Fixed Size)</option>
-                                        {numericFields.map(field => (
-                                            <option key={field} value={field}>{field}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <FieldSelect label="Size By (Dynamic)" value={scatterSizeField || ''} onChange={(v) => setScatterSizeField(toOptionalField(v))} options={numericFields} includeNone noneLabel="None (Fixed Size)" />
                             </div>
                         )}
 
@@ -369,15 +323,16 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                             <div className="space-y-4 border-t pt-4">
                                 <h4 className="font-medium text-gray-700">Histogram Configuration</h4>
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Fields to Plot (Cmd/Ctrl+Click to select multiple)</label>
+                                    <label htmlFor="sandbox-hist-fields" className="block text-xs font-medium text-gray-500 mb-1">Fields to Plot (Cmd/Ctrl+Click to select multiple)</label>
                                     <select
+                                        id="sandbox-hist-fields"
                                         multiple
                                         value={histFields}
                                         onChange={(e) => {
                                             const selected = Array.from(e.target.selectedOptions, option => option.value);
                                             setHistFields(selected);
                                         }}
-                                        className="block w-full h-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
+                                        className="block w-full h-32 rounded-md border border-gray-300 bg-white p-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                                     >
                                         {numericFields.map(field => (
                                             <option key={field} value={field}>{field}</option>
@@ -388,14 +343,15 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                     <p className="text-[10px] text-gray-500 mt-1">Select multiple to view stacked charts</p>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Bins: {histBins}</label>
+                                    <label htmlFor="sandbox-hist-bins" className="block text-xs font-medium text-gray-500 mb-1">Bins: {histBins}</label>
                                     <input
+                                        id="sandbox-hist-bins"
                                         type="range"
                                         min="5"
                                         max="100"
                                         value={histBins}
                                         onChange={(e) => setHistBins(parseInt(e.target.value))}
-                                        className="w-full"
+                                        className="w-full accent-indigo-600"
                                     />
                                 </div>
                             </div>
@@ -405,30 +361,10 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                         {plotType === '3d' && (
                             <div className="space-y-4 border-t pt-4">
                                 <h4 className="font-medium text-gray-700">3D Axes Configuration</h4>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">X Axis</label>
-                                    <select value={threeDX} onChange={(e) => setThreeDX(e.target.value as any)} className="block w-full border p-2 rounded text-sm">
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Y Axis</label>
-                                    <select value={threeDY} onChange={(e) => setThreeDY(e.target.value as any)} className="block w-full border p-2 rounded text-sm">
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Z Axis</label>
-                                    <select value={threeDZ} onChange={(e) => setThreeDZ(e.target.value as any)} className="block w-full border p-2 rounded text-sm">
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Color By</label>
-                                    <select value={threeDColor} onChange={(e) => setThreeDColor(e.target.value as any)} className="block w-full border p-2 rounded text-sm">
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
+                                <FieldSelect label="X Axis" value={threeDX} onChange={(v) => setThreeDX(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Y Axis" value={threeDY} onChange={(v) => setThreeDY(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Z Axis" value={threeDZ} onChange={(v) => setThreeDZ(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Color By" value={threeDColor} onChange={(v) => setThreeDColor(v as keyof EarthquakeData)} options={numericFields} />
                             </div>
                         )}
 
@@ -436,79 +372,16 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                         {plotType === 'multi-panel' && (
                             <div className="space-y-4 border-t pt-4">
                                 <h4 className="font-medium text-gray-700">Multi-Panel Configuration</h4>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">X Axis (Shared)</label>
-                                    <select
-                                        value={multiAxisX}
-                                        onChange={(e) => setMultiAxisX(e.target.value as any)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Top Panel (Y Axis)</label>
-                                    <select
-                                        value={multiField1}
-                                        onChange={(e) => setMultiField1(e.target.value as any)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Middle Panel (Y Axis)</label>
-                                    <select
-                                        value={multiField2}
-                                        onChange={(e) => setMultiField2(e.target.value as any)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Bottom Panel (Y Axis)</label>
-                                    <select
-                                        value={multiField3}
-                                        onChange={(e) => setMultiField3(e.target.value as any)}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2 bg-white"
-                                    >
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-                                </div>
-                                <div className="border-t pt-2 mt-2">
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Color By</label>
-                                    <select
-                                        value={multiColorField || ''}
-                                        onChange={(e) => setMultiColorField(e.target.value ? e.target.value as any : undefined)}
-                                        className="block w-full border p-2 rounded text-sm mb-2"
-                                    >
-                                        <option value="">None (Default Colors)</option>
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
-
+                                <FieldSelect label="X Axis (Shared)" value={multiAxisX} onChange={(v) => setMultiAxisX(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Top Panel (Y Axis)" value={multiField1} onChange={(v) => setMultiField1(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Middle Panel (Y Axis)" value={multiField2} onChange={(v) => setMultiField2(v as keyof EarthquakeData)} options={numericFields} />
+                                <FieldSelect label="Bottom Panel (Y Axis)" value={multiField3} onChange={(v) => setMultiField3(v as keyof EarthquakeData)} options={numericFields} />
+                                <div className="border-t pt-2 mt-2 space-y-2">
+                                    <FieldSelect label="Color By" value={multiColorField || ''} onChange={(v) => setMultiColorField(toOptionalField(v))} options={numericFields} includeNone noneLabel="None (Default Colors)" />
                                     {multiColorField && (
-                                        <>
-                                            <label className="block text-xs font-medium text-gray-500 mb-1">Palette</label>
-                                            <select
-                                                value={multiPalette}
-                                                onChange={(e) => setMultiPalette(e.target.value)}
-                                                className="block w-full border p-2 rounded text-sm mb-2"
-                                            >
-                                                {Object.keys(PALETTES).map(p => <option key={p} value={p}>{p}</option>)}
-                                            </select>
-                                        </>
+                                        <FieldSelect label="Palette" value={multiPalette} onChange={setMultiPalette} options={PALETTE_NAMES} />
                                     )}
-
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Size By (Dynamic)</label>
-                                    <select
-                                        value={multiSizeField || ''}
-                                        onChange={(e) => setMultiSizeField(e.target.value ? e.target.value as any : undefined)}
-                                        className="block w-full border p-2 rounded text-sm"
-                                    >
-                                        <option value="">None (Fixed Size)</option>
-                                        {numericFields.map(field => <option key={field} value={field}>{field}</option>)}
-                                    </select>
+                                    <FieldSelect label="Size By (Dynamic)" value={multiSizeField || ''} onChange={(v) => setMultiSizeField(toOptionalField(v))} options={numericFields} includeNone noneLabel="None (Fixed Size)" />
                                 </div>
                             </div>
                         )}
@@ -519,17 +392,12 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                 <div className="flex-grow bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden flex flex-col min-h-[500px]">
                     <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                         <div className="flex items-baseline gap-3">
-                            <h2 className="text-lg font-bold text-gray-800">
-                                {plotType === 'scatter' && 'Scatter Analysis'}
-                                {plotType === 'map' && 'Geospatial View'}
-                                {plotType === 'histogram' && 'Distribution Analysis'}
-                                {plotType === '3d' && '3D Visualization'}
-                                {plotType === 'multi-panel' && 'Multi-Panel Analysis'}
-                            </h2>
+                            <h2 className="text-lg font-bold text-gray-800">{plotTitles[plotType]}</h2>
                             {filteredData.length > 0 && (
-                                <span className={`text-sm ${isSamplingEnabled && filteredData.length > SAMPLING_THRESHOLD ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
-                                    {isSamplingEnabled && filteredData.length > SAMPLING_THRESHOLD ? '⚡ ' : ''}
-                                    {displayData.length} / {filteredData.length} events
+                                <span className={`text-sm ${isSampled ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                    {isSampled
+                                        ? `⚡ ${displayData.length.toLocaleString()} / ${filteredData.length.toLocaleString()} events`
+                                        : `${filteredData.length.toLocaleString()} events`}
                                 </span>
                             )}
                         </div>
@@ -555,7 +423,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                     earthquakes={filteredData}
                                 />
                                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-medium text-gray-600 shadow-sm border border-gray-200 pointer-events-none">
-                                    Displaying {filteredData.length} events
+                                    Displaying {filteredData.length.toLocaleString()} events
                                 </div>
                             </div>
                         )}
@@ -565,7 +433,10 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                 {histFields.length > 0 ? (
                                     <div className="h-full">
                                         <GenericHistogram
-                                            earthquakes={displayData}
+                                            // Histograms aggregate into bins (O(n), cheap), so use the FULL
+                                            // filtered set rather than the sampled displayData. Sampling would
+                                            // distort counts and badly inflate the 'gap' (inter-event time) field.
+                                            earthquakes={exportData}
                                             fields={histFields as any}
                                             bins={histBins}
                                             title="Comparative Distribution"

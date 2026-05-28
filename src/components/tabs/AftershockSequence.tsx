@@ -200,7 +200,15 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
         const isDependentEvent = new Set<number>();
 
         const spatialWindow = (mag: number) => Math.pow(10, gkSpatialA * mag + gkSpatialB);
-        const temporalWindow = (mag: number) => Math.pow(10, gkTemporalC * mag + gkTemporalD);
+        // Gardner & Knopoff (1974) temporal window is piecewise in magnitude:
+        //   M >= 6.5 : 10^(0.032·M + 2.7389) days  (configurable via gkTemporalC/D)
+        //   M <  6.5 : 10^(0.5409·M − 0.547) days
+        // Applying the large-magnitude branch to M<6.5 grossly over-windows
+        // (e.g. M5 → ~707 d instead of the correct ~84 d), so honor the breakpoint.
+        const temporalWindow = (mag: number) =>
+            mag >= 6.5
+                ? Math.pow(10, gkTemporalC * mag + gkTemporalD)
+                : Math.pow(10, 0.5409 * mag - 0.547);
 
         for (let i = 0; i < sorted.length; i++) {
             if (isDependentEvent.has(i)) continue;

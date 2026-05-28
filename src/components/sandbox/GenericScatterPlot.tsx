@@ -6,6 +6,7 @@ import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { safeMin, safeMax } from '@/utils/arrayMath';
+import { getFieldUnit } from '@/utils/fieldUnits';
 
 interface GenericScatterPlotProps {
     earthquakes: EarthquakeData[];
@@ -53,14 +54,7 @@ const GenericScatterPlot = memo(function GenericScatterPlot({
             };
         }
 
-        // Helper to get units
-        const getUnit = (field: string) => {
-            const f = field.toString().toLowerCase();
-            if (f.includes('depth')) return ' km';
-            if (f.includes('mag')) return ' M';
-            if (f.includes('lat') || f.includes('lon')) return '°';
-            return '';
-        };
+        const getUnit = getFieldUnit;
 
         // Helper to safely get numeric value (handling dates)
         const getNumericValue = (val: any): number | null => {

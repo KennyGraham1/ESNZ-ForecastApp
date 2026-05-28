@@ -102,8 +102,6 @@ export const generateAnalysisReport = async ({
                 doc.addPage();
                 currentPage++;
                 addHeader();
-                addHeader();
-                y = 25;
                 y = 25;
 
                 // Re-draw header on new page
@@ -149,8 +147,6 @@ export const generateAnalysisReport = async ({
             doc.addPage();
             currentPage++;
             addHeader();
-            addHeader();
-            y = 25;
             y = 25;
         }
         doc.setFillColor(lightGray);
@@ -251,7 +247,6 @@ export const generateAnalysisReport = async ({
                 const element = document.getElementById(elementId);
                 if (!element) {
                     console.warn(`Plot element not found: ${elementId}`);
-                    y = addText(`[Plot not available: ${title}]`, y, { color: '#ef4444' });
                     y = addText(`[Plot not available: ${title}]`, y, { color: '#ef4444' });
                     return;
                 }

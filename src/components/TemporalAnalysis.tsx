@@ -7,6 +7,7 @@ import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
 import { stratifiedSample } from '@/utils/dataOptimization';
 import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
+import { safeMinMax } from '@/utils/arrayMath';
 
 interface TemporalAnalysisProps {
     earthquakes: EarthquakeData[];
@@ -37,21 +38,9 @@ const TemporalAnalysis = memo(function TemporalAnalysis({ earthquakes }: Tempora
             console.log(`📊 Magnitude vs Time: Stratified sample ${processedEarthquakes.length} points from ${earthquakes.length} total`);
         }
 
-        // Calculate depth range efficiently (O(n) without spread operator)
-        let minDepth = Infinity;
-        let maxDepth = -Infinity;
-
-        for (let i = 0; i < processedEarthquakes.length; i++) {
-            const depth = processedEarthquakes[i].depth;
-            if (depth < minDepth) minDepth = depth;
-            if (depth > maxDepth) maxDepth = depth;
-        }
-
-        // Handle edge cases
-        if (processedEarthquakes.length === 0) {
-            minDepth = 0;
-            maxDepth = 100;
-        }
+        const depthRange = safeMinMax(processedEarthquakes.map(eq => eq.depth));
+        const minDepth = processedEarthquakes.length === 0 ? 0 : depthRange.min;
+        const maxDepth = processedEarthquakes.length === 0 ? 100 : depthRange.max;
 
         // Round to sensible values for the scale
         const depthMin = Math.floor(minDepth / 10) * 10;

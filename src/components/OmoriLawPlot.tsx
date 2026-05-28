@@ -11,6 +11,7 @@ import ChartExportButtons from './ChartExportButtons';
 import LoadingProgress from './LoadingProgress';
 import { HIGHCHARTS_CONFIG } from '@/config/performance';
 import { registerChart, unregisterChart } from '@/utils/chartRegistry';
+import { safeMin } from '@/utils/arrayMath';
 
 interface OmoriLawPlotProps {
     earthquakes: EarthquakeData[];
@@ -40,8 +41,6 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
     const chartRef5 = useRef<HighchartsReact.RefObject>(null);
     const [activeTab, setActiveTab] = useState<'fit' | 'residuals' | 'stats'>('fit');
 
-    // Input state (controlled inputs)
-    // DEFAULT CHANGED TO MLE AS REQUESTED
     const [inputOptimizationMethod, setInputOptimizationMethod] = useState<OptimizationMethod>(
         externalOptimizationMethod || 'mle'
     );
@@ -178,7 +177,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         if (referenceModel && mainEvent) {
             const days = dailyCounts.map(d => d.day);
             const Mc = appliedMagnitudeCompleteness ? parseFloat(appliedMagnitudeCompleteness) :
-                (earthquakes.length > 0 ? Math.min(...earthquakes.map(e => e.magnitude)) : 0);
+                (earthquakes.length > 0 ? safeMin(earthquakes.map(e => e.magnitude)) : 0);
 
             if (!isNaN(Mc) && mainEvent.magnitude) {
                 const refData = generateReferenceSeries(
@@ -728,9 +727,7 @@ const OmoriLawPlot = memo(function OmoriLawPlot({
         const { qqPlotData } = omoriParams;
 
         // Find max value for 1:1 line reference
-        const maxVal = Math.max(
-            ...qqPlotData.map(d => Math.max(d.x, d.y))
-        );
+        const maxVal = qqPlotData.reduce((m, d) => Math.max(m, d.x, d.y), 0);
 
         return {
             chart: {

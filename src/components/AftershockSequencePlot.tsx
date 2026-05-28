@@ -111,66 +111,44 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
 
     // Effect to attach zoom event handler to timeline chart
     useEffect(() => {
-        // Use a small delay to ensure chart is fully initialized
+        let removeEvent: Function | null = null;
+
         const timer = setTimeout(() => {
             const chart = chartRef.current?.chart;
-            if (!chart) {
-                console.log('Timeline zoom handler: Chart not ready yet');
-                return;
-            }
+            if (!chart) return;
 
             const xAxis = chart.xAxis[0];
-            if (!xAxis) {
-                console.log('Timeline zoom handler: xAxis not found');
-                return;
-            }
+            if (!xAxis) return;
 
-            // Store the original min/max for comparison
             const originalMin = xAxis.min;
             const originalMax = xAxis.max;
 
-            console.log('Timeline zoom handler attached:', { originalMin, originalMax });
-
-            // Add event handler for zoom changes
             const handleAfterSetExtremes = (e: any) => {
-                console.log('afterSetExtremes event:', e);
-
-                // Check if this is a user-triggered zoom
                 if (e.trigger === 'zoom') {
-                    const min = e.min;
-                    const max = e.max;
-
-                    // Only set zoom range if it's different from the full range
+                    const { min, max } = e;
                     const threshold = 0.1;
-                    // Check if originalMin and originalMax are defined before comparison
                     if (originalMin !== undefined && originalMax !== undefined) {
                         if (Math.abs(min - originalMin) > threshold || Math.abs(max - originalMax) > threshold) {
-                            console.log('Timeline zoomed:', { min, max });
                             setTimelineZoomRange({ min, max });
                         } else {
-                            console.log('Timeline reset to full range');
                             setTimelineZoomRange(null);
                         }
                     } else {
-                        // If original range is not defined, always set the zoom range
-                        console.log('Timeline zoomed (no original range):', { min, max });
                         setTimelineZoomRange({ min, max });
                     }
                 } else if (e.trigger === 'reset') {
-                    // Reset zoom
-                    console.log('Timeline zoom reset');
                     setTimelineZoomRange(null);
                 }
             };
 
-            // Attach the event handler
-            Highcharts.addEvent(xAxis, 'afterSetExtremes', handleAfterSetExtremes);
-
-            console.log('Timeline zoom handler: Event listener attached');
+            removeEvent = Highcharts.addEvent(xAxis, 'afterSetExtremes', handleAfterSetExtremes);
         }, 100);
 
-        return () => clearTimeout(timer);
-    }, [mainEvent]); // Removed sequenceData - not used in this effect
+        return () => {
+            clearTimeout(timer);
+            if (removeEvent) removeEvent();
+        };
+    }, [mainEvent]);
 
     // LeafletAftershockMap handles its own bounding logic natively.
 

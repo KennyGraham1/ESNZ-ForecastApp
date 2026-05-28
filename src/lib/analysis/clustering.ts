@@ -126,116 +126,157 @@ function dbscanWithRTree(
 }
 
 /**
+ * Infer a log10(η) threshold separating clustered (low η) from background
+ * (high η) links via Otsu between-class-variance maximization on the histogram
+ * of finite log10(η) values. Mirrors clusterPipeline's `infer_eta_threshold`.
+ * Falls back to a low quantile when there are too few values to histogram.
+ */
+function inferLog10EtaThreshold(log10Etas: number[], quantileFallback: number = 0.15): number {
+    const values = log10Etas.filter(v => Number.isFinite(v)).sort((a, b) => a - b);
+    if (values.length === 0) return NaN;
+
+    const quantile = (q: number): number => {
+        const idx = Math.min(values.length - 1, Math.max(0, Math.floor(q * (values.length - 1))));
+        return values[idx];
+    };
+    if (values.length < 20) return quantile(quantileFallback);
+
+    const min = values[0];
+    const max = values[values.length - 1];
+    if (max <= min) return quantile(quantileFallback);
+
+    const nBins = Math.max(3, Math.min(100, Math.ceil(Math.sqrt(values.length))));
+    const width = (max - min) / nBins;
+    const hist = new Array(nBins).fill(0);
+    for (const v of values) {
+        let b = Math.floor((v - min) / width);
+        if (b < 0) b = 0;
+        if (b >= nBins) b = nBins - 1;
+        hist[b]++;
+    }
+    const total = values.length;
+    const probs = hist.map(h => h / total);
+    const centers = hist.map((_, i) => min + (i + 0.5) * width);
+    const muTotal = probs.reduce((s, p, i) => s + p * centers[i], 0);
+
+    // Otsu: maximize σ_b²(t) = [μ_T·ω(t) − μ(t)]² / [ω(t)(1−ω(t))]
+    let omega = 0;
+    let mu = 0;
+    let bestSigma = -Infinity;
+    let bestCenter = quantile(quantileFallback);
+    for (let i = 0; i < nBins; i++) {
+        omega += probs[i];
+        mu += probs[i] * centers[i];
+        if (omega <= 0 || omega >= 1) continue;
+        const sigma = ((muTotal * omega - mu) ** 2) / (omega * (1 - omega));
+        if (sigma > bestSigma) {
+            bestSigma = sigma;
+            bestCenter = centers[i];
+        }
+    }
+    return bestCenter;
+}
+
+/**
  * Nearest-Neighbor Clustering (Zaliapin-Ben-Zion method)
- * Identifies earthquake clusters based on nearest-neighbor distances in space-time-magnitude domain
+ * Identifies earthquake clusters based on nearest-neighbor distances in the
+ * space-time-magnitude domain: η = Δt · r^d · 10^(−b·m_parent).
  * Reference: Zaliapin & Ben-Zion (2013, 2020) - JGR
+ *
+ * @param thresholdOverride  When <= 0 it is used directly as the log10(η)
+ *   threshold; otherwise (e.g. the legacy default of 1.0) the threshold is
+ *   auto-inferred from the bimodal log10(η) distribution (Otsu).
  */
 function nearestNeighborClustering(
     earthquakes: EarthquakeData[],
-    dataset: number[][], // [x, y] in km
-    threshold: number = 1.0 // Nearest-neighbor distance threshold
+    dataset: number[][], // [x, y] in km, parallel to earthquakes
+    thresholdOverride: number = 1.0
 ): { clusters: number[][], noiseIndices: number[] } {
     const n = earthquakes.length;
+    if (n === 0) return { clusters: [], noiseIndices: [] };
 
-    // Calculate nearest-neighbor distances in space-time-magnitude domain
-    const nnDistances: { index: number; nnIndex: number; distance: number }[] = [];
+    const D = 1.6;            // fractal dimension (Zaliapin & Ben-Zion 2013)
+    const B = 1.0;            // Gutenberg-Richter b-value
+    const DIST_FLOOR_KM = 0.001;
+
+    // Sort indices chronologically. The raw input order is NOT guaranteed to be
+    // time-sorted; the previous implementation compared abs(Δt) over the raw
+    // order, which let a LATER event act as a parent (causality violation).
+    const getTimeMs = (idx: number): number => {
+        const t = earthquakes[idx].time;
+        return t instanceof Date ? t.getTime() : new Date(t).getTime();
+    };
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => getTimeMs(a) - getTimeMs(b));
+    const timesDays = order.map(idx => getTimeMs(idx) / (1000 * 60 * 60 * 24));
+
+    // For each event (time order) find the earlier event minimizing η, requiring
+    // Δt > 0 so the parent strictly precedes the child.
+    const nnParent = new Array(n).fill(-1); // sorted-space parent index
+    const log10Eta = new Array(n).fill(Infinity);
 
     for (let i = 0; i < n; i++) {
-        let minDist = Infinity;
-        let nnIndex = -1;
-
-        const eq1 = earthquakes[i];
-        const time1 = eq1.time instanceof Date ? eq1.time.getTime() : new Date(eq1.time).getTime();
-
-        // Find nearest neighbor considering only earlier events (temporal ordering)
+        const si = order[i];
+        let minEta = Infinity;
+        let parent = -1;
         for (let j = 0; j < i; j++) {
-            const eq2 = earthquakes[j];
-            const time2 = eq2.time instanceof Date ? eq2.time.getTime() : new Date(eq2.time).getTime();
-
-            // Spatial distance (already in km from dataset)
-            const spatialDist = Math.sqrt(
-                (dataset[i][0] - dataset[j][0]) ** 2 +
-                (dataset[i][1] - dataset[j][1]) ** 2
-            );
-
-            // Temporal distance (days)
-            const temporalDist = Math.abs(time1 - time2) / (1000 * 60 * 60 * 24);
-
-            // Nearest-neighbor metric (space-time-magnitude distance)
-            // η = t * r^d / 10^(b*m) where d=1.6, b=1 (typical values)
-            const d = 1.6;
-            const b = 1.0;
-            const eta = temporalDist * Math.pow(spatialDist, d) / Math.pow(10, b * eq2.magnitude);
-
-            if (eta < minDist) {
-                minDist = eta;
-                nnIndex = j;
+            const dt = timesDays[i] - timesDays[j]; // days
+            if (dt <= 0) continue;                  // strictly earlier parent only
+            const sj = order[j];
+            const dx = dataset[si][0] - dataset[sj][0];
+            const dy = dataset[si][1] - dataset[sj][1];
+            const r = Math.max(Math.sqrt(dx * dx + dy * dy), DIST_FLOOR_KM);
+            // Parent magnitude = the earlier event (sj). 10^(−B·m) lowers η for
+            // larger parents, as in Zaliapin & Ben-Zion (2013).
+            const eta = dt * Math.pow(r, D) * Math.pow(10, -B * earthquakes[sj].magnitude);
+            if (eta < minEta) {
+                minEta = eta;
+                parent = j;
             }
         }
-
-        nnDistances.push({ index: i, nnIndex, distance: minDist });
+        nnParent[i] = parent;
+        log10Eta[i] = parent >= 0 && minEta > 0 ? Math.log10(minEta) : Infinity;
     }
 
-    // Cluster events based on threshold
-    // Events with NN distance < threshold are clustered (aftershocks/foreshocks)
-    // Events with NN distance >= threshold are background/mainshocks
-    const labels = new Array(n).fill(-1);
+    // Threshold in log10(η) space: explicit override (<= 0) or auto-inferred valley.
+    const threshold = thresholdOverride <= 0
+        ? thresholdOverride
+        : inferLog10EtaThreshold(log10Eta, 0.15);
+
+    const isTriggered = new Array(n).fill(false);
+    for (let i = 0; i < n; i++) {
+        isTriggered[i] = nnParent[i] >= 0 && Number.isFinite(log10Eta[i]) && log10Eta[i] <= threshold;
+    }
+
+    // Follow triggered parent links to a cluster root (parent index always < i in
+    // sorted space, so the walk strictly decreases and terminates).
+    const root = new Array(n).fill(-1);
+    for (let i = 0; i < n; i++) {
+        let r = i;
+        while (isTriggered[r] && nnParent[r] >= 0) {
+            r = nnParent[r];
+        }
+        root[i] = r;
+    }
+
+    // Group sorted indices by root, mapping back to original indices.
+    const groups = new Map<number, number[]>();
+    for (let i = 0; i < n; i++) {
+        const r = root[i];
+        if (!groups.has(r)) groups.set(r, []);
+        groups.get(r)!.push(order[i]);
+    }
+
     const clusters: number[][] = [];
     const noiseIndices: number[] = [];
-
-    // First pass: identify background events (noise)
-    for (let i = 0; i < n; i++) {
-        if (nnDistances[i].distance >= threshold || nnDistances[i].nnIndex === -1) {
-            noiseIndices.push(i);
+    for (const members of groups.values()) {
+        if (members.length >= 2) {
+            clusters.push(members);
+        } else {
+            noiseIndices.push(...members);
         }
     }
 
-    // Second pass: build clusters from linked events
-    let clusterId = 0;
-    for (let i = 0; i < n; i++) {
-        if (labels[i] !== -1) continue; // Already assigned
-        if (nnDistances[i].distance >= threshold) continue; // Background event
-
-        // Start new cluster
-        const cluster: number[] = [];
-        const queue = [i];
-
-        while (queue.length > 0) {
-            const current = queue.shift()!;
-            if (labels[current] !== -1) continue;
-
-            labels[current] = clusterId;
-            cluster.push(current);
-
-            // Add parent (nearest neighbor)
-            const parent = nnDistances[current].nnIndex;
-            if (parent >= 0 && labels[parent] === -1 && nnDistances[current].distance < threshold) {
-                queue.push(parent);
-            }
-
-            // Add children (events that have this as nearest neighbor)
-            for (let j = current + 1; j < n; j++) {
-                if (nnDistances[j].nnIndex === current && nnDistances[j].distance < threshold) {
-                    queue.push(j);
-                }
-            }
-        }
-
-        if (cluster.length > 0) {
-            clusters.push(cluster);
-            clusterId++;
-        }
-    }
-
-    // Some background mainshocks (high NN distance) are pulled into clusters as
-    // parents of dependent aftershock chains.  Filter noiseIndices down to only
-    // events that remain truly unassigned so that noiseIndices.length is consistent
-    // with the noisePercent statistic derived from clusteredCount.
-    const clusteredSet = new Set<number>();
-    clusters.forEach(cluster => cluster.forEach(idx => clusteredSet.add(idx)));
-    const trueNoiseIndices = noiseIndices.filter(i => !clusteredSet.has(i));
-
-    return { clusters, noiseIndices: trueNoiseIndices };
+    return { clusters, noiseIndices };
 }
 
 /**
@@ -456,6 +497,10 @@ function stepTimeClustering(
         clusterNo: number;
     }
 
+    // Filter to events >= Mc before clustering, matching clusterSTEPtime.m
+    // (`l = mCatalog(:,6) >= Mc`) and stepMagnitudeClustering above. Without this
+    // filter, sub-completeness events could be absorbed as cluster members, which
+    // the MATLAB reference never allows.
     const workingData: WorkingEvent[] = earthquakes
         .map((eq, idx) => ({
             originalIndex: idx,
@@ -465,6 +510,7 @@ function stepTimeClustering(
             magnitude: eq.magnitude,
             clusterNo: 0
         }))
+        .filter(e => e.magnitude >= minMainMag)
         .sort((a, b) => a.decimalYear - b.decimalYear); // Sort by time
 
     if (workingData.length === 0) {
@@ -750,8 +796,7 @@ function timeMagnitudeClustering(
     // Cluster tracking
     interface ClusterInfo {
         largestMag: number;
-        largestMagTime: number; // Time of largest event
-        lastEventTime: number;  // Time of most recent event (used by Reasenberg tau formula)
+        largestMagTime: number; // Time of largest event (drives the Reasenberg tau formula)
         members: number[]; // Indices in sortedEvents
     }
     const clusterInfos: Map<number, ClusterInfo> = new Map();
@@ -794,12 +839,20 @@ function timeMagnitudeClustering(
     for (let i = 0; i < sortedEvents.length; i++) {
         const event1 = sortedEvents[i];
 
-        // Calculate tau (look-ahead time) for this event
-        const tau = calculateTau(event1.clusterId, event1.timeMinutes);
-
         // Look for candidate event2 within tau time window
         for (let j = i + 1; j < sortedEvents.length; j++) {
             const event2 = sortedEvents[j];
+
+            // Recompute tau every inner step: event1.clusterId (and its cluster's
+            // largest magnitude) can change mid-loop when event1 is absorbed into a
+            // cluster or clusters merge, which widens the look-ahead window.
+            // Computing tau once before the loop (the previous approach) made the
+            // break fire too early and miss events in the gap [old_tau, new_tau].
+            // NOTE: cluster2000x.f actually evaluates tau ONCE per outer event i
+            // (before the j-loop); this per-pair recompute follows the Python
+            // decluster_reasenberg reference instead, which intentionally widens
+            // the window as event1 joins a cluster.
+            const tau = calculateTau(event1.clusterId, event1.timeMinutes);
 
             // Check temporal proximity
             const timeDiff = event2.timeMinutes - event1.timeMinutes;
@@ -820,7 +873,11 @@ function timeMagnitudeClustering(
             const rMain = event1.clusterId !== 0
                 ? Math.min(0.011 * Math.pow(10, 0.4 * clusterInfos.get(event1.clusterId)!.largestMag), 30)
                 : 0;
-            const rTest = r1 + rMain;
+            // cluster2000x.f caps the SUMMED interaction distance at one crustal
+            // thickness (`if (rtest .gt. 30.) rtest=30.`), not each term individually.
+            // Without this the radius can reach ~60 km for large mainshocks and
+            // over-cluster. Matches the Python decluster_reasenberg reference too.
+            const rTest = Math.min(r1 + rMain, 30);
 
             // Cluster test
             if (dist <= rTest) {
@@ -846,10 +903,6 @@ function timeMagnitudeClustering(
                         keepInfo.largestMag = mergeInfo.largestMag;
                         keepInfo.largestMagTime = mergeInfo.largestMagTime;
                     }
-                    // Keep the most recent event time across both clusters
-                    if (mergeInfo.lastEventTime > keepInfo.lastEventTime) {
-                        keepInfo.lastEventTime = mergeInfo.lastEventTime;
-                    }
                     keepInfo.members.push(...mergeInfo.members);
                     clusterInfos.delete(mergeId);
 
@@ -862,10 +915,6 @@ function timeMagnitudeClustering(
                         info.largestMag = event2.magnitude;
                         info.largestMagTime = event2.timeMinutes;
                     }
-                    // event2 is later (j > i, sorted by time) so it's always the most recent
-                    if (event2.timeMinutes > info.lastEventTime) {
-                        info.lastEventTime = event2.timeMinutes;
-                    }
 
                 } else if (event2.clusterId !== 0) {
                     // Add event1 to event2's cluster
@@ -876,9 +925,6 @@ function timeMagnitudeClustering(
                         info.largestMag = event1.magnitude;
                         info.largestMagTime = event1.timeMinutes;
                     }
-                    if (event1.timeMinutes > info.lastEventTime) {
-                        info.lastEventTime = event1.timeMinutes;
-                    }
 
                 } else {
                     // Start new cluster with both events
@@ -887,11 +933,9 @@ function timeMagnitudeClustering(
                     event2.clusterId = newId;
 
                     const largerEvent = event1.magnitude >= event2.magnitude ? event1 : event2;
-                    // event2 is temporally later (j > i), so it is the most recent event
                     clusterInfos.set(newId, {
                         largestMag: largerEvent.magnitude,
                         largestMagTime: largerEvent.timeMinutes,
-                        lastEventTime: event2.timeMinutes,
                         members: [i, j]
                     });
                 }

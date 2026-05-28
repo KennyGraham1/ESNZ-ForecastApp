@@ -2,6 +2,12 @@ import { EarthquakeData } from '@/types/earthquake';
 import { levenbergMarquardt } from 'ml-levenberg-marquardt';
 import { safeMin, safeMax } from '@/utils/arrayMath';
 
+// Start of the Omori observation window in days. Event times are filtered to
+// t >= this floor for numerical stability, so the point-process likelihood
+// integral must also start here (∫ over [OMORI_T_START_DAYS, T]) rather than
+// from 0 — otherwise the integration window and the data window disagree.
+const OMORI_T_START_DAYS = 0.001; // ≈ 1.4 minutes
+
 export type OptimizationMethod = 'grid-search' | 'levenberg-marquardt' | 'nelder-mead' | 'hybrid' | 'mle' | 'mle-sa' | 'mle-em';
 
 export interface ParameterUncertainty {
@@ -118,19 +124,16 @@ function fitOmoriLawGridSearch(
  */
 function fitOmoriLawLM(
     days: number[],
-    counts: number[]
+    counts: number[],
+    seed?: { K: number; c: number; p: number; rSquared: number; iterations: number }
 ): { K: number; c: number; p: number; rSquared: number; iterations: number } {
-    // Initial parameter guesses from grid search (coarse)
-    const gridResult = fitOmoriLawGridSearch(days, counts);
+    const initial = seed ?? fitOmoriLawGridSearch(days, counts);
 
-    // Define the parameterized function for LM
-    // Returns a function that takes x and returns y given parameters [K, c, p]
     const omoriFunction = ([K, c, p]: number[]) => (t: number): number => {
         return K / Math.pow(t + c, p);
     };
 
-    // Initial guess
-    const initialParams = [gridResult.K, gridResult.c, gridResult.p];
+    const initialParams = [initial.K, initial.c, initial.p];
 
     try {
         // Prepare data for LM
@@ -173,9 +176,9 @@ function fitOmoriLawLM(
             iterations: result.iterations
         };
     } catch (error) {
-        // Fallback to grid search if LM fails
+        // Fallback to initial (grid search) result if LM fails
         console.warn('Levenberg-Marquardt failed, falling back to grid search:', error);
-        return gridResult;
+        return { ...initial, iterations: 0 };
     }
 }
 
@@ -337,8 +340,8 @@ function fitOmoriLawHybrid(
     // Start with grid search for a robust initial guess
     const gridResult = fitOmoriLawGridSearch(days, counts);
 
-    // Refine with Levenberg-Marquardt
-    const lmResult = fitOmoriLawLM(days, counts);
+    // Refine with LM, seeding from the grid result to avoid a redundant grid search
+    const lmResult = fitOmoriLawLM(days, counts, gridResult);
 
     // Compare R-squared and choose better result
     if (lmResult.rSquared > gridResult.rSquared) {
@@ -388,15 +391,15 @@ function fitOmoriLawMLE(
             sumLogRates += Math.log(rate);
         }
 
-        // Integral of rate function from 0 to T_max
+        // Integral of rate function over the observation window [OMORI_T_START_DAYS, T_max]
         let integral;
         if (Math.abs(p - 1.0) < 1e-6) {
             // Special case: p = 1
-            integral = K * (Math.log(T_max + c) - Math.log(c));
+            integral = K * (Math.log(T_max + c) - Math.log(OMORI_T_START_DAYS + c));
         } else {
             // General case
             const oneMinusP = 1 - p;
-            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP));
+            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(OMORI_T_START_DAYS + c, oneMinusP));
         }
 
         // Negative log-likelihood (for minimization)
@@ -438,13 +441,13 @@ function fitOmoriLawMLE(
     const initialC = 0.1;
 
     // Initial K: use the analytical MLE formula for K given (p, c)
-    // For point process: K_mle = N / ∫₀^T (t+c)^(-p) dt
+    // Integral matches the observation window [OMORI_T_START_DAYS, T_max]
     let integralTerm;
     if (Math.abs(initialP - 1.0) < 1e-6) {
-        integralTerm = Math.log(T_max + initialC) - Math.log(initialC);
+        integralTerm = Math.log(T_max + initialC) - Math.log(OMORI_T_START_DAYS + initialC);
     } else {
         const oneMinusP = 1 - initialP;
-        integralTerm = (Math.pow(T_max + initialC, oneMinusP) - Math.pow(initialC, oneMinusP)) / oneMinusP;
+        integralTerm = (Math.pow(T_max + initialC, oneMinusP) - Math.pow(OMORI_T_START_DAYS + initialC, oneMinusP)) / oneMinusP;
     }
     const initialK = N / integralTerm;
 
@@ -599,10 +602,10 @@ function fitOmoriLawMLE_SA(
 
         let integral;
         if (Math.abs(p - 1.0) < 1e-6) {
-            integral = K * (Math.log(T_max + c) - Math.log(c));
+            integral = K * (Math.log(T_max + c) - Math.log(OMORI_T_START_DAYS + c));
         } else {
             const oneMinusP = 1 - p;
-            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP));
+            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(OMORI_T_START_DAYS + c, oneMinusP));
         }
 
         return -(sumLogRates - integral);
@@ -628,10 +631,10 @@ function fitOmoriLawMLE_SA(
     const initialC = 0.1;
     let integralTerm;
     if (Math.abs(initialP - 1.0) < 1e-6) {
-        integralTerm = Math.log(T_max + initialC) - Math.log(initialC);
+        integralTerm = Math.log(T_max + initialC) - Math.log(OMORI_T_START_DAYS + initialC);
     } else {
         const oneMinusP = 1 - initialP;
-        integralTerm = (Math.pow(T_max + initialC, oneMinusP) - Math.pow(initialC, oneMinusP)) / oneMinusP;
+        integralTerm = (Math.pow(T_max + initialC, oneMinusP) - Math.pow(OMORI_T_START_DAYS + initialC, oneMinusP)) / oneMinusP;
     }
     const initialK = N / integralTerm;
 
@@ -749,10 +752,10 @@ function fitOmoriLawMLE_EM(
     let c = 0.1;
     let integralTerm;
     if (Math.abs(p - 1.0) < 1e-6) {
-        integralTerm = Math.log(T_max + c) - Math.log(c);
+        integralTerm = Math.log(T_max + c) - Math.log(OMORI_T_START_DAYS + c);
     } else {
         const oneMinusP = 1 - p;
-        integralTerm = (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP)) / oneMinusP;
+        integralTerm = (Math.pow(T_max + c, oneMinusP) - Math.pow(OMORI_T_START_DAYS + c, oneMinusP)) / oneMinusP;
     }
     let K = N / integralTerm;
 
@@ -775,10 +778,10 @@ function fitOmoriLawMLE_EM(
 
         let integral;
         if (Math.abs(p - 1.0) < 1e-6) {
-            integral = K * (Math.log(T_max + c) - Math.log(c));
+            integral = K * (Math.log(T_max + c) - Math.log(OMORI_T_START_DAYS + c));
         } else {
             const oneMinusP = 1 - p;
-            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP));
+            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(OMORI_T_START_DAYS + c, oneMinusP));
         }
 
         return sumLogRates - integral;
@@ -1169,10 +1172,10 @@ function calculateConfidenceIntervals(
 
         let integral;
         if (Math.abs(p - 1.0) < 1e-6) {
-            integral = K * (Math.log(T_max + c) - Math.log(c));
+            integral = K * (Math.log(T_max + c) - Math.log(OMORI_T_START_DAYS + c));
         } else {
             const oneMinusP = 1 - p;
-            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(c, oneMinusP));
+            integral = (K / oneMinusP) * (Math.pow(T_max + c, oneMinusP) - Math.pow(OMORI_T_START_DAYS + c, oneMinusP));
         }
 
         return sumLogRates - integral;
@@ -1550,9 +1553,9 @@ export function calculateOmoriParameters(
             // Calculate integral term for K=1
             let intTerm = 0;
             if (Math.abs(testP - 1.0) < 0.001) {
-                intTerm = Math.log(T_max + testC) - Math.log(testC);
+                intTerm = Math.log(T_max + testC) - Math.log(OMORI_T_START_DAYS + testC);
             } else {
-                intTerm = (Math.pow(T_max + testC, 1 - testP) - Math.pow(testC, 1 - testP)) / (1 - testP);
+                intTerm = (Math.pow(T_max + testC, 1 - testP) - Math.pow(OMORI_T_START_DAYS + testC, 1 - testP)) / (1 - testP);
             }
 
             // Analytical MLE for K

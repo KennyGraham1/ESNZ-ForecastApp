@@ -5,9 +5,8 @@ import { useMemo, useRef, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from '../ChartExportButtons';
-import { stratifiedSample } from '@/utils/dataOptimization';
 import { safeMin, safeMax } from '@/utils/arrayMath';
-import { SAMPLING_CONFIG, getOptimalSamplingThreshold, HIGHCHARTS_CONFIG } from '@/config/performance';
+import { getFieldUnit } from '@/utils/fieldUnits';
 
 interface MultiPanelPlotProps {
     earthquakes: EarthquakeData[];
@@ -44,27 +43,15 @@ const MultiPanelPlot = memo(function MultiPanelPlot({
             };
         }
 
-        // Sampling: Stricter threshold for multi-panel
-        const MAX_MULTI_PANEL_POINTS = 2000;
-        let processedEarthquakes = earthquakes;
-
-        if (earthquakes.length > MAX_MULTI_PANEL_POINTS) {
-            processedEarthquakes = stratifiedSample(earthquakes, MAX_MULTI_PANEL_POINTS);
-            console.log(`📊 Multi-Panel: Stratified sample ${processedEarthquakes.length} points (limit: ${MAX_MULTI_PANEL_POINTS})`);
-        }
+        // Point sampling is handled centrally by the parent (Sandbox) so the
+        // rendered count stays truthful — render whatever we're handed.
+        const processedEarthquakes = earthquakes;
 
         // Helper to check if axis is time
         const isTimeAxis = xAxisField === 'time' || xAxisField === 'timeMs';
         const isColorTime = colorField ? (colorField === 'time' || colorField === 'timeMs') : false;
 
-        // Helper to get unit
-        const getUnit = (field: string) => {
-            const f = field.toString().toLowerCase();
-            if (f.includes('depth')) return ' km';
-            if (f.includes('mag')) return ' M';
-            if (f.includes('lat') || f.includes('lon')) return '°';
-            return '';
-        };
+        const getUnit = getFieldUnit;
 
         // --- SIZE SCALING LOGIC ---
         let getSize = (val: number) => 3; // Default size 3
@@ -290,7 +277,7 @@ const MultiPanelPlot = memo(function MultiPanelPlot({
                             </tr>
                             <tr>
                                 <td style="padding: 2px 8px 2px 0; color: #6B7280;">Magnitude:</td>
-                                <td style="padding: 2px 0; font-weight: 500; text-align: right;">${this.z.toFixed(2)}</td>
+                                <td style="padding: 2px 0; font-weight: 500; text-align: right;">${typeof this.z === 'number' ? this.z.toFixed(2) : 'N/A'}</td>
                             </tr>`;
 
                     if (colorField && cStr) {
@@ -298,10 +285,6 @@ const MultiPanelPlot = memo(function MultiPanelPlot({
                                 <td style="padding: 2px 8px 2px 0; color: #6B7280;">${colorField}:</td>
                                 <td style="padding: 2px 0; font-weight: 500; text-align: right;">${cStr}</td>
                             </tr>`;
-                    }
-                    if (sizeField) {
-                        const sVal = typeof this.options?.marker?.radius === 'number' ? 'Dynamic' : '';
-                        //  html += ... 
                     }
 
                     html += `</table></div>`;

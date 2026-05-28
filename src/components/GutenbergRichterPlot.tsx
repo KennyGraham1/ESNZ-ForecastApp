@@ -33,8 +33,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
         return calculateGutenbergRichter(earthquakes, { binWidth, completenessMethod, magnitudeCompleteness });
     }, [earthquakes, binWidth, completenessMethod, magnitudeCompleteness]);
 
-    // Lift state up
-    useMemo(() => {
+    useEffect(() => {
         if (onCalculationComplete) {
             onCalculationComplete(result);
         }

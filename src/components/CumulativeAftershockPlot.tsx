@@ -47,15 +47,9 @@ const CumulativeAftershockPlot = memo(function CumulativeAftershockPlot({
                 return timeA - timeB;
             });
 
-            let mainEventIndex = 0;
-            let maxMagnitude = sorted[0].magnitude;
-
-            sorted.forEach((eq, idx) => {
-                if (eq.magnitude > maxMagnitude) {
-                    maxMagnitude = eq.magnitude;
-                    mainEventIndex = idx;
-                }
-            });
+            const mainEventIndex = sorted.reduce(
+                (best, eq, idx) => eq.magnitude > sorted[best].magnitude ? idx : best, 0
+            );
 
             const mainEventEq = sorted[mainEventIndex];
             mainEventTime = mainEventEq.timeMs ?? mainEventEq.time.getTime();

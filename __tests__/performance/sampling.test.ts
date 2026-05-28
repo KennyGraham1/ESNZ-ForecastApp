@@ -85,9 +85,9 @@ describe('Stratified Sampling', () => {
             const testData = generateTestEarthquakes(10000);
             const sampled = stratifiedSample(testData, 1000);
 
-            // Count shallow earthquakes (< 70km) in both datasets
-            const originalShallowCount = testData.filter(eq => eq.depth < 70).length;
-            const sampledShallowCount = sampled.filter(eq => eq.depth < 70).length;
+            // Count shallow earthquakes (0-70 km, inclusive) in both datasets
+            const originalShallowCount = testData.filter(eq => eq.depth <= 70).length;
+            const sampledShallowCount = sampled.filter(eq => eq.depth <= 70).length;
 
             const originalRatio = originalShallowCount / testData.length;
             const sampledRatio = sampledShallowCount / sampled.length;

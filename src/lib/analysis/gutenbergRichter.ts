@@ -4,6 +4,7 @@ import { safeMinMax } from '@/utils/arrayMath';
 
 export interface GutenbergRichterResult {
     bValue: number;
+    bUncertainty: number; // Shi & Bolt (1982) standard error on b
     aValue: number;
     magnitudeOfCompleteness: number;
     rSquared: number;
@@ -87,27 +88,40 @@ export function calculateGutenbergRichter(
         mcIndex = bins.indexOf(maxBin);
         mc = binCenters[mcIndex];
     } else {
-        // Goodness of fit method
-        let bestR2 = -Infinity;
-        mcIndex = 0;
+        // Goodness-of-fit method (Wiemer & Wyss 2000) — KSTOTAL criterion.
+        // For each candidate Mc (lowest to highest), fit G-R via the Aki MLE and
+        // measure the absolute relative deviation between the observed and
+        // synthetic cumulative FMD; select the LOWEST Mc where it drops below
+        // 10%. The previous implementation maximised R², which always selects
+        // the smallest possible Mc (more data → better linear fit) and is wrong.
+        const maxBin = bins.length > 0 ? bins.reduce((max, bin) => Math.max(max, bin), bins[0]) : 0;
+        mcIndex = bins.indexOf(maxBin); // fallback: maximum curvature
+        const gftThreshold = 0.10;
 
         for (let i = 0; i < numBins - 2; i++) {
-            const testMagnitudes: number[] = [];
-            const testLogCounts: number[] = [];
+            const above = magnitudes.filter(m => m >= binCenters[i]);
+            const nAbove = above.length;
+            if (nAbove < 10) continue;
 
+            const meanM = above.reduce((sum, m) => sum + m, 0) / nAbove;
+            // Same Utsu binning correction as the primary b-value path
+            const dm = meanM - (binCenters[i] - binWidth / 2);
+            if (dm <= 0) continue;
+            const bTry = Math.LOG10E / dm; // log10(e) / dm
+            const aTry = Math.log10(nAbove) + bTry * binCenters[i];
+
+            // Synthetic vs observed cumulative FMD from the Aki MLE fit
+            let sumAbsDiff = 0;
             for (let j = i; j < numBins; j++) {
-                if (cumulativeCounts[j] > 0) {
-                    testMagnitudes.push(binCenters[j]);
-                    testLogCounts.push(Math.log10(cumulativeCounts[j]));
-                }
+                const nObs = cumulativeCounts[j];
+                if (nObs <= 0) continue;
+                const nSyn = Math.pow(10, aTry - bTry * binCenters[j]);
+                sumAbsDiff += Math.abs(nObs - nSyn);
             }
-
-            if (testMagnitudes.length < 3) continue;
-
-            const r2 = calculateR2(testMagnitudes, testLogCounts);
-            if (r2 > bestR2) {
-                bestR2 = r2;
-                mcIndex = i;
+            const kstotal = sumAbsDiff / nAbove;
+            if (kstotal <= gftThreshold) {
+                mcIndex = i; // lowest Mc that passes
+                break;
             }
         }
 
@@ -129,23 +143,40 @@ export function calculateGutenbergRichter(
         return null;
     }
 
-    // Perform linear regression: log10(N) = a - b*M
-    const points: [number, number][] = magnitudesAboveMc.map((m, i) => [m, logCountsAboveMc[i]]);
-    const { m: slope, b: intercept } = linearRegression(points);
+    // Aki (1965) maximum-likelihood b-value with the Utsu (1966) binning
+    // correction: b = log10(e) / (mean_M - (Mc - binWidth/2)). This is the
+    // minimum-variance unbiased estimator for a G-R population. OLS on
+    // cumulative counts (the previous estimator) is biased because cumulative
+    // counts are correlated and heteroscedastic.
+    const magsAboveMc = magnitudes.filter(m => m >= mc);
+    const nAboveMc = magsAboveMc.length;
+    if (nAboveMc < 2) {
+        return null;
+    }
+    const meanM = magsAboveMc.reduce((sum, m) => sum + m, 0) / nAboveMc;
+    const dm = meanM - (mc - binWidth / 2);
+    if (dm <= 0) {
+        return null;
+    }
+    const bValue = Math.LOG10E / dm; // Aki-Utsu MLE
+    const aValue = Math.log10(nAboveMc) + bValue * mc;
 
-    const bValue = -slope; // b-value is negative of slope
-    const aValue = intercept;
+    // Shi & Bolt (1982) standard error on the b-value
+    const varianceM = magsAboveMc.reduce((sum, m) => sum + (m - meanM) ** 2, 0) / (nAboveMc * (nAboveMc - 1));
+    const bUncertainty = 2.30 * bValue * bValue * Math.sqrt(varianceM);
 
-    // Calculate R-squared
+    // OLS fit on cumulative counts retained for the FMD plot quality metric
+    // only (NOT used for b): R² of log10(N) vs M.
     const rSquared = calculateR2(magnitudesAboveMc, logCountsAboveMc);
 
-    // Calculate fitted line for all bin centers
+    // Fitted G-R line for all bin centers, anchored on the MLE a/b
     const fittedLine = binCenters.map(m => Math.pow(10, aValue - bValue * m));
 
-    const earthquakesAboveMc = earthquakes.filter(eq => eq.magnitude >= mc).length;
+    const earthquakesAboveMc = nAboveMc;
 
     return {
         bValue,
+        bUncertainty,
         aValue,
         magnitudeOfCompleteness: mc,
         rSquared,

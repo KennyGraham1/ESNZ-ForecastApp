@@ -5,6 +5,7 @@ import { useMemo, useRef, memo } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import { safeMin, safeMax } from '@/utils/arrayMath';
+import { getFieldUnit } from '@/utils/fieldUnits';
 
 interface GenericHistogramProps {
     earthquakes: EarthquakeData[];
@@ -64,7 +65,10 @@ const GenericHistogram = memo(function GenericHistogram({
             // For 'hour', we want exactly integers 0..23
             const isDiscrete = field === 'hour';
             const numBins = isDiscrete ? 24 : bins;
-            const binSize = isDiscrete ? 1 : (max - min) / numBins;
+            // Guard against a zero-width range (single value or constant field):
+            // (max - min) / numBins would be 0, making every bin index NaN and
+            // silently dropping all points. Fall back to a unit-width single bin.
+            const binSize = isDiscrete ? 1 : ((max - min) / numBins) || 1;
 
             const histogramData = new Array(numBins).fill(0);
             const binEdges = new Array(numBins + 1).fill(0).map((_, i) => min + i * binSize);
@@ -112,15 +116,7 @@ const GenericHistogram = memo(function GenericHistogram({
             });
         });
 
-        // Helper to get units
-        const getUnit = (field: string) => {
-            const f = field.toString().toLowerCase();
-            if (f.includes('depth')) return ' km';
-            if (f.includes('mag')) return ' M';
-            if (f.includes('lat') || f.includes('lon')) return '°';
-            if (f.includes('gap')) return ' min';
-            return '';
-        };
+        const getUnit = getFieldUnit;
 
         const isTime = fields.includes('time');
 
