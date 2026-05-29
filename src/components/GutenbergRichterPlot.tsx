@@ -1,7 +1,7 @@
 'use client';
 
 import { EarthquakeData } from '@/types/earthquake';
-import { useMemo, useRef, memo, useEffect } from 'react';
+import { useMemo, useRef, memo, useEffect, useState } from 'react';
 import { GutenbergRichterResult, calculateGutenbergRichter } from '@/lib/analysis/gutenbergRichter';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
@@ -28,10 +28,15 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
 }: GutenbergRichterPlotProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
+    // Interactive controls (seeded from props). Let the user switch the Mc method
+    // and bin width directly in the panel rather than relying on fixed defaults.
+    const [method, setMethod] = useState<'maximum_curvature' | 'goodness_of_fit'>(completenessMethod);
+    const [bw, setBw] = useState<number>(binWidth);
+
     // Memoize expensive G-R calculation
     const result = useMemo(() => {
-        return calculateGutenbergRichter(earthquakes, { binWidth, completenessMethod, magnitudeCompleteness });
-    }, [earthquakes, binWidth, completenessMethod, magnitudeCompleteness]);
+        return calculateGutenbergRichter(earthquakes, { binWidth: bw, completenessMethod: method, magnitudeCompleteness });
+    }, [earthquakes, bw, method, magnitudeCompleteness]);
 
     useEffect(() => {
         if (onCalculationComplete) {
@@ -72,6 +77,12 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
 
         const observedData = binCenters.map((m, i) => ({ magnitude: m, count: cumulativeCounts[i] }));
         const fittedLineData = binCenters.map((m, i) => ({ magnitude: m, count: fittedLine[i] }));
+        // Incremental (non-cumulative) FMD per bin, derived from the cumulative
+        // N(≥M): inc[i] = N(≥M_i) − N(≥M_{i+1}). This is the distribution whose peak
+        // the maximum-curvature Mc estimator picks out.
+        const incrementalData: [number, number][] = binCenters
+            .map((m, i): [number, number] => [m, cumulativeCounts[i] - (cumulativeCounts[i + 1] ?? 0)])
+            .filter(([, c]) => c > 0);
 
         return {
             chart: {
@@ -175,6 +186,22 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                     zIndex: 1
                 },
                 {
+                    type: 'scatter',
+                    name: 'Incremental (per bin)',
+                    data: incrementalData,
+                    color: 'rgba(148, 163, 184, 0.9)',
+                    marker: {
+                        symbol: 'diamond',
+                        radius: 3,
+                        fillColor: 'rgba(148, 163, 184, 0.9)',
+                        lineWidth: 0
+                    },
+                    tooltip: {
+                        pointFormat: 'Per-bin count: {point.y}'
+                    },
+                    zIndex: 1
+                },
+                {
                     type: 'line',
                     name: `G-R Fit (b=${bValue.toFixed(2)})`,
                     data: fittedLineData.map(d => [d.magnitude, d.count]),
@@ -205,7 +232,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
         );
     }
 
-    const { bValue, aValue, magnitudeOfCompleteness, rSquared, earthquakesAboveMc } = result;
+    const { bValue, bUncertainty, aValue, magnitudeOfCompleteness, rSquared, earthquakesAboveMc } = result;
 
     return (
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
@@ -213,8 +240,13 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="bg-blue-50 p-3 rounded">
-                    <p className="text-sm text-gray-600">b-value</p>
-                    <p className="text-xl font-bold text-blue-700">{bValue.toFixed(2)}</p>
+                    <p className="text-sm text-gray-600">b-value (Aki MLE)</p>
+                    <p className="text-xl font-bold text-blue-700">
+                        {bValue.toFixed(2)}
+                        {Number.isFinite(bUncertainty) && (
+                            <span className="text-sm font-normal text-blue-500"> ± {bUncertainty.toFixed(2)}</span>
+                        )}
+                    </p>
                 </div>
                 <div className="bg-green-50 p-3 rounded">
                     <p className="text-sm text-gray-600">Mc</p>
@@ -227,6 +259,33 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
                 <div className="bg-orange-50 p-3 rounded">
                     <p className="text-sm text-gray-600">Events ≥ Mc</p>
                     <p className="text-xl font-bold text-orange-700">{earthquakesAboveMc}</p>
+                </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-4 mb-4">
+                <div className="flex flex-col">
+                    <label className="text-xs font-medium text-gray-500 mb-1">Mc method</label>
+                    <select
+                        value={method}
+                        onChange={(e) => setMethod(e.target.value as 'maximum_curvature' | 'goodness_of_fit')}
+                        className="rounded-md border border-gray-300 bg-white p-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    >
+                        <option value="maximum_curvature">Maximum Curvature</option>
+                        <option value="goodness_of_fit">Goodness of Fit (KSTOTAL)</option>
+                    </select>
+                </div>
+                <div className="flex flex-col">
+                    <label className="text-xs font-medium text-gray-500 mb-1">Bin width: <span className="font-semibold">{bw.toFixed(2)}</span></label>
+                    <input
+                        type="range"
+                        min={0.05}
+                        max={0.5}
+                        step={0.05}
+                        value={bw}
+                        onChange={(e) => setBw(parseFloat(e.target.value))}
+                        className="w-40 accent-indigo-600"
+                        title="Magnitude bin width for the frequency-magnitude distribution"
+                    />
                 </div>
             </div>
 
@@ -243,7 +302,7 @@ const GutenbergRichterPlot = memo(function GutenbergRichterPlot({
 
             <div className="mt-4 text-sm text-gray-600">
                 <p><strong>Gutenberg-Richter Law:</strong> log₁₀(N) = {aValue.toFixed(2)} - {bValue.toFixed(2)} × M</p>
-                <p className="mt-1"><strong>Method:</strong> {completenessMethod === 'maximum_curvature' ? 'Maximum Curvature' : 'Goodness of Fit'}</p>
+                <p className="mt-1"><strong>Method:</strong> {method === 'maximum_curvature' ? 'Maximum Curvature' : 'Goodness of Fit'} · <strong>Bin:</strong> {bw.toFixed(2)}</p>
             </div>
 
             <ChartExportButtons

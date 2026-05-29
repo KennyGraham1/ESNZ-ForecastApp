@@ -15,14 +15,17 @@ ESNZ-ForecastApp leverages real-time earthquake data from [GeoNet](https://www.g
 - **Magnitude Distribution**: Histogram analysis of earthquake magnitudes
 
 ### 🔬 **Advanced Statistical Analysis**
-- **Gutenberg-Richter Analysis**: Frequency-magnitude distribution analysis with automatic b-value calculation using Maximum Curvature or Goodness of Fit methods
+- **Gutenberg-Richter Analysis**: Frequency-magnitude distribution analysis with an Aki–Utsu maximum-likelihood b-value (Shi & Bolt 1982 uncertainty) and a choice of Maximum Curvature or Wiemer & Wyss (2000) goodness-of-fit magnitude-of-completeness
 - **Depth Profile Analysis**: 3D visualization of earthquake depth distributions and magnitude relationships
-- **Spatial Clustering**: Multiple clustering algorithms to identify earthquake clusters:
-  - **DBSCAN** - Density-based clustering for arbitrary-shaped clusters
-  - **OPTICS** - Variable density clustering for complex patterns
+- **Spatial Clustering (12 algorithms)**: Identify earthquake clusters and decluster catalogs:
+  - **DBSCAN / OPTICS** - Density-based clustering (R-tree accelerated)
   - **K-Means** - Partition-based clustering
-  - **Hierarchical Clustering** - Single, Complete, Average, and Ward linkage methods
-  - **Nearest-Neighbor** - Zaliapin-Ben-Zion method specifically designed for seismology
+  - **ST-DBSCAN** - Spatio-temporal density clustering (haversine)
+  - **HDBSCAN** - Hierarchical density clustering with soft membership & GLOSH outlier scores
+  - **STEP-Mag / STEP-Time** - Magnitude-scaled space-time windows
+  - **Nearest-Neighbor** - Zaliapin–Ben-Zion η metric (Otsu auto-threshold)
+  - **TMC** - Reasenberg (1985) time-magnitude clustering
+  - **Gardner-Knopoff (1974) / Uhrhammer (1986) / Hardebeck (2019)** - Magnitude-window declustering
 - **3D Visualization**: Interactive 3D scatter plots of earthquake locations, depths, and magnitudes
 - **Temporal Statistics**: Detailed time-based analysis including hourly, daily, and monthly patterns
 

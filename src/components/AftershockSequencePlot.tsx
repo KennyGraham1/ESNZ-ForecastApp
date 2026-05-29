@@ -566,8 +566,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 min: minDays,
                 max: maxDays,
                 stops: getColorStops(colorPalette as ColorPaletteName),
+                // Taller vertical color bar so the tick labels have room.
+                height: 220,
                 labels: {
-                    format: '{value:.0f} days'
+                    format: '{value:.0f}'
                 },
                 title: {
                     text: 'Days Since Main Event'
@@ -878,7 +880,10 @@ const AftershockSequencePlot = memo(function AftershockSequencePlot({
                 min: minDays,
                 max: maxDays,
                 stops: getColorStops(colorPalette as ColorPaletteName),
-                labels: { format: '{value:.0f} days' },
+                // Wider horizontal color bar so the tick labels have room and
+                // aren't truncated (the legend defaults to ~200px).
+                width: 360,
+                labels: { format: '{value:.0f}', overflow: 'allow' as any, allowOverlap: false },
                 title: { text: 'Days Since Main Event' }
             },
             tooltip: {

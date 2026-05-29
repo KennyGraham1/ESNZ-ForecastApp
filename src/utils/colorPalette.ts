@@ -149,26 +149,38 @@ export const getPaletteThemeColors = (palette: ColorPaletteName): PaletteTheme =
     }
 };
 
+/** Parse an `rgb()`/`rgba()` string into [r, g, b, a]. */
+const parseRgba = (c: string): [number, number, number, number] => {
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return [0, 0, 0, 1];
+    const p = m[1].split(',').map(s => parseFloat(s.trim()));
+    return [p[0] || 0, p[1] || 0, p[2] || 0, p[3] === undefined ? 1 : p[3]];
+};
+
 /**
- * Helper to interpolate colors manually if needed (simple linear interpolation)
- * This is a simplified version effectively used for single point color lookups
- * where complex gradients aren't needed or for custom markers.
+ * Linearly interpolate a color along the palette gradient for a value in [min, max].
+ * Interpolating (rather than returning the lower-bound stop) ensures per-point marker
+ * colors match the smooth gradient drawn by a Highcharts colorAxis legend.
  */
 export const getColorForValue = (value: number, min: number, max: number, palette: ColorPaletteName): string => {
     const normalized = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
     const stops = getColorStops(palette);
 
-    // Find the two stops surrounding the value
+    if (normalized <= stops[0][0]) return stops[0][1];
+    if (normalized >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
+
     for (let i = 0; i < stops.length - 1; i++) {
         const [stop1, color1] = stops[i];
         const [stop2, color2] = stops[i + 1];
-
         if (normalized >= stop1 && normalized <= stop2) {
-            // Simply return the closer one or just the lower bound for simplicity
-            // In a real extensive implementation we would parse RGBA and interpolate
-            // For now, returning the stop color is sufficient for discrete buckets
-            // or we use Highcharts colorAxis for gradients.
-            return color1; // Fallback to lower bound bucket
+            const f = stop2 === stop1 ? 0 : (normalized - stop1) / (stop2 - stop1);
+            const a = parseRgba(color1);
+            const b = parseRgba(color2);
+            const r = Math.round(a[0] + (b[0] - a[0]) * f);
+            const g = Math.round(a[1] + (b[1] - a[1]) * f);
+            const bl = Math.round(a[2] + (b[2] - a[2]) * f);
+            const al = a[3] + (b[3] - a[3]) * f;
+            return `rgba(${r}, ${g}, ${bl}, ${parseFloat(al.toFixed(3))})`;
         }
     }
     return stops[stops.length - 1][1];

@@ -47,13 +47,13 @@ where \(n_i\) is the observed count in the \(i\)-th time bin centred at \(t_i\).
 
 ### MLE log-likelihood
 
-The point-process log-likelihood for event times \(\{t_1, \ldots, t_N\}\) observed in \([0, T]\) is:
+The point-process log-likelihood for event times \(\{t_1, \ldots, t_N\}\) observed in \([t_0, T]\) is:
 
-$$\ln \mathcal{L} = \sum_{i=1}^{N} \ln \lambda(t_i) - \int_0^T \lambda(t)\,\mathrm{d}t$$
+$$\ln \mathcal{L} = \sum_{i=1}^{N} \ln \lambda(t_i) - \int_{t_0}^{T} \lambda(t)\,\mathrm{d}t$$
 
-$$= \sum_{i=1}^{N} \bigl[\ln K - p\ln(t_i + c)\bigr] - \frac{K}{1-p}\left[(T+c)^{1-p} - c^{1-p}\right], \qquad p \neq 1$$
+$$= \sum_{i=1}^{N} \bigl[\ln K - p\ln(t_i + c)\bigr] - \frac{K}{1-p}\left[(T+c)^{1-p} - (t_0+c)^{1-p}\right], \qquad p \neq 1$$
 
-The adaptive initial estimate for \(p\) uses the ratio of early-period to late-period event rates.
+The integral's **lower bound is \(t_0 = \texttt{OMORI\_T\_START\_DAYS} = 0.001\) d** (≈ 1.4 minutes), not 0 — it must match the start of the observation window used when binning the aftershock series. Integrating from 0 instead biased the fitted parameters and confidence intervals (corrected across all MLE integrals and the profile-likelihood grid). The adaptive initial estimate for \(p\) uses the ratio of early-period to late-period event rates.
 
 ---
 
@@ -219,19 +219,40 @@ $$\log_{10} N(M) = a - bM$$
 
 ### Magnitude of completeness \(M_c\)
 
-**Maximum Curvature:** \(M_c\) is the magnitude at the peak of the non-cumulative frequency-magnitude histogram. Fast and widely used; may underestimate \(M_c\) in heterogeneous catalogs.
+```mermaid
+flowchart TD
+    A[Magnitude histogram<br/>binWidth = 0.1] --> B{completenessMethod}
+    B -- maximum_curvature --> C[Mc = bin with peak<br/>non-cumulative count]
+    B -- goodness_of_fit --> D[For each candidate Mc low→high:<br/>fit G-R by Aki MLE,<br/>compare observed vs synthetic<br/>cumulative FMD = KSTOTAL]
+    D --> E[Pick LOWEST Mc where<br/>KSTOTAL ≤ threshold]
+    B -- user override --> F[magnitudeCompleteness]
+    C --> G[b-value: Aki–Utsu MLE<br/>+ Shi and Bolt SE]
+    E --> G
+    F --> G
+```
 
-**Goodness of Fit:** Iterates over candidate \(M_c\) values. For each candidate, fits a GR line to all bins at or above that magnitude and records \(R^2\). Selects the lowest \(M_c\) with maximum \(R^2\). More conservative; preferred for publication-quality estimates.
+**Maximum Curvature (`maximum_curvature`, default):** \(M_c\) is the magnitude at the peak of the non-cumulative frequency-magnitude histogram. Fast and widely used; may underestimate \(M_c\) in heterogeneous catalogs.
+
+**Goodness of Fit — Wiemer & Wyss (2000), KSTOTAL (`goodness_of_fit`):** Iterates over candidate \(M_c\) from low to high. For each candidate it fits a G-R model by the Aki MLE and measures **KSTOTAL** — the mean absolute difference between the observed cumulative FMD and the synthetic FMD predicted by that fit, normalised by the number of events at or above \(M_c\). It selects the **lowest** \(M_c\) at which KSTOTAL drops below the acceptance threshold. (Selecting the maximum-\(R^2\) candidate is biased toward the smallest \(M_c\), so the KSTOTAL drop-below-threshold rule is used instead.)
 
 ### b-value estimation
 
-Linear regression on \(\log_{10} N\) vs \(M\) for events \(\geq M_c\), using `simple-statistics.linearRegression`. The b-value is the **negative slope** of the fitted line. \(R^2\) is reported alongside.
+The b-value uses the **Aki (1965) / Utsu maximum-likelihood estimator**, not OLS regression:
+
+$$b = \frac{\log_{10} e}{\bar{M} - \left(M_c - \tfrac{1}{2}\,\Delta M\right)}, \qquad a = \log_{10} N(\!\geq\! M_c) + b\,M_c$$
+
+where \(\bar{M}\) is the mean magnitude of events \(\geq M_c\) and \(\Delta M\) is the bin width (the \(\Delta M/2\) term is the binning correction). The standard error on \(b\) follows **Shi & Bolt (1982)**:
+
+$$\sigma_b = 2.30\,b^2\sqrt{\frac{\sum_i (M_i - \bar{M})^2}{N(N-1)}}$$
+
+\(R^2\) of the fitted line vs the cumulative counts is reported alongside as a descriptive goodness measure.
 
 ### GutenbergRichterResult
 
 ```typescript
 interface GutenbergRichterResult {
     bValue:                    number;
+    bUncertainty:              number;   // Shi & Bolt (1982) standard error on b
     aValue:                    number;
     magnitudeOfCompleteness:   number;   // Mc
     rSquared:                  number;
@@ -250,7 +271,8 @@ Default bin width: \(0.1\) magnitude units (configurable via `binWidth` option).
 
 | Feature | Status |
 |---|---|
-| Gardner-Knopoff declustering (standalone) | Not implemented as a statistical model. The Aftershock Sequence tab uses GK *window definitions* for aftershock identification, but not as a full declustering algorithm. |
+| Gardner-Knopoff declustering | **Implemented** — as a window-declustering clustering algorithm (`gardner-knopoff`) in the Temporal-Spatial tab, and as a window definition in the Aftershock Sequence tab. See [Clustering Algorithms](clustering-algorithms.md#gardner-knopoff-1974). |
+| Uhrhammer declustering | **Implemented** — `uhrhammer` clustering algorithm (shares the Gardner-Knopoff window-declustering core). |
 | ETAS (Epidemic-Type Aftershock Sequence) | Not implemented |
 | Hawkes process fitting | Not implemented |
 | Hierarchical clustering (single/complete/average/Ward) | Removed — was listed in README but code was deleted |

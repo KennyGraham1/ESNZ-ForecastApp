@@ -18,6 +18,8 @@ references.
 - [8. TMC / Reasenberg](#8-tmc-time-magnitude-clustering--reasenberg)
 - [9. Hardebeck (2019)](#9-hardebeck-2019)
 - [10. HDBSCAN](#10-hdbscan-hierarchical-density-based-spatial-clustering)
+- [11. Gardner-Knopoff (1974)](#11-gardner-knopoff-1974)
+- [12. Uhrhammer (1986)](#12-uhrhammer-1986)
 - [Noise Determination — detail per algorithm](#noise-determination)
 - [Performance Optimisations](#performance-optimisations)
 - [Comparison Guide](#comparison-guide)
@@ -98,8 +100,10 @@ Two events are neighbours only if they are within `epsilon` km AND within
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `epsilon` | number | 25 | Spatial distance threshold (km). |
-| `epsilonTemporal` | number | 7 | Temporal distance threshold (days). |
+| `epsilonTemporal` | number | 14 | Temporal distance threshold (days). |
 | `minSamples` | number | 5 | Minimum spatio-temporal neighbours for a core point. |
+
+> The exact spatial test uses the **haversine** great-circle distance (matching the `esnz_aftershocks` `BallTree(metric='haversine')` reference); the R-tree pre-filters candidates in projected km.
 
 **Reference:**
 Birant, D. & Kut, A. (2007). "ST-DBSCAN: An algorithm for clustering
@@ -170,17 +174,19 @@ background events.
 **Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `nnThreshold` | number | 1.0 | Distance cut-off in η units. Lower → stricter clustering. |
+| `nnThreshold` | number | 1.0 | `> 0` → auto-threshold on log₁₀(η) via Otsu; `≤ 0` → used directly as the explicit log₁₀(η) cut-off. |
 
 **Distance metric:**
 ```
 η = t × r^d / 10^(b × m)
 ```
-- `t` — temporal distance (days) to the nearest earlier event
+- `t` — temporal distance (days) to the nearest earlier event (causal: parent strictly precedes child)
 - `r` — spatial distance (km)
 - `d` — fractal dimension (1.6)
 - `b` — Gutenberg-Richter b-value (1.0)
 - `m` — magnitude of the earlier event
+
+**Thresholding:** performed in **log₁₀(η)** space, where clustered and background links form a bimodal distribution. With `nnThreshold > 0` (default) the separating value is inferred automatically by **Otsu** between-class-variance maximization; with `nnThreshold ≤ 0` the value is used directly. Clusters are the connected components formed by following *triggered* (below-threshold) parent links; singletons are noise.
 
 **References:**
 - Zaliapin, I. & Ben-Zion, Y. (2013). JGR 118.
@@ -204,18 +210,19 @@ within multiple interaction zones.
 | `tmcTauMax` | number | 10 | Maximum look-ahead time (days). |
 | `tmcP1` | number | 0.99 | Probability threshold (0–1). |
 | `tmcXk` | number | 0.5 | Magnitude scaling factor. |
+| `tmcMinMag` | number | 1.5 | Effective minimum seed magnitude (M_min). |
 
-**Interaction radius:**
+**Interaction radius** (the **sum** is capped at 30 km, matching `cluster2000x.f`; `r_main` does **not** scale by `rfact`):
 ```
-r = rfact × 0.011 × 10^(0.4 × M)  km   (capped at 30 km)
+r_test = min( rfact × 0.011 × 10^(0.4 × M1)  +  0.011 × 10^(0.4 × M_largest),  30 )  km
 ```
 
 **Adaptive look-ahead window:**
 ```
-τ = −ln(1 − p1) × t / 10^((ΔM − 1) × 2/3)
-ΔM = (1 − xk) × M_largest − M_min
+ΔM = max(0, (1 − xk) × M_largest − M_min)     // floored at 0 (bruces/ZMAP, esnz)
+τ  = −ln(1 − p1) × t / 10^((ΔM − 1) × 2/3)
 ```
-Result clamped to [τ0, τMax].
+An unclustered event uses τ = τ0; a clustered event is clamped to **[τ_min, τMax]** where τ_min = 1 day (fixed internal default, not `tmcTau0`). `t` is the time since the **largest** event in the cluster.
 
 **References:**
 - Reasenberg, P. (1985). JGR 90.
@@ -251,9 +258,10 @@ of larger magnitude occurred within 5 × RL km and within `mainshockTimeYears` y
 before it.
 
 **References:**
-- Hardebeck, J.L. (2019). "Appendix S — Constraining epidemic-type aftershock
-  sequence (ETAS) parameters from the UCERF3-ETAS project." USGS OFR 2019-1093.
-- Wells, D.L. & Coppersmith, K.J. (1994). BSSA 84(4).
+- Hardebeck, J.L., Llenos, A.L., Michael, A.J., Page, M.T. & van der Elst, N. (2019).
+  "Updated California Aftershock Parameters." *Seismological Research Letters* 90(1), 262–270.
+  https://doi.org/10.1785/0220180240
+- Wells, D.L. & Coppersmith, K.J. (1994). BSSA 84(4), 974–1002.
 
 ---
 
@@ -302,6 +310,52 @@ score = max(0, 1 − λ_drop / λ_max_of_cluster)
 
 ---
 
+## 11. Gardner-Knopoff (1974)
+
+**Description:**
+Classic magnitude-window declustering. Every event defines magnitude-dependent
+spatial and temporal windows; smaller events that fall within **both** windows of a
+larger event (forward by `Wt`, back by `gkFsTimeProp × Wt`) are flagged dependent.
+Distances are haversine. Faithful to the `esnz_aftershocks` `decluster_gardner_knopoff`.
+
+**Windows:**
+```
+Ws(M) = 10^(0.1238·M + 0.983)  km
+Wt(M) = 10^(0.032·M + 2.7389)  days   if M ≥ 6.5      (piecewise, published form)
+        10^(0.5409·M − 0.547)  days   if M < 6.5
+```
+The piecewise breakpoint matters: applying the M ≥ 6.5 branch to small events grossly
+over-windows (M5 → ~707 d instead of ~84 d). Set `gkPiecewiseTemporal = false` to use
+the single `10^(cM+d)` form for all magnitudes.
+
+**Parameters:** `gkSpatialA` (0.1238), `gkSpatialB` (0.983), `gkTemporalC` (0.032),
+`gkTemporalD` (2.7389), `gkPiecewiseTemporal` (true).
+
+**Reference:** Gardner, J.K. & Knopoff, L. (1974). BSSA 64(5).
+
+---
+
+## 12. Uhrhammer (1986)
+
+**Description:**
+Same window-declustering core as Gardner-Knopoff, with Uhrhammer's exponential window
+definitions — generally **more conservative (shorter)** windows. Faithful to the
+`esnz_aftershocks` `decluster_uhrhammer`.
+
+**Windows:**
+```
+Ws(M) = exp(−1.024 + 0.804·M)  km
+Wt(M) = exp(−2.870 + 1.235·M)  days
+```
+
+**Parameters:** `uhrSpatialA` (−1.024), `uhrSpatialB` (0.804), `uhrTemporalA` (−2.870),
+`uhrTemporalB` (1.235), `uhrFsTimeProp` (1.0 — foreshock window as a fraction of `Wt`).
+
+**Reference:** Uhrhammer, R.A. (1986). "Characteristics of northern and central
+California seismicity." Earthquake Notes 57(1), 21.
+
+---
+
 ## Noise Determination
 
 ### Quick-reference table
@@ -314,10 +368,12 @@ score = max(0, 1 − λ_drop / λ_max_of_cluster)
 | ST-DBSCAN | Fewer than `minSamples` *spatio-temporal* neighbours (both thresholds must be met) | `epsilon`, `epsilonTemporal`, `minSamples` |
 | STEP-Mag | Magnitude < `stepMinMag`, **or** not captured by any mainshock's window | `stepMinMag`, `stepT1`, `stepT2` |
 | STEP-Time | Magnitude < `stepMinMag`, **or** not captured by any chronological window | `stepMinMag`, `stepT1`, `stepT2` |
-| Nearest-Neighbor | η ≥ `nnThreshold` (high space-time-magnitude distance from any earlier event) | `nnThreshold` |
-| TMC | `clusterId === 0` — never linked to any interaction zone | `tmcRfact`, `tmcTau0`, `tmcTauMax`, `tmcP1`, `tmcXk` |
+| Nearest-Neighbor | log₁₀(η) > threshold (Otsu auto or explicit); singleton after link-following | `nnThreshold` |
+| TMC | `clusterId === 0` — never linked to any interaction zone | `tmcRfact`, `tmcTau0`, `tmcTauMax`, `tmcP1`, `tmcXk`, `tmcMinMag` |
 | Hardebeck | `label === −1` — not within any valid mainshock's rupture window | `hardebeckMinMag`, `hardebeckTimeWindow`, `hardebeckRuptureMult` |
 | HDBSCAN | `label === −1` — condensed out of all stable clusters | `hdbscanMinClusterSize`, `hdbscanMinSamples` |
+| Gardner-Knopoff | Dependent (within both windows of a larger event) → removed; independents kept | `gkSpatialA/B`, `gkTemporalC/D`, `gkPiecewiseTemporal` |
+| Uhrhammer | Dependent (within both windows of a larger event) → removed; independents kept | `uhrSpatialA/B`, `uhrTemporalA/B`, `uhrFsTimeProp` |
 
 ---
 

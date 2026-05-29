@@ -4,6 +4,7 @@ import { useRef, useMemo, useState, memo, useEffect, useCallback } from 'react';
 import { EarthquakeData } from '@/types/earthquake';
 import { MapContainer, TileLayer, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
+import '@/utils/leafletCanvasGuard';
 import { FullscreenControl, ScaleControl } from './map/MapControls';
 
 import { stratifiedSample } from '@/utils/dataOptimization';

@@ -26,18 +26,20 @@
 - 4-step wizard: file select → column mapping → import options → preview & import
 - Auto-suggests column mappings; supports custom date and coordinate formats
 
-### Spatial Clustering (10 Algorithms)
+### Spatial Clustering (12 Algorithms)
 
 | Algorithm | Routing | Description |
 |---|---|---|
 | DBSCAN | Worker | Density-based, R-tree accelerated |
 | OPTICS | Worker | Variable-density |
 | k-Means | Worker | Fixed-k partition |
-| ST-DBSCAN | Worker | Spatio-temporal DBSCAN |
+| ST-DBSCAN | Worker | Spatio-temporal DBSCAN (haversine) |
 | STEP-Mag | Worker | Magnitude-scaled windows |
 | STEP-Time | Worker | Fixed time windows |
+| Gardner-Knopoff | Worker | Magnitude-window declustering (1974) |
+| Uhrhammer | Worker | Magnitude-window declustering (1986) |
 | HDBSCAN | Server | Hierarchical, with soft membership |
-| Nearest-Neighbor | Server | Zaliapin–Ben-Zion η metric |
+| Nearest-Neighbor | Server | Zaliapin–Ben-Zion η metric (Otsu threshold) |
 | TMC | Server | Reasenberg-style |
 | Hardebeck-2019 | Server | Rupture-length windows |
 
@@ -53,8 +55,8 @@
 
 ### Gutenberg-Richter Analysis
 
-- Frequency-magnitude distribution with automatic b-value estimation
-- Two magnitude-of-completeness methods: Maximum Curvature and Goodness-of-Fit
+- Frequency-magnitude distribution with **Aki–Utsu maximum-likelihood** b-value and **Shi & Bolt (1982)** standard error
+- Two magnitude-of-completeness methods: **Maximum Curvature** and **Wiemer & Wyss (2000)** goodness-of-fit (KSTOTAL criterion)
 - Cumulative and interval variants
 
 ### Interactive Visualisation
@@ -62,6 +64,7 @@
 - **Highcharts** charts with canvas-mode Boost above 50,000 points per series
 - **Leaflet** maps (cluster and aftershock views) with canvas renderer
 - **3D scatter plots**: latitude, longitude, depth, coloured by cluster or time
+- **Data Sandbox**: configurable scatter / histogram / 3D / multi-panel explorer. Histograms support **group/colour-by** any field (depth/magnitude class, year, or quantile/categorical buckets), a **logarithmic count axis** (Gutenberg–Richter), a **reverse-cumulative** N(≥value) overlay, and **density normalization**
 - PDF report export via html2canvas + jsPDF
 
 ---
@@ -72,7 +75,8 @@
 |---|---|
 | [Architecture Overview](architecture.md) | App Router structure, component tree, API routes, state management, all data types |
 | [Data Flow & Logic](data-flow.md) | Fetch pipeline, caching, gap-fill, refresh, clustering pipeline — all with Mermaid diagrams |
-| [Clustering Algorithms](clustering-algorithms.md) | All 10 algorithms with exact formulas, parameter defaults, worker/server routing |
+| [Clustering Algorithms](clustering-algorithms.md) | All 12 algorithms with exact formulas, parameter defaults, worker/server routing |
+| [Declustering Methods](declustering-methods.md) | Deep-dive per declustering method (Gardner-Knopoff, Uhrhammer, Hardebeck, STEP, Reasenberg/TMC, Nearest-Neighbor) with Mermaid algorithm diagrams |
 | [Statistical Models](statistical-models.md) | Omori's Law (7 methods, diagnostics, CIs), Gutenberg-Richter, reference models |
 | [Performance Optimizations](performance.md) | IndexedDB, LRU caches, Transferable Workers, R-tree, Highcharts Boost, reservoir sampling |
 | [Setup & Deployment](setup.md) | Prerequisites, install, env vars, dev workflow, production build, Vercel deployment |

@@ -6,6 +6,7 @@ import DepthProfilePlot from '@/components/DepthProfilePlot';
 import ThreeDVisualization from '@/components/ThreeDVisualization';
 import MagnitudeDistribution from '@/components/MagnitudeDistribution';
 import TemporalStatistics from '@/components/TemporalStatistics';
+import TemporalCompletenessPlot from '@/components/TemporalCompletenessPlot';
 
 interface AdvancedStatisticsProps {
     earthquakes: EarthquakeData[];
@@ -64,6 +65,17 @@ export default function AdvancedStatistics({ earthquakes }: AdvancedStatisticsPr
                 </div>
             </div>
 
+            {/* Panel: Temporal Completeness & b-value Stability */}
+            <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 overflow-hidden">
+                <div className="bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-4 border-b-2 border-gray-300">
+                    <h3 className="text-2xl font-bold text-white mb-1">📉 Temporal Completeness &amp; b-value Stability</h3>
+                    <p className="text-sm text-amber-100">Rolling-window Mc(t) and b(t) — reveals catalog-quality changes and temporal b-value variation</p>
+                </div>
+                <div className="p-6 max-h-[600px] overflow-y-auto">
+                    <TemporalCompletenessPlot earthquakes={earthquakes} />
+                </div>
+            </div>
+
             {/* Panel 6: 3D Visualization */}
             <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 overflow-hidden">
                 <div className="bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-4 border-b-2 border-gray-300">
@@ -71,7 +83,9 @@ export default function AdvancedStatistics({ earthquakes }: AdvancedStatisticsPr
                     <p className="text-sm text-cyan-100">Interactive 3D scatter plot of earthquake locations</p>
                 </div>
                 <div className="p-6 max-h-[700px] overflow-y-auto">
-                    <ThreeDVisualization earthquakes={earthquakes} />
+                    {/* Use the Plasma colorscale to match the Depth Profile panel for a
+                        consistent gradient across the Advanced Statistical Analysis tab. */}
+                    <ThreeDVisualization earthquakes={earthquakes} colorPalette="plasma" />
                 </div>
             </div>
         </div>

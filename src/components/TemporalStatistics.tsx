@@ -15,6 +15,8 @@ interface TemporalStatisticsProps {
 const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: TemporalStatisticsProps) {
     const chartRef1 = useRef<HighchartsReact.RefObject>(null);
     const chartRef2 = useRef<HighchartsReact.RefObject>(null);
+    const chartRef3 = useRef<HighchartsReact.RefObject>(null);
+    const chartRef4 = useRef<HighchartsReact.RefObject>(null);
 
     const magnitudeTimeOptions: Highcharts.Options = useMemo(() => {
         // Calculate depth range efficiently (O(n) without spread operator)
@@ -385,7 +387,12 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
 
         const eventsPerDay = timeSpanDays > 0 ? sortedEq.length / timeSpanDays : 0;
 
-        return { mean, median, min, max, std, eventsPerDay };
+        // Coefficient of variation of inter-event times — the canonical test of
+        // temporal randomness: CoV≈1 → Poissonian (random), CoV>1 → clustered
+        // (overdispersed), CoV<1 → quasi-periodic.
+        const cov = mean > 0 ? std / mean : 0;
+
+        return { mean, median, min, max, std, eventsPerDay, cov, interEventTimes };
     }, [earthquakes]);
 
     const temporalTrendOptions: Highcharts.Options = useMemo(() => {
@@ -487,6 +494,103 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
         };
     }, [dates, dailyCounts, movingAverage, earthquakes.length]);
 
+    // Inter-event time distribution with an exponential (Poisson) reference.
+    // Under a Poisson process inter-event times are exponential with rate
+    // λ = 1/mean; an excess of short intervals over the reference indicates
+    // temporal clustering.
+    const interEventHistogramOptions: Highcharts.Options | null = useMemo(() => {
+        const iet = temporalStats?.interEventTimes;
+        if (!iet || iet.length < 5 || !(temporalStats!.mean > 0)) return null;
+
+        const mean = temporalStats!.mean;
+        // Cap the range at the 95th percentile so the heavy tail doesn't squash
+        // the informative short-interval region.
+        const sorted = [...iet].sort((a, b) => a - b);
+        const p95 = sorted[Math.min(sorted.length - 1, Math.floor(0.95 * (sorted.length - 1)))];
+        const upper = Math.max(p95, mean * 0.5) || 1;
+        const nBins = 25;
+        const binWidth = upper / nBins;
+
+        const observed = new Array(nBins).fill(0);
+        for (const t of iet) {
+            if (t < 0 || t > upper) continue;
+            let b = Math.floor(t / binWidth);
+            if (b >= nBins) b = nBins - 1;
+            observed[b]++;
+        }
+
+        const lambda = 1 / mean;
+        const nInRange = observed.reduce((s, c) => s + c, 0);
+        const binCenters: number[] = [];
+        const expected: number[] = [];
+        for (let i = 0; i < nBins; i++) {
+            const lo = i * binWidth;
+            const hi = (i + 1) * binWidth;
+            binCenters.push((lo + hi) / 2);
+            // Expected count = N_inrange × P(lo ≤ T < hi) for an exponential.
+            const p = Math.exp(-lambda * lo) - Math.exp(-lambda * hi);
+            expected.push(nInRange * p);
+        }
+
+        return {
+            chart: { type: 'column', height: 350 },
+            title: { text: '' },
+            credits: { enabled: false },
+            exporting: { enabled: false },
+            xAxis: {
+                title: { text: 'Inter-event time (hours)' },
+                categories: binCenters.map(c => c.toFixed(1)),
+            },
+            yAxis: { title: { text: 'Count' }, min: 0 },
+            tooltip: { shared: true, valueDecimals: 1 },
+            plotOptions: { column: { pointPadding: 0, groupPadding: 0.05, borderWidth: 0 } },
+            series: [
+                { type: 'column', name: 'Observed', data: observed, color: 'rgba(70, 130, 180, 0.75)' },
+                { type: 'line', name: 'Poisson (exponential) reference', data: expected, color: '#DC143C', marker: { enabled: false }, lineWidth: 2 },
+            ],
+        };
+    }, [temporalStats]);
+
+    // Cumulative event count and cumulative seismic moment over time.
+    // Seismic moment M0 = 10^(1.5·M + 9.1) N·m (Hanks & Kanamori 1979).
+    const cumulativeOptions: Highcharts.Options | null = useMemo(() => {
+        if (earthquakes.length < 2) return null;
+        const sorted = [...earthquakes]
+            .map(eq => ({
+                t: eq.timeMs !== undefined ? eq.timeMs : (eq.time instanceof Date ? eq.time.getTime() : new Date(eq.time).getTime()),
+                m: eq.magnitude,
+            }))
+            .filter(d => Number.isFinite(d.t) && Number.isFinite(d.m))
+            .sort((a, b) => a.t - b.t);
+        if (sorted.length < 2) return null;
+
+        const countSeries: [number, number][] = [];
+        const momentSeries: [number, number][] = [];
+        let cumMoment = 0;
+        for (let i = 0; i < sorted.length; i++) {
+            cumMoment += Math.pow(10, 1.5 * sorted[i].m + 9.1); // N·m
+            countSeries.push([sorted[i].t, i + 1]);
+            momentSeries.push([sorted[i].t, cumMoment]);
+        }
+
+        return {
+            chart: { type: 'line', height: 350, zooming: { type: 'x' } },
+            title: { text: '' },
+            credits: { enabled: false },
+            exporting: { enabled: false },
+            xAxis: { type: 'datetime', title: { text: 'Date' } },
+            yAxis: [
+                { title: { text: 'Cumulative event count' }, min: 0 },
+                { title: { text: 'Cumulative seismic moment (N·m)' }, opposite: true, min: 0 },
+            ],
+            tooltip: { shared: true, xDateFormat: '%Y-%m-%d' },
+            series: [
+                { type: 'line', name: 'Cumulative count', data: countSeries, yAxis: 0, color: '#4682B4', lineWidth: 2, marker: { enabled: false } },
+                { type: 'line', name: 'Cumulative seismic moment', data: momentSeries, yAxis: 1, color: '#DC143C', lineWidth: 2, marker: { enabled: false }, dashStyle: 'ShortDash' },
+            ],
+        };
+    }, [earthquakes]);
+
     return (
         <div className="space-y-6">
             {/* Panel 1: Magnitude vs. Time */}
@@ -569,6 +673,13 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                             <p className="text-2xl font-bold text-indigo-600">{temporalStats.std.toFixed(2)}</p>
                             <p className="text-sm text-gray-600 mt-1">hours</p>
                         </div>
+                        <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-lg border border-teal-200">
+                            <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">Coeff. of Variation</p>
+                            <p className="text-3xl font-bold text-teal-600">{temporalStats.cov.toFixed(2)}</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                                {temporalStats.cov > 1.15 ? 'clustered (CoV > 1)' : temporalStats.cov < 0.85 ? 'quasi-periodic (CoV < 1)' : 'Poissonian (CoV ≈ 1)'}
+                            </p>
+                        </div>
                     </div>
                 ) : (
                     <div className="text-center py-12">
@@ -577,6 +688,44 @@ const TemporalStatistics = memo(function TemporalStatistics({ earthquakes }: Tem
                     </div>
                 )}
             </div>
+
+            {/* Panel 4: Inter-event time distribution vs Poisson reference */}
+            {interEventHistogramOptions && (
+                <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                    <div className="mb-4">
+                        <h3 className="text-xl font-bold text-gray-800 mb-1">Inter-event Time Distribution</h3>
+                        <p className="text-sm text-gray-500">Observed intervals vs. the exponential distribution expected for a random (Poisson) process — an excess of short intervals indicates temporal clustering</p>
+                    </div>
+                    <div className="h-[350px] w-full">
+                        <HighchartsReact
+                            key={`iet-${earthquakes.length}`}
+                            highcharts={Highcharts}
+                            options={interEventHistogramOptions}
+                            ref={chartRef3}
+                        />
+                    </div>
+                    <ChartExportButtons chartRef={chartRef3} data={earthquakes} filename="temporal-inter-event-distribution" />
+                </div>
+            )}
+
+            {/* Panel 5: Cumulative count and seismic moment */}
+            {cumulativeOptions && (
+                <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow duration-200">
+                    <div className="mb-4">
+                        <h3 className="text-xl font-bold text-gray-800 mb-1">Cumulative Count &amp; Seismic Moment</h3>
+                        <p className="text-sm text-gray-500">Cumulative number of events and cumulative seismic moment (M₀ = 10^(1.5M + 9.1) N·m) over time — slope changes reveal rate changes; moment steps mark large events</p>
+                    </div>
+                    <div className="h-[350px] w-full">
+                        <HighchartsReact
+                            key={`cumulative-${earthquakes.length}`}
+                            highcharts={Highcharts}
+                            options={cumulativeOptions}
+                            ref={chartRef4}
+                        />
+                    </div>
+                    <ChartExportButtons chartRef={chartRef4} data={earthquakes} filename="temporal-cumulative" />
+                </div>
+            )}
         </div>
     );
 });

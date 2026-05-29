@@ -24,6 +24,8 @@ interface GenericHistogramProps {
     cumulative?: boolean;
     /** Normalize each series: probability density (incremental) / fraction (cumulative). */
     density?: boolean;
+    /** Chart height in pixels. */
+    height?: number;
 }
 
 // --- Seismological grouping helpers -------------------------------------------------
@@ -231,6 +233,15 @@ function hexToRgba(hex: string, alpha: number): string {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// Escape catalog-derived strings before interpolating into the useHTML tooltip.
+// Series names can be raw category values from a user-uploaded catalog, so we
+// escape at the boundary rather than relying on Highcharts' internal sanitizer.
+function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => (
+        c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;'
+    ));
+}
+
 const GenericHistogram = memo(function GenericHistogram({
     earthquakes,
     fields,
@@ -240,6 +251,7 @@ const GenericHistogram = memo(function GenericHistogram({
     logY = false,
     cumulative = false,
     density = false,
+    height = 600,
 }: GenericHistogramProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
 
@@ -370,8 +382,7 @@ const GenericHistogram = memo(function GenericHistogram({
         return {
             chart: {
                 type: 'column',
-                // No fixed height — fills its container (see containerProps below) so the
-                // panel grows with the available space instead of being pinned at 400px.
+                height, // explicit px height — Highcharts won't size to the flex container on its own
                 backgroundColor: 'transparent',
                 style: { fontFamily: 'Instrument Sans, sans-serif' },
                 spacing: [20, 20, 20, 20],
@@ -407,8 +418,8 @@ const GenericHistogram = memo(function GenericHistogram({
                     const y = typeof this.y === 'number'
                         ? (density ? this.y.toExponential(2) : this.y.toLocaleString())
                         : '—';
-                    const bin = this.name ? `<div style="font-weight:600;color:#111827;margin-bottom:4px;">${this.name}</div>` : '';
-                    return `${bin}<span style="color:${this.color}">●</span> ${this.series.name}: <b>${y}</b>`;
+                    const bin = this.name ? `<div style="font-weight:600;color:#111827;margin-bottom:4px;">${escapeHtml(String(this.name))}</div>` : '';
+                    return `${bin}<span style="color:${escapeHtml(String(this.color))}">●</span> ${escapeHtml(String(this.series.name))}: <b>${y}</b>`;
                 },
             },
             plotOptions: {
@@ -424,7 +435,7 @@ const GenericHistogram = memo(function GenericHistogram({
             },
             series,
         };
-    }, [earthquakes, fields, bins, title, groupBy, logY, cumulative, density]);
+    }, [earthquakes, fields, bins, title, groupBy, logY, cumulative, density, height]);
 
     return (
         <div className="w-full h-full">

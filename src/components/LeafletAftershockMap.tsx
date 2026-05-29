@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, useMap, LayersControl } from 'react-leaflet';
 import L from 'leaflet';
+import '@/utils/leafletCanvasGuard';
 import { FullscreenControl, ScaleControl } from './map/MapControls';
 
 import { ColorPaletteName, getColorStops } from '@/utils/colorPalette';

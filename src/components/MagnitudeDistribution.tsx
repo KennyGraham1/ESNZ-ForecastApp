@@ -1,7 +1,7 @@
 'use client';
 
 import { EarthquakeData } from '@/types/earthquake';
-import { useMemo, useRef, memo } from 'react';
+import { useMemo, useRef, memo, useState } from 'react';
 import Highcharts from '@/utils/highchartsInit';
 import HighchartsReact from 'highcharts-react-official';
 import ChartExportButtons from './ChartExportButtons';
@@ -12,6 +12,8 @@ interface MagnitudeDistributionProps {
 
 const MagnitudeDistribution = memo(function MagnitudeDistribution({ earthquakes }: MagnitudeDistributionProps) {
     const chartRef = useRef<HighchartsReact.RefObject>(null);
+    // Log-scale Y lets the Gutenberg-Richter slope be read off the histogram directly.
+    const [logY, setLogY] = useState(false);
 
     const chartOptions: Highcharts.Options = useMemo(() => {
         // Validate data before processing
@@ -76,8 +78,9 @@ const MagnitudeDistribution = memo(function MagnitudeDistribution({ earthquakes 
                 }
             },
             yAxis: {
+                type: logY ? 'logarithmic' : 'linear',
                 title: {
-                    text: 'Frequency'
+                    text: logY ? 'Frequency (log scale)' : 'Frequency'
                 }
             },
             legend: {
@@ -100,14 +103,15 @@ const MagnitudeDistribution = memo(function MagnitudeDistribution({ earthquakes 
             series: [{
                 type: 'column',
                 name: 'Magnitude Distribution',
-                data: bins
+                // On a log axis, zero-count bins can't be plotted — map them to null.
+                data: logY ? bins.map(b => (b > 0 ? b : null)) : bins
             }],
             accessibility: {
                 enabled: true,
                 description: 'Histogram showing the distribution of earthquake magnitudes'
             }
         };
-    }, [earthquakes]);
+    }, [earthquakes, logY]);
 
     if (earthquakes.length === 0) {
         return (
@@ -130,7 +134,13 @@ const MagnitudeDistribution = memo(function MagnitudeDistribution({ earthquakes 
 
     return (
         <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-            <h3 className="text-lg font-semibold mb-4">Magnitude Distribution</h3>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Magnitude Distribution</h3>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={logY} onChange={(e) => setLogY(e.target.checked)} className="accent-indigo-600" />
+                    Log-scale Y <span className="text-[10px] text-gray-400">(Gutenberg–Richter)</span>
+                </label>
+            </div>
 
             <div className="grid grid-cols-4 gap-3 mb-4">
                 <div className="bg-blue-50 p-2 rounded text-center">

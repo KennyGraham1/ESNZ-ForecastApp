@@ -518,6 +518,7 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                             logY={histLogY}
                                             cumulative={histCumulative}
                                             density={histDensity}
+                                            height={600}
                                         />
                                     </div>
                                 ) : (

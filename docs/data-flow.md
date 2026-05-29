@@ -183,7 +183,7 @@ flowchart LR
 flowchart TD
     A([User clicks Run Clustering]) --> B{Algorithm type?}
 
-    B -- Light\ndbscan / optics / kmeans\nstep-mag / step-time / st-dbscan --> C[Encode events as Float64Array\n5 values per event]
+    B -- Light\ndbscan / optics / kmeans / st-dbscan\nstep-mag / step-time\ngardner-knopoff / uhrhammer --> C[Encode events as Float64Array\n5 values per event]
     C --> D[Transferable postMessage\nzero-copy to clustering.worker.ts]
     D --> E{Timeout > 30s?}
     E -- Yes --> F[terminate worker\nreturn error]
@@ -231,10 +231,12 @@ $$\mathrm{RL}(M) = 10^{-2.44 + 0.59M} \quad [\text{km}]$$
 
 ### Gardner-Knopoff window method
 
-**Spatial and temporal windows** as a function of magnitude:
+**Spatial window:**
 
-$$W_s(M) = 10^{aM + b} \quad [\text{km}]$$
+$$W_s(M) = 10^{0.1238 M + 0.983} \quad [\text{km}]$$
 
-$$W_t(M) = 10^{cM + d} \quad [\text{days}]$$
+**Temporal window** (piecewise — the published Gardner-Knopoff 1974 form):
 
-Events within both windows of a larger event are marked as dependent. The parameters \(a\), \(b\), \(c\), \(d\) follow the original Gardner-Knopoff (1974) table values.
+$$W_t(M) = \begin{cases} 10^{\,0.032 M + 2.7389} & M \ge 6.5 \\[4pt] 10^{\,0.5409 M - 0.547} & M < 6.5 \end{cases} \quad [\text{days}]$$
+
+Events within both windows of a larger event are marked as dependent. The Aftershock Sequence tab uses these windows for aftershock identification; the same definitions are also exposed as the `gardner-knopoff` (and `uhrhammer`) clustering algorithms in the Temporal-Spatial tab — see [Clustering Algorithms](clustering-algorithms.md#gardner-knopoff-1974).
