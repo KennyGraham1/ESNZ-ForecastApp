@@ -70,13 +70,13 @@ html_context = {
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 
-# Pan/zoom controls for Mermaid diagrams (svg-pan-zoom from CDN + our init).
-html_js_files = [
-    "https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js",
-    "js/mermaid-zoom.js",
-]
-
 # Render Mermaid on the client with the raw (script) method — works on
 # Read the Docs without a headless-browser/puppeteer build step.
 mermaid_output_format = "raw"
 mermaid_version = "10.9.1"
+
+# Interactive zoom (scroll / drag) on every diagram via the extension's built-in
+# d3 zoom, plus the fullscreen "⛶" button (mermaid_fullscreen defaults to True).
+# The extension re-applies this same zoom to the cloned diagram inside the
+# fullscreen modal, so zoom works there too — no third-party pan/zoom add-on.
+mermaid_d3_zoom = True
