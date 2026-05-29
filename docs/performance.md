@@ -239,3 +239,43 @@ This prevents saturating GeoNet's API and avoids exhausting the browser's HTTP/2
 | Reservoir sampling | Knuth's algorithm at 5,000 events | Bounded 3D plot memory and render time |
 | Bounded fetch concurrency | Promise pool, max 5 | Prevents GeoNet rate-limit and connection saturation |
 | Slider debounce | 600 ms delay before re-clustering | Eliminates mid-drag recalculations |
+
+---
+
+## Configuration reference
+
+Performance knobs live in `src/config/performance.ts`. The **live** keys and their environment overrides:
+
+| Key | Default | Env override | Effect |
+|---|---|---|---|
+| `CLUSTERING.ENABLE_WEB_WORKERS` | `true` | `NEXT_PUBLIC_ENABLE_WEB_WORKERS` | Route light clustering to a Web Worker |
+| `CLUSTERING.USE_RTREE` | `true` | `NEXT_PUBLIC_USE_RTREE` | R-tree acceleration for DBSCAN/ST-DBSCAN |
+| `CACHE.MEMORY_TTL` | `60000` ms | `NEXT_PUBLIC_CACHE_TTL_MS` | In-memory cache TTL |
+| `HIGHCHARTS.BOOST_THRESHOLD` | `50000` | — | Canvas-mode Boost cut-in |
+| `TEMPORAL_SPATIAL_SAMPLE_SIZE` | `5000` | — | Reservoir cap before clustering |
+| `MONITORING.ENABLED` | `NODE_ENV==='development'` | — | Enable the performance monitor |
+
+### Per-chart display sampling
+
+Several views down-sample purely for rendering (the analysis still uses the full set). `getOptimalSamplingThreshold()` multiplies these by **device tier** — ×2 on high-memory/many-core devices, ×0.5 on low-end:
+
+| Chart | Trigger → target |
+|---|---|
+| Map, Depth Profile, Temporal | 50,000 → 25,000 |
+| 3D Visualization | 20,000 → 15,000 |
+| Temporal-Spatial clustering | reservoir at 5,000 |
+
+### Deployment (`vercel.json`)
+
+Region `syd1`; serverless `maxDuration` 120 s for `api/**` (the `/api/cluster` route additionally exports a 60 s limit, which governs it); CDN header `Cache-Control: s-maxage=60, stale-while-revalidate=300` on `/api/*`.
+
+### Monitoring
+
+`src/lib/monitoring/` provides an optional, **development-only** layer (surfaced via `PerformanceDebugPanel`):
+
+- **`PerformanceMonitor`** — `track`/`trackAsync` timings with p50/p95/p99 stats, a 1,000 ms slow-operation warning, a 1,000-metric ring buffer, and JSON export.
+- **`ErrorTracker`** — severity-tagged error capture with optional `window.Sentry` forwarding (no callers wired by default).
+
+### Stale / unused config keys
+
+These exist in `performance.ts` but are **not wired to any behaviour** — do not treat them as live: `FETCH.*` (the fetch window is hardcoded to 365 days in `useGeoNetData`), `CACHE.DISK_PATH` / `ENABLE_COALESCING` (no server disk cache exists), `CLUSTERING.WEB_WORKER_THRESHOLD` (routing is by algorithm class, not dataset size), and `MAX_CLUSTERING_SIZE`.

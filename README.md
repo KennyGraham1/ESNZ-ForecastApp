@@ -1,6 +1,6 @@
 # ESNZ-ForecastApp
 
-Browser-based **earthquake analysis and aftershock forecasting** for New Zealand seismicity. It streams live catalogs from [GeoNet](https://www.geonet.org.nz/), caches them client-side in IndexedDB, and provides interactive statistical, clustering, and forecasting tools for seismologists and researchers.
+Browser-based **earthquake analysis and aftershock forecasting** for New Zealand seismicity. Works with two interchangeable data sources — a **live [GeoNet](https://www.geonet.org.nz/) stream** (cached client-side in IndexedDB) or **your own uploaded catalog** (CSV/TSV/JSON/GeoJSON/Excel/DAT/QuakeML) — and provides interactive statistical, clustering, and forecasting tools for seismologists and researchers.
 
 📖 **Full documentation:** https://esnz-forecastapp.readthedocs.io · source in [`docs/`](docs/)
 
@@ -16,7 +16,7 @@ Browser-based **earthquake analysis and aftershock forecasting** for New Zealand
 
 ## Tech stack
 
-Next.js 13 (App Router) · React 18 · TypeScript · Tailwind CSS · Highcharts 12 · Leaflet · TanStack Query · density-clustering · RBush (R-tree) · ml-levenberg-marquardt · simple-statistics · Jest. Performance: IndexedDB cache, Web Workers, R-tree indexing, stratified sampling, pre-computed timestamps.
+Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS · Highcharts 12 · Leaflet + react-leaflet 5 · TanStack Query · density-clustering · RBush (R-tree) · ml-levenberg-marquardt · simple-statistics · Jest. Performance: IndexedDB cache, Web Workers, R-tree indexing, stratified sampling, pre-computed timestamps.
 
 ## Getting started
 

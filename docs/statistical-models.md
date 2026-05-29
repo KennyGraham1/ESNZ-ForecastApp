@@ -158,28 +158,30 @@ Values outside $\pm 2$ indicate poor fit for that interval.
 
 #### Profile likelihood surface
 
-The profile log-likelihood is computed over a grid of $p \in [0.5, 1.8]$ (step $0.1$) and $c \in [0.01, 1.0]$ (step $0.1$), with $K$ optimised analytically at each node (~140 grid points). The surface reveals parameter correlations and whether the MLE is at a global maximum.
+The profile log-likelihood is computed over a grid of $p \in [0.5, 1.8]$ (step $0.1$) and $c \in [0.01, 1.0]$ (step $0.1$), with $K$ optimised analytically at each node (~140 grid points), and the profile-likelihood **confidence intervals** use a likelihood-ratio cutoff ($\chi^2_{1} = 3.84$). The surface is computed into `OmoriParameters.profileLikelihood`; it underlies the CIs but is **not currently drawn as a separate plot** (the Omori panel renders Model-Fit, Residuals, and Q-Q tabs).
 
 ---
 
 ### Historical NZ earthquake presets
 
+12 preset mainshocks (1855–2016) are available in the Aftershock Sequence tab:
+
 | Event | Date | Magnitude |
 |---|---|---|
-| Kaikōura | 2016-11-14 | M7.8 |
+| Wairarapa | 1855-01-23 | M8.2 |
+| North Canterbury (Amuri) | 1888-09-01 | M7.3 |
+| Cheviot | 1901-11-16 | M6.9 |
+| Arthur's Pass | 1929-03-09 | M7.1 |
+| Murchison | 1929-06-17 | M7.8 |
+| Hawke's Bay (Napier) | 1931-02-03 | M7.8 |
+| Inangahua | 1968-05-24 | M7.1 |
+| Dusky Sound (Fiordland) | 2009-07-15 | M7.8 |
+| Darfield (Canterbury) | 2010-09-03 | M7.1 |
 | Christchurch | 2011-02-22 | M6.3 |
-| Canterbury (Darfield) | 2010-09-04 | M7.1 |
-| Seddon | 2013-07-21 | M6.5 |
-| Cook Strait | 2013-07-21 | M6.6 |
-| Eketāhuna | 2014-01-20 | M6.3 |
-| Fiordland | 2009-07-15 | M7.8 |
-| Gisborne | 2007-12-20 | M6.7 |
-| Dunedin | 2021-05-06 | M5.8 |
-| Arthur's Pass | 1994-06-18 | M6.7 |
-| Weber | 1990-02-13 | M6.3 |
-| Hawke's Bay | 1931-02-03 | M7.8 |
+| Eketāhuna | 2014-01-20 | M6.2 |
+| Kaikōura | 2016-11-13 | M7.8 |
 
-Any event can be analysed via custom mainshock input (datetime, magnitude, optional lat/lon).
+Any event can also be analysed via custom mainshock input (datetime, magnitude, optional lat/lon), or auto-selected from recent significant events (M ≥ 5.5, declustered, with > 2 aftershocks).
 
 ---
 
@@ -201,7 +203,7 @@ $$K = 10^{\,a + b(M_m - M_c)}, \qquad \lambda(t) = \frac{K}{(t + c)^{p}}$$
 
 ### PDF report generation
 
-The **Generate Report** button captures all five chart `<div>` elements via `html2canvas`, assembles a multi-page PDF with `jsPDF`, and embeds: mainshock parameters, fitted $K$, $c$, $p$, uncertainty intervals, AIC, BIC, optimisation method, and declustering method used.
+The **Generate Report** button captures the charts (via Highcharts' native export, falling back to `html2canvas`), assembles a multi-page PDF with `jsPDF`, and embeds: mainshock parameters, fitted $K$, $c$, $p$, uncertainty intervals, AIC, BIC, optimisation method, and declustering method used.
 
 ---
 
@@ -263,7 +265,62 @@ interface GutenbergRichterResult {
 }
 ```
 
-Default bin width: $0.1$ magnitude units (configurable via `binWidth` option).
+Default bin width: $0.1$ magnitude units (configurable via `binWidth` option). The Gutenberg-Richter panel adds interactive **Mc-method** and **bin-width** controls and overlays the **incremental (per-bin)** FMD alongside the cumulative $N(\ge M)$.
+
+---
+
+## Temporal and Catalog Statistics
+
+The **Advanced Statistics** tab includes a tier of catalog-level temporal diagnostics (computed in `TemporalStatistics.tsx` and `TemporalCompletenessPlot.tsx`).
+
+### Temporal completeness — rolling $M_c(t)$ and $b(t)$
+
+A sliding window steps through the time-ordered catalog and recomputes the Gutenberg-Richter fit per window, exposing how completeness and the $b$-value drift over time (network upgrades, aftershock incompleteness, real $b$ variation):
+
+- **Window size** $w = \mathrm{clamp}(\lfloor n/10 \rfloor,\ 100,\ 500)$ events; **step** $= w/4$; each point anchored at the window's centre time.
+- Per window: $b$ via the **Aki–Utsu MLE** with a **Shi & Bolt (1982)** $\pm\sigma_b$ band, and $M_c$ via **maximum curvature** (see the Gutenberg-Richter section).
+
+### Inter-event time statistics
+
+For consecutive events sorted in time, the inter-event times $\Delta t_i = t_i - t_{i-1}$ yield mean, median, min/max, and standard deviation, plus:
+
+**Coefficient of variation** — the canonical test of temporal randomness:
+
+$$
+\mathrm{CoV} = \frac{\sigma_{\Delta t}}{\bar{\Delta t}},
+\qquad
+\begin{cases}
+\mathrm{CoV} \approx 1 & \text{Poissonian (random)}\\
+\mathrm{CoV} > 1 & \text{clustered (overdispersed)}\\
+\mathrm{CoV} < 1 & \text{quasi-periodic}
+\end{cases}
+$$
+
+**Inter-event histogram vs a Poisson reference** — the observed $\Delta t$ histogram is overlaid with the exponential expectation of a Poisson process of rate $\lambda = 1/\bar{\Delta t}$. The expected count in bin $[\,t_{\text{lo}}, t_{\text{hi}})$ over $N$ in-range events is
+
+$$
+E = N\left(e^{-\lambda\,t_{\text{lo}}} - e^{-\lambda\,t_{\text{hi}}}\right).
+$$
+
+An excess of short intervals over this reference indicates temporal clustering. (This is distinct from the Omori transformed-time Q-Q plot above.)
+
+### Rate and cumulative measures
+
+- **Event rate** — events per day, $N / \Delta T_{\text{days}}$; daily counts with a **7-day moving average**.
+- **Cumulative event count** over time.
+- **Cumulative seismic moment** — running sum of the scalar seismic moment
+
+$$
+M_0 = 10^{\,1.5\,M + 9.1}\ \text{N·m} \qquad \text{(Hanks \& Kanamori, 1979)},
+$$
+
+which is dominated by the largest events and highlights when most of the region's moment was released.
+
+### Magnitude distribution
+
+The magnitude histogram reports mean and median magnitude and offers a **log-scale frequency axis** so the Gutenberg-Richter slope can be read directly off the bars.
+
+**Reference:** Hanks, T. C., & Kanamori, H. (1979). A moment magnitude scale. *Journal of Geophysical Research*, **84**(B5), 2348–2350. https://doi.org/10.1029/JB084iB05p02348
 
 ---
 

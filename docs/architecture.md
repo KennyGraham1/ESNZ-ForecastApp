@@ -2,7 +2,7 @@
 
 ## High-level structure
 
-ESNZ-ForecastApp is a **Next.js 13 App Router** application. All analysis runs in the browser; the server provides two thin API routes. There is no server-side database — earthquake catalogs persist in **browser IndexedDB**.
+ESNZ-ForecastApp is a **Next.js 16 App Router** application (React 19, Turbopack). All analysis runs in the browser; the server provides thin API routes (`/api/cluster`, `/api/earthquakes/proxy`). There is no server-side database — earthquake catalogs persist in **browser IndexedDB**.
 
 ```
 Browser                                   Next.js server
@@ -134,26 +134,33 @@ src/
     ├── <Statistics>                 # Event count, max mag, avg depth
     └── [active tab component]
         ├── <BasicDashboard>
-        │   ├── <Map>                # Highcharts NZ map (SSR disabled)
-        │   ├── <MagnitudeDistribution>
+        │   ├── <Statistics>             # Event count, max mag, avg depth
+        │   ├── <Map>                    # Leaflet NZ map (SSR disabled)
         │   └── <TemporalAnalysis>
-        ├── <AdvancedStatistics>     # 6 panels
+        ├── <AdvancedStatistics>         # 6 panels
         │   ├── <GutenbergRichterPlot>
         │   ├── <DepthProfilePlot>
         │   ├── <MagnitudeDistribution>
-        │   ├── <TemporalAnalysis>
-        │   ├── <ThreeDVisualization>
-        │   └── <TemporalStatistics>
+        │   ├── <TemporalStatistics>
+        │   ├── <TemporalCompletenessPlot>   # rolling Mc(t) / b(t)
+        │   └── <ThreeDVisualization>
         ├── <AftershockSequence>
         │   ├── <AftershockSequencePlot>
         │   ├── <ThreeDVisualization>
         │   ├── <OmoriLawPlot>
         │   ├── <GutenbergRichterPlot>
         │   └── <CumulativeAftershockPlot>
-        └── <TemporalSpatial>
-            ├── <LeafletClusterMap>
-            ├── <TemporalSpatial3DPlot>
-            └── <ClusteringProgressPanel>
+        ├── <TemporalSpatial>
+        │   ├── <LeafletClusterMap>
+        │   ├── <TemporalSpatial3DPlot>
+        │   └── <ClusteringProgressPanel>
+        └── <Sandbox>
+            ├── <StatsPanel>
+            ├── <GenericScatterPlot>
+            ├── <GenericHistogram>
+            ├── <MultiPanelPlot>
+            ├── <ThreeDVisualization>
+            └── <Map>
 ```
 
 ---

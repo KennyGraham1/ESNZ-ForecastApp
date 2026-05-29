@@ -1,6 +1,6 @@
 # ESNZ-ForecastApp
 
-**ESNZ-ForecastApp** is a browser-based earthquake analysis and aftershock forecasting application for New Zealand seismicity. It streams live earthquake catalogs from [GeoNet](https://www.geonet.org.nz/), caches them client-side in IndexedDB, and provides a full suite of interactive statistical tools for seismologists and researchers.
+**ESNZ-ForecastApp** is a browser-based earthquake analysis and aftershock forecasting application for New Zealand seismicity. It works with **two interchangeable data sources** — a **live [GeoNet](https://www.geonet.org.nz/) stream** (cached client-side in IndexedDB) and **your own uploaded catalog** (CSV/TSV/JSON/GeoJSON/Excel/DAT/QuakeML) — and provides a full suite of interactive statistical tools for seismologists and researchers. See **[Data Sources](data-sources.md)**.
 
 ---
 
@@ -22,9 +22,11 @@
 
 ### Upload Your Own Catalog
 
-- Import CSV, TSV, JSON, GeoJSON, XLSX, or QuakeML files (up to 200 MB)
-- 4-step wizard: file select → column mapping → import options → preview & import
-- Auto-suggests column mappings; supports custom date and coordinate formats
+- Import **CSV / TSV / TXT, JSON / GeoJSON, Excel (.xlsx/.xls), DAT, or QuakeML (.qml/.xml)** files (up to 200 MB)
+- Quick import (auto-detect) or a 4-step wizard: file select → column mapping → import options → preview & import
+- Auto-suggested column mapping (incl. split year/month/day columns and custom fields); 8 date formats (incl. Unix s/ms); decimal / DMS / decimal-minute coordinates
+- Configurable validation with **Global** and **New Zealand** presets, a preview-statistics panel, and a downloadable per-row error report
+- Full details in **[Data Sources](data-sources.md)**
 
 ### Spatial Clustering (12 Algorithms)
 
@@ -76,6 +78,8 @@
 | Page | Contents |
 |---|---|
 | [Setup & Deployment](setup.md) | Prerequisites, install, env vars, dev workflow, production build, Vercel deployment |
+| [Data Sources](data-sources.md) | Live GeoNet stream and user catalog upload (formats, column mapping, date/coordinate formats, validation presets, the data-source toggle) |
+| [Interface & Interaction Guide](interface.md) | Per-tab UI tour: global filters, map controls, selection modes, the Sandbox, and exports |
 
 **Methods** — the scientific core
 
@@ -101,19 +105,19 @@ The **Appendix & Notes** section collects supplementary engineering deep-dives (
 
 | Layer | Library | Version |
 |---|---|---|
-| Framework | Next.js | 13.5.6 |
+| Framework | Next.js (App Router, Turbopack) | 16.2.4 |
 | Language | TypeScript | 5 |
-| UI | React | 18 |
+| UI | React | 19 |
 | Styling | Tailwind CSS | 3 |
 | Charts | Highcharts | 12.4.0 |
-| Maps | Leaflet + react-leaflet | 1.9.4 / 4.2.1 |
+| Maps | Leaflet + react-leaflet | 1.9.4 / 5.0.0 |
 | Clustering | density-clustering | 1.3.0 |
 | Spatial index | rbush (R-tree) | 4.0.1 |
 | Curve fitting | ml-levenberg-marquardt | 5.0.0 |
-| Statistics | simple-statistics | 7.8.3 |
-| Date handling | date-fns | 3.6.0 |
+| Statistics | simple-statistics | 7.8.8 |
+| Date handling | date-fns | 4.1.0 |
 | Data fetching | TanStack Query | 5.90.10 |
-| Spreadsheet import | xlsx | latest |
+| Spreadsheet import | xlsx | 0.18.5 |
 | PDF export | jsPDF + html2canvas | latest |
 | Testing | Jest | 30 |
 
@@ -123,6 +127,8 @@ The **Appendix & Notes** section collects supplementary engineering deep-dives (
 :maxdepth: 2
 
 setup
+data-sources
+interface
 ```
 
 ```{toctree}
@@ -148,12 +154,10 @@ performance
 ```{toctree}
 :hidden:
 :caption: APPENDIX & NOTES
-:maxdepth: 1
+:maxdepth: 2
 
-Clustering parameter reference <reference/CLUSTERING_ALGORITHMS>
+Algorithm comparison & noise reference <reference/CLUSTERING_ALGORITHMS>
 Omori-law implementation notes <reference/OMORI_LAW_ANALYSIS>
 Confidence-interval methods <reference/CONFIDENCE_INTERVALS_IMPROVED>
-Performance optimization notes <reference/PERFORMANCE_OPTIMIZATIONS>
-Additional optimization notes <reference/ADDITIONAL_OPTIMIZATIONS>
-Parallel-fetch optimization notes <reference/PARALLEL_FETCH_OPTIMIZATION>
+Optimization notes <reference/optimization-notes>
 ```

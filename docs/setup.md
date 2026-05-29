@@ -4,7 +4,7 @@
 
 | Requirement | Minimum | Notes |
 |---|---|---|
-| Node.js | 18.x | Required by Next.js 13 |
+| Node.js | 20.x (≥ 18.18) | Required by Next.js 16 |
 | npm | 9.x | Or yarn / pnpm / bun |
 | Browser | Chrome 90+, Firefox 88+, Safari 14+ | IndexedDB required for catalog caching |
 
@@ -24,16 +24,16 @@ npm install
 
 ## Environment variables
 
-No environment variables are required for local development. All defaults are hardcoded.
-
-If you need to override the GeoNet upstream URL (e.g. for testing against a staging endpoint):
+None are required — the app runs with hardcoded defaults (the GeoNet upstream URL is a constant in `/api/earthquakes/proxy/route.ts`; there is no `GEONET_QUAKESEARCH_URL` override). Three optional client-side toggles exist:
 
 ```bash
-# .env.local  (server-side only — no NEXT_PUBLIC_ prefix)
-GEONET_QUAKESEARCH_URL=https://quakesearch.geonet.org.nz/geojson
+# .env.local  (client-side — NEXT_PUBLIC_ prefix required)
+NEXT_PUBLIC_ENABLE_WEB_WORKERS=true   # default true; route light clustering to a Web Worker
+NEXT_PUBLIC_USE_RTREE=true            # default true; R-tree acceleration for DBSCAN/ST-DBSCAN
+NEXT_PUBLIC_CACHE_TTL_MS=60000        # default 60000; in-memory cache TTL
 ```
 
-This variable is read by `/api/earthquakes/proxy/route.ts` and defaults to `https://quakesearch.geonet.org.nz/geojson` if absent.
+> Note: there is **no cron job and no server-side disk cache**. A `CRON_SECRET` and a `/api/cron/update-cache` route referenced in an old `.env.local` are not implemented; ignore them.
 
 ---
 
@@ -95,9 +95,10 @@ npm start
 
 | Option | Value | Reason |
 |---|---|---|
-| `resolve.fallback.fs/net/tls` | `false` | Highcharts and map-collection packages reference Node built-ins that must be shimmed away for the browser bundle |
+| `turbopack` | `{}` (enabled) | Turbopack is the default bundler on Next.js 16; a webpack fallback config is retained |
+| `resolve.fallback.fs/net/tls` | `false` | Highcharts and map-collection packages reference Node built-ins that must be shimmed away for the browser bundle (webpack fallback) |
+| `webpack … moduleIds` | `'deterministic'` | Stable chunk hashing across builds |
 | `staticPageGenerationTimeout` | 180 s | Large Highcharts map-data imports can exceed the default 60 s |
-| `experimental.optimizeCss` | `false` | Disabled to avoid occasional build failures with the Tailwind/PostCSS pipeline on this Next.js version |
 | `watchOptions.ignored` | `node_modules`, `.next`, `.git` | Prevents `EMFILE: too many open files` inotify exhaustion in dev mode on Linux |
 
 ---
@@ -126,15 +127,15 @@ The in-process LRU cache in `/api/cluster` resets on every **cold start** (serve
 
 ---
 
-## Web Worker in Next.js 13
+## Web Worker in Next.js
 
-`clustering.worker.ts` is loaded via:
+`clustering.worker.ts` is loaded (from `src/hooks/useClusteringWorker.ts`) via:
 
 ```typescript
-new Worker(new URL('../../lib/analysis/clustering.worker.ts', import.meta.url))
+new Worker(new URL('../lib/analysis/clustering.worker.ts', import.meta.url))
 ```
 
-Next.js 13 + webpack automatically bundles Web Worker files referenced this way. No additional configuration is needed.
+Next.js bundles Web Worker files referenced this way automatically (Turbopack and the webpack fallback). No additional configuration is needed.
 
 ---
 
@@ -157,30 +158,30 @@ In all unavailable cases the app functions normally — it simply fetches from G
 
 ```json
 {
-  "next": "13.5.6",
-  "react": "^18",
-  "react-dom": "^18",
+  "next": "^16.2.4",
+  "react": "^19.2.5",
+  "react-dom": "^19.2.5",
   "typescript": "^5",
 
   "highcharts": "^12.4.0",
-  "highcharts-react-official": "^3.2.1",
+  "highcharts-react-official": "^3.2.3",
 
   "leaflet": "^1.9.4",
-  "react-leaflet": "^4.2.1",
+  "react-leaflet": "^5.0.0",
 
   "@tanstack/react-query": "^5.90.10",
 
   "rbush": "^4.0.1",
   "density-clustering": "^1.3.0",
   "ml-levenberg-marquardt": "^5.0.0",
-  "simple-statistics": "^7.8.3",
+  "simple-statistics": "^7.8.8",
 
-  "date-fns": "^3.6.0",
+  "date-fns": "^4.1.0",
   "tailwindcss": "^3",
   "lucide-react": "latest",
-  "xlsx": "latest",
-  "jspdf": "latest",
-  "html2canvas": "latest",
+  "xlsx": "^0.18.5",
+  "jspdf": "^3.0.4",
+  "html2canvas": "^1.4.1",
 
   "jest": "^30",
   "@testing-library/react": "latest",
