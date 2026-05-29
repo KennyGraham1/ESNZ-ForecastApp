@@ -1,5 +1,12 @@
 # Clustering Algorithms Reference
 
+```{note}
+This is a **consolidated parameter / noise reference** for all algorithms in one place.
+For the conceptual overview and per-algorithm deep-dives with diagrams, see
+[Clustering Algorithms](../clustering-algorithms.md) and
+[Declustering Methods](../declustering-methods.md).
+```
+
 This document describes all earthquake clustering algorithms implemented in the
 ESNZ-ForecastApp, their parameters, how noise is determined, and scientific
 references.

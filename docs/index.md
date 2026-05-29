@@ -71,15 +71,29 @@
 
 ## Documentation
 
+**Getting started**
+
 | Page | Contents |
 |---|---|
-| [Architecture Overview](architecture.md) | App Router structure, component tree, API routes, state management, all data types |
-| [Data Flow & Logic](data-flow.md) | Fetch pipeline, caching, gap-fill, refresh, clustering pipeline — all with Mermaid diagrams |
-| [Clustering Algorithms](clustering-algorithms.md) | All 12 algorithms with exact formulas, parameter defaults, worker/server routing |
-| [Declustering Methods](declustering-methods.md) | Deep-dive per declustering method (Gardner-Knopoff, Uhrhammer, Hardebeck, STEP, Reasenberg/TMC, Nearest-Neighbor) with Mermaid algorithm diagrams |
-| [Statistical Models](statistical-models.md) | Omori's Law (7 methods, diagnostics, CIs), Gutenberg-Richter, reference models |
-| [Performance Optimizations](performance.md) | IndexedDB, LRU caches, Transferable Workers, R-tree, Highcharts Boost, reservoir sampling |
 | [Setup & Deployment](setup.md) | Prerequisites, install, env vars, dev workflow, production build, Vercel deployment |
+
+**Methods** — the scientific core
+
+| Page | Contents |
+|---|---|
+| [Clustering Algorithms](clustering-algorithms.md) | The 5 density/partition algorithms (DBSCAN, OPTICS, k-Means, ST-DBSCAN, HDBSCAN), routing, coordinate system — each with its own deep-dive page |
+| [Declustering Methods](declustering-methods.md) | The 7 declustering methods (Gardner-Knopoff, Uhrhammer, Hardebeck, STEP-Mag/Time, Reasenberg/TMC, Nearest-Neighbor) — each with a Mermaid algorithm diagram |
+| [Statistical Models](statistical-models.md) | Omori's Law (7 fit methods, diagnostics, CIs), Gutenberg-Richter, reference models |
+
+**Architecture** — how the app is built
+
+| Page | Contents |
+|---|---|
+| [Architecture Overview](architecture.md) | App Router structure, component tree, API routes, state management, data types |
+| [Data Flow & Logic](data-flow.md) | Fetch pipeline, caching, gap-fill, refresh, clustering pipeline — all with Mermaid diagrams |
+| [Performance Optimizations](performance.md) | IndexedDB, LRU caches, Transferable Workers, R-tree, Highcharts Boost, reservoir sampling |
+
+The **Appendix & Notes** section collects supplementary engineering deep-dives (parameter reference, confidence-interval methods, and historical optimization notes).
 
 ---
 
@@ -105,34 +119,41 @@
 
 ```{toctree}
 :hidden:
-:caption: GUIDE
+:caption: GETTING STARTED
 :maxdepth: 2
 
-architecture
-data-flow
-clustering-algorithms
-statistical-models
-performance
 setup
 ```
 
 ```{toctree}
 :hidden:
-:caption: DECLUSTERING METHODS
+:caption: METHODS
 :maxdepth: 2
 
+clustering-algorithms
 declustering-methods
+statistical-models
 ```
 
 ```{toctree}
 :hidden:
-:caption: REFERENCE
+:caption: ARCHITECTURE
+:maxdepth: 2
+
+architecture
+data-flow
+performance
+```
+
+```{toctree}
+:hidden:
+:caption: APPENDIX & NOTES
 :maxdepth: 1
 
-reference/CLUSTERING_ALGORITHMS
-reference/OMORI_LAW_ANALYSIS
-reference/CONFIDENCE_INTERVALS_IMPROVED
-reference/PERFORMANCE_OPTIMIZATIONS
-reference/ADDITIONAL_OPTIMIZATIONS
-reference/PARALLEL_FETCH_OPTIMIZATION
+Clustering parameter reference <reference/CLUSTERING_ALGORITHMS>
+Omori-law implementation notes <reference/OMORI_LAW_ANALYSIS>
+Confidence-interval methods <reference/CONFIDENCE_INTERVALS_IMPROVED>
+Performance optimization notes <reference/PERFORMANCE_OPTIMIZATIONS>
+Additional optimization notes <reference/ADDITIONAL_OPTIMIZATIONS>
+Parallel-fetch optimization notes <reference/PARALLEL_FETCH_OPTIMIZATION>
 ```
