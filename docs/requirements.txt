@@ -1,3 +1,6 @@
-mkdocs>=1.6
-mkdocs-material>=9.5
-pymdown-extensions>=10.0
+# Read the Docs / local docs build dependencies (Sphinx + classic RTD theme).
+# Markdown sources are parsed with MyST; diagrams via sphinxcontrib-mermaid.
+sphinx>=7.0,<9.0
+sphinx-rtd-theme>=2.0,<4.0
+myst-parser>=2.0,<5.0
+sphinxcontrib-mermaid>=0.9,<2.0

@@ -6,7 +6,7 @@ A **link-based** declustering algorithm (the canonical `cluster2000x.f`). Instea
 
 ## Interaction zone
 
-**Spatial** — the interaction radius is the sum of the Kanamori–Anderson (1975) crack radii of the test event (magnitude \(M_1\)) and the cluster's largest event (\(M_{\max}\)), capped at one crustal thickness. The cap applies to the **sum**, and \(r_{\text{main}}\) does **not** scale by \(r_{\text{fact}}\):
+**Spatial** — the interaction radius is the sum of the Kanamori–Anderson (1975) crack radii of the test event (magnitude $M_1$) and the cluster's largest event ($M_{\max}$), capped at one crustal thickness. The cap applies to the **sum**, and $r_{\text{main}}$ does **not** scale by $r_{\text{fact}}$:
 
 $$
 r_{\text{test}} = \min\!\Bigl(30,\;
@@ -16,7 +16,7 @@ r_{\text{test}} = \min\!\Bigl(30,\;
 \quad[\mathrm{km}].
 $$
 
-**Temporal** — an adaptive look-ahead time that lengthens with the cluster's largest magnitude \(M_{\max}\) and the elapsed time \(t\) since that event:
+**Temporal** — an adaptive look-ahead time that lengthens with the cluster's largest magnitude $M_{\max}$ and the elapsed time $t$ since that event:
 
 $$
 \Delta M = \max\!\bigl(0,\;(1-x_k)\,M_{\max} - M_{\min}\bigr),
@@ -34,7 +34,7 @@ $$
 \end{cases}
 $$
 
-\(\Delta M\) is floored at 0 so a small-cluster denominator cannot inflate \(\tau\). \(t\) is measured from the **largest** event in the cluster, and \(\tau_{\text{eff}}\) is recomputed on every pair, so an event that joins a cluster mid-scan immediately gets the wider window.
+$\Delta M$ is floored at 0 so a small-cluster denominator cannot inflate $\tau$. $t$ is measured from the **largest** event in the cluster, and $\tau_{\text{eff}}$ is recomputed on every pair, so an event that joins a cluster mid-scan immediately gets the wider window.
 
 ## How it works
 
@@ -62,14 +62,14 @@ flowchart TD
 
 | Key | Default | Description |
 |---|---|---|
-| `tmcRfact` | 10 | Spatial radius multiplier \(r_{\text{fact}}\) |
-| `tmcTau0` | 2 d | Look-ahead for an unclustered event \(\tau_0\) |
-| `tmcTauMax` | 10 d | Maximum look-ahead \(\tau_{\max}\) |
-| `tmcP1` | 0.99 | Interaction probability \(p_1\) |
-| `tmcXk` | 0.5 | Magnitude scaling \(x_k\) |
-| `tmcMinMag` | 1.5 | Effective minimum magnitude \(M_{\min}\) |
+| `tmcRfact` | 10 | Spatial radius multiplier $r_{\text{fact}}$ |
+| `tmcTau0` | 2 d | Look-ahead for an unclustered event $\tau_0$ |
+| `tmcTauMax` | 10 d | Maximum look-ahead $\tau_{\max}$ |
+| `tmcP1` | 0.99 | Interaction probability $p_1$ |
+| `tmcXk` | 0.5 | Magnitude scaling $x_k$ |
+| `tmcMinMag` | 1.5 | Effective minimum magnitude $M_{\min}$ |
 
-\(\tau_{\min} = 1\) d is a fixed internal lower clamp (not an exposed option).
+$\tau_{\min} = 1$ d is a fixed internal lower clamp (not an exposed option).
 
 ## References
 

@@ -1,213 +1,57 @@
 # ESNZ-ForecastApp
 
-**ESNZ-ForecastApp** is a comprehensive web application for earthquake analysis and forecasting, specifically designed for New Zealand seismicity. The application provides advanced statistical analysis, visualization, and forecasting tools for seismologists, researchers, and anyone interested in understanding earthquake patterns and aftershock sequences.
+Browser-based **earthquake analysis and aftershock forecasting** for New Zealand seismicity. It streams live catalogs from [GeoNet](https://www.geonet.org.nz/), caches them client-side in IndexedDB, and provides interactive statistical, clustering, and forecasting tools for seismologists and researchers.
 
-## Overview
+📖 **Full documentation:** https://esnz-forecastapp.readthedocs.io · source in [`docs/`](docs/)
 
-ESNZ-ForecastApp leverages real-time earthquake data from [GeoNet](https://www.geonet.org.nz/) to provide interactive visualizations and statistical analyses of seismic activity across New Zealand. The application features a high-performance caching system, advanced clustering algorithms, and specialized tools for aftershock sequence analysis.
+## Features
 
-## Key Features
+- **Live & uploaded catalogs** — GeoNet fetch (monthly chunking, auto-bisect, retry) with IndexedDB cache and incremental refresh; import CSV/TSV/JSON/GeoJSON/XLSX/QuakeML.
+- **Clustering & declustering (12 algorithms)** — DBSCAN, OPTICS, k-Means, ST-DBSCAN, HDBSCAN (density); Nearest-Neighbor (Zaliapin–Ben-Zion η, Otsu threshold) and Reasenberg/TMC (link-based); Gardner-Knopoff (1974), Uhrhammer (1986), Hardebeck (2019), STEP-Mag/Time (window declustering). Light algorithms run in a Web Worker, heavy ones server-side. See the [declustering deep-dive](docs/declustering-methods.md).
+- **Gutenberg–Richter** — Aki–Utsu MLE b-value with Shi & Bolt (1982) uncertainty; Maximum-Curvature or Wiemer & Wyss (2000, KSTOTAL) magnitude of completeness; interactive Mc-method / bin-width controls and incremental + cumulative FMD overlays.
+- **Aftershock sequences** — Omori–Utsu fitting (7 optimisers, MLE with Hessian/bootstrap CIs, AIC/BIC, Q-Q & residual diagnostics); 12 historical NZ presets or custom mainshocks; SRL/Hardebeck and Gardner-Knopoff declustering.
+- **Temporal statistics** — inter-event-time histogram vs a Poisson reference, inter-event coefficient of variation, cumulative count & seismic-moment curves, and rolling-window **Mc(t)/b(t) stability**.
+- **Data Sandbox** — configurable scatter / histogram / 3D / multi-panel explorer; histograms support group/colour-by (depth, magnitude, year, or quantile/categorical buckets), log-axis (Gutenberg–Richter), reverse-cumulative N(≥value), and density normalization.
+- **Visualisation & export** — Highcharts (canvas Boost), Leaflet maps, 3D scatter, linked temporal-spatial selection, PNG/JPEG/SVG/CSV/JSON and multi-page PDF export.
 
-### 📊 **Basic Analysis**
-- **Interactive Earthquake Map**: Visualize earthquake locations across New Zealand with color-coded magnitude indicators
-- **Statistical Summary**: Real-time statistics including total events, magnitude ranges, depth distributions, and temporal patterns
-- **Temporal Analysis**: Time-series visualizations showing earthquake frequency and patterns over time
-- **Magnitude Distribution**: Histogram analysis of earthquake magnitudes
+## Tech stack
 
-### 🔬 **Advanced Statistical Analysis**
-- **Gutenberg-Richter Analysis**: Frequency-magnitude distribution analysis with an Aki–Utsu maximum-likelihood b-value (Shi & Bolt 1982 uncertainty) and a choice of Maximum Curvature or Wiemer & Wyss (2000) goodness-of-fit magnitude-of-completeness
-- **Depth Profile Analysis**: 3D visualization of earthquake depth distributions and magnitude relationships
-- **Spatial Clustering (12 algorithms)**: Identify earthquake clusters and decluster catalogs:
-  - **DBSCAN / OPTICS** - Density-based clustering (R-tree accelerated)
-  - **K-Means** - Partition-based clustering
-  - **ST-DBSCAN** - Spatio-temporal density clustering (haversine)
-  - **HDBSCAN** - Hierarchical density clustering with soft membership & GLOSH outlier scores
-  - **STEP-Mag / STEP-Time** - Magnitude-scaled space-time windows
-  - **Nearest-Neighbor** - Zaliapin–Ben-Zion η metric (Otsu auto-threshold)
-  - **TMC** - Reasenberg (1985) time-magnitude clustering
-  - **Gardner-Knopoff (1974) / Uhrhammer (1986) / Hardebeck (2019)** - Magnitude-window declustering
-- **3D Visualization**: Interactive 3D scatter plots of earthquake locations, depths, and magnitudes
-- **Temporal Statistics**: Detailed time-based analysis including hourly, daily, and monthly patterns
+Next.js 13 (App Router) · React 18 · TypeScript · Tailwind CSS · Highcharts 12 · Leaflet · TanStack Query · density-clustering · RBush (R-tree) · ml-levenberg-marquardt · simple-statistics · Jest. Performance: IndexedDB cache, Web Workers, R-tree indexing, stratified sampling, pre-computed timestamps.
 
-### 🌊 **Aftershock Sequence Analysis**
-- **Historical Event Selection**: Pre-configured analysis for major New Zealand earthquakes (Kaikōura 2016, Christchurch 2011, Canterbury 2010, etc.)
-- **Custom Main Event Input**: Analyze aftershock sequences for any earthquake by specifying location, magnitude, and time
-- **Gardner-Knopoff Declustering**: Automatic identification of independent mainshocks vs. dependent aftershocks
-- **Omori's Law Fitting**: Calculate decay parameters (K, c, p) for aftershock sequences with visual fitting
-- **Interactive Timeline**: Magnitude vs. time visualization with zoom-to-filter capability
-- **Depth Analysis**: Magnitude vs. depth relationships for aftershock sequences
-- **Synchronized Map View**: Spatial distribution of aftershocks with timeline synchronization
-- **Polygon Selection**: Draw custom regions to filter earthquakes by spatial area
+## Getting started
 
-### 🔗 **Temporal-Spatial Analysis**
-- **Linked Visualizations**: Synchronized temporal and spatial plots with interactive selection
-- **Cluster-Based Filtering**: Select earthquakes by cluster membership
-- **Real-time Clustering**: Apply multiple clustering algorithms with adjustable parameters
-- **Export Capabilities**: Export charts as PNG, JPEG, SVG, or data as CSV/JSON with clustering metadata
-
-## Technologies Used
-
-### Frontend
-- **[Next.js 13](https://nextjs.org/)** - React framework with App Router
-- **[React 18](https://react.dev/)** - UI library
-- **[TypeScript](https://www.typescriptlang.org/)** - Type-safe development
-- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework
-- **[Highcharts](https://www.highcharts.com/)** - Interactive charting library with map support
-
-### Data & Analysis
-- **[TanStack Query (React Query)](https://tanstack.com/query)** - Data fetching and caching
-- **[density-clustering](https://www.npmjs.com/package/density-clustering)** - DBSCAN, OPTICS, K-Means algorithms
-- **[simple-statistics](https://simplestatistics.org/)** - Statistical computations
-- **[ml-levenberg-marquardt](https://www.npmjs.com/package/ml-levenberg-marquardt)** - Non-linear curve fitting for Omori's Law
-- **[RBush](https://github.com/mourner/rbush)** - R-tree spatial indexing for 90-95% faster clustering
-- **[Proj4](https://proj4.org/)** - Coordinate transformations for map projections
-
-### Performance Optimizations
-- **Server-side caching** with incremental updates
-- **Web Workers** for non-blocking clustering computations
-- **R-tree spatial indexing** for efficient nearest-neighbor searches
-- **Stratified sampling** for large datasets
-- **Memoization** of expensive calculations
-- **Pre-computed timestamps** for 95% faster filtering
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+ or compatible runtime (Yarn, pnpm, Bun)
-- npm or alternative package manager
-
-### Installation
-
-1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd ESNZ-ForecastAppAntigrav
-```
-
-2. Install dependencies:
-```bash
+cd ESNZ-ForecastApp
 npm install
-# or
-yarn install
-# or
-pnpm install
+npm run dev          # http://localhost:3000
 ```
-
-3. Run the development server:
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
-
-### Building for Production
 
 ```bash
-npm run build
-npm start
+npm run build && npm start   # production
+npm test                     # tests
+npm run lint                 # lint
 ```
 
-## Usage
+## Documentation
 
-### Basic Workflow
-
-1. **Load Data**: The application automatically loads cached earthquake data from GeoNet
-2. **Apply Filters**: Use the filter controls to select time range, magnitude range, and depth categories
-3. **Explore Tabs**:
-   - **Basic**: Overview statistics, map, and temporal analysis
-   - **Advanced Statistics**: Gutenberg-Richter, depth profiles, clustering, 3D visualization
-   - **Aftershock Sequence**: Analyze aftershock patterns for historical or custom events
-   - **Temporal-Spatial**: Linked visualizations with interactive clustering
-
-4. **Export Data**: Use export buttons on charts to save visualizations or data in various formats
-
-### Aftershock Analysis
-
-1. Navigate to the **Aftershock Sequence** tab
-2. Click **"Show Historical Events"** to select a major earthquake, or manually enter main event details
-3. Click **"Analyze Aftershocks"** to generate:
-   - Timeline plot (magnitude vs. time)
-   - Depth plot (magnitude vs. depth)
-   - Interactive map with aftershock locations
-   - Omori's Law decay analysis
-4. Use zoom and selection tools to explore specific time periods or spatial regions
-
-### Clustering Analysis
-
-1. Navigate to **Advanced Statistics** or **Temporal-Spatial** tabs
-2. Select a clustering algorithm from the dropdown
-3. Adjust parameters (epsilon, minSamples, k, etc.)
-4. View results with color-coded clusters
-5. Export clustering results with metadata
-
-## Data Source
-
-Earthquake data is provided by **[GeoNet](https://www.geonet.org.nz/)**, New Zealand's geological hazard information system. The application uses GeoNet's public API to fetch earthquake catalog data.
-
-## Performance Features
-
-- **Intelligent Caching**: Server-side cache with automatic incremental updates
-- **Lazy Loading**: Charts render only when their tab is active
-- **Web Workers**: Heavy computations run in background threads
-- **Optimized Filtering**: Pre-computed timestamps and server-side filtering reduce data transfer by up to 95%
-- **Spatial Indexing**: R-tree data structures accelerate clustering by 90-95%
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── app/                    # Next.js App Router pages
-│   ├── api/               # API routes (earthquake data caching)
-│   └── page.tsx           # Main application page
-├── components/            # React components
-│   ├── tabs/             # Tab-specific components
-│   └── ...               # Reusable components (charts, maps, etc.)
-├── lib/                   # Core libraries
-│   ├── analysis/         # Statistical analysis functions
-│   └── monitoring/       # Performance monitoring
-├── hooks/                 # Custom React hooks
-├── types/                 # TypeScript type definitions
-├── utils/                 # Utility functions
-└── config/               # Configuration files
-```
-
-### Testing
+Docs are written in Markdown under [`docs/`](docs/) and published to Read the Docs (Sphinx + MyST + `sphinx_rtd_theme`). Build locally:
 
 ```bash
-npm test              # Run tests
-npm run test:watch    # Run tests in watch mode
-npm run test:coverage # Generate coverage report
+pip install -r docs/requirements.txt
+sphinx-build -b html docs docs/_build/html   # open docs/_build/html/index.html
 ```
 
-### Linting
+Key pages: [Architecture](docs/architecture.md) · [Data Flow](docs/data-flow.md) · [Clustering Algorithms](docs/clustering-algorithms.md) · [Declustering Methods](docs/declustering-methods.md) · [Statistical Models](docs/statistical-models.md) · [Performance](docs/performance.md) · [Setup & Deployment](docs/setup.md).
 
-```bash
-npm run lint
-```
+## Data source
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
+Earthquake data from **[GeoNet](https://www.geonet.org.nz/)**, New Zealand's geological hazard information system (public API).
 
 ## License
 
-This project is private and proprietary.
-
-## Acknowledgments
-
-- **GeoNet** for providing comprehensive earthquake data for New Zealand
-- **Next.js** team for the excellent React framework
-- **Highcharts** for powerful visualization capabilities
-- The seismology research community for statistical methods and algorithms
+Private and proprietary.
 
 ---
 
-**Note**: This application is designed for research and educational purposes. For official earthquake information and warnings, please refer to [GeoNet](https://www.geonet.org.nz/) and [Civil Defence](https://www.civildefence.govt.nz/).
+> **Disclaimer:** for research and educational use only. For official earthquake information and warnings see [GeoNet](https://www.geonet.org.nz/) and [Civil Defence](https://www.civildefence.govt.nz/).

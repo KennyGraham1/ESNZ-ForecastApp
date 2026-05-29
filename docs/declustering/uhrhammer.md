@@ -6,7 +6,7 @@ Uses the **same window-declustering engine** as [Gardner-Knopoff](gardner-knopof
 
 ## Windows
 
-An event of magnitude \(M\) defines the spatial radius \(W_s(M)\) and temporal window \(W_t(M)\):
+An event of magnitude $M$ defines the spatial radius $W_s(M)$ and temporal window $W_t(M)$:
 
 $$
 W_s(M) = \exp\!\bigl(-1.024 + 0.804\,M\bigr)\quad[\mathrm{km}],
@@ -14,7 +14,7 @@ W_s(M) = \exp\!\bigl(-1.024 + 0.804\,M\bigr)\quad[\mathrm{km}],
 W_t(M) = \exp\!\bigl(-2.870 + 1.235\,M\bigr)\quad[\mathrm{days}].
 $$
 
-A smaller event \(j\) is flagged **dependent** on a larger event \(i\) when
+A smaller event $j$ is flagged **dependent** on a larger event $i$ when
 
 $$
 d_{ij}\le W_s(M_i)
@@ -22,7 +22,7 @@ d_{ij}\le W_s(M_i)
 -f\,W_t(M_i)\le t_j - t_i \le W_t(M_i),
 $$
 
-with \(d_{ij}\) the haversine distance and \(f=\texttt{uhrFsTimeProp}\in[0,1]\) the foreshock look-back fraction (default \(f=1\), symmetric). Set \(f<1\) to weight aftershocks more heavily than foreshocks. These exponential windows are shorter than Gardner-Knopoff's for typical magnitudes, so Uhrhammer removes fewer events as dependent.
+with $d_{ij}$ the haversine distance and $f=\texttt{uhrFsTimeProp}\in[0,1]$ the foreshock look-back fraction (default $f=1$, symmetric). Set $f<1$ to weight aftershocks more heavily than foreshocks. These exponential windows are shorter than Gardner-Knopoff's for typical magnitudes, so Uhrhammer removes fewer events as dependent.
 
 ## How it works
 
@@ -44,11 +44,11 @@ flowchart TD
 
 | Key | Default | Description |
 |---|---|---|
-| `uhrSpatialA` | −1.024 | Spatial \(\exp(a+bM)\): \(a\) |
-| `uhrSpatialB` | 0.804 | Spatial \(\exp(a+bM)\): \(b\) |
-| `uhrTemporalA` | −2.870 | Temporal \(\exp(a+bM)\): \(a\) |
-| `uhrTemporalB` | 1.235 | Temporal \(\exp(a+bM)\): \(b\) |
-| `uhrFsTimeProp` | 1.0 | Foreshock look-back as a fraction of \(W_t\), in \([0,1]\) |
+| `uhrSpatialA` | −1.024 | Spatial $\exp(a+bM)$: $a$ |
+| `uhrSpatialB` | 0.804 | Spatial $\exp(a+bM)$: $b$ |
+| `uhrTemporalA` | −2.870 | Temporal $\exp(a+bM)$: $a$ |
+| `uhrTemporalB` | 1.235 | Temporal $\exp(a+bM)$: $b$ |
+| `uhrFsTimeProp` | 1.0 | Foreshock look-back as a fraction of $W_t$, in $[0,1]$ |
 
 ## References
 

@@ -14,7 +14,7 @@ $$
 r(M) = \max\!\bigl(10,\; r_{\text{mult}}\cdot \mathrm{RL}(M)\bigr)\quad[\mathrm{km}].
 $$
 
-An event \(j\) is an **aftershock** of mainshock \(i\) (magnitude \(M_i\ge M_{\min}\)) when it follows within the radius and time window:
+An event $j$ is an **aftershock** of mainshock $i$ (magnitude $M_i\ge M_{\min}$) when it follows within the radius and time window:
 
 $$
 d_{ij}\le r(M_i)
@@ -22,7 +22,7 @@ d_{ij}\le r(M_i)
 0 < t_j - t_i \le T_w .
 $$
 
-A candidate \(M_i\ge M_{\min}\) is **suppressed** — reclassified as an aftershock rather than a mainshock — if some larger event \(k\) (\(M_k>M_i\)) preceded it within
+A candidate $M_i\ge M_{\min}$ is **suppressed** — reclassified as an aftershock rather than a mainshock — if some larger event $k$ ($M_k>M_i$) preceded it within
 
 $$
 d_{ik}\le 5\,\mathrm{RL}(M_k)
@@ -52,9 +52,9 @@ flowchart TD
 | Key | Default | Description |
 |---|---|---|
 | `hardebeckMinMag` | 5.0 | Minimum magnitude for a valid mainshock |
-| `hardebeckTimeWindow` | 10 d | Aftershock collection window \(T_w\) |
-| `hardebeckRuptureMult` | 3 | Spatial radius multiplier \(r_{\text{mult}}\) (floor 10 km) |
-| `hardebeckMainshockTimeYears` | 3 yr | Mainshock-suppression look-back \(T_{\text{excl}}\) |
+| `hardebeckTimeWindow` | 10 d | Aftershock collection window $T_w$ |
+| `hardebeckRuptureMult` | 3 | Spatial radius multiplier $r_{\text{mult}}$ (floor 10 km) |
+| `hardebeckMainshockTimeYears` | 3 yr | Mainshock-suppression look-back $T_{\text{excl}}$ |
 
 ## References
 

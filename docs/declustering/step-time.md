@@ -2,7 +2,7 @@
 
 > Part of [Declustering Methods](../declustering-methods.md). Algorithm: `step-time` (Worker-routed). See also [STEP-Mag](step-mag.md).
 
-The chronological variant of STEP clustering. Events are filtered to \(M \ge M_c\) and processed in **time order**; each new mainshock seeds a sequence, and when a *larger* event joins that sequence the reference location, radius and look-back window are updated to the larger event — letting the window track a migrating sequence.
+The chronological variant of STEP clustering. Events are filtered to $M \ge M_c$ and processed in **time order**; each new mainshock seeds a sequence, and when a *larger* event joins that sequence the reference location, radius and look-back window are updated to the larger event — letting the window track a migrating sequence.
 
 ## Window
 
@@ -12,7 +12,7 @@ $$
 r(M_{\text{ref}}) = \max\!\bigl(5,\; 10^{\,0.59\,M_{\text{ref}} \,-\, 2.44}\bigr)\quad[\mathrm{km}].
 $$
 
-When a joined event has \(M > M_{\text{ref}}\), the reference magnitude, location \((\phi_{\text{ref}},\lambda_{\text{ref}})\) and look-back window are reset to that larger event, so \(r\) **grows** and the window re-centres to follow a migrating sequence. Only events with \(M \ge M_c\) enter the analysis.
+When a joined event has $M > M_{\text{ref}}$, the reference magnitude, location $(\phi_{\text{ref}},\lambda_{\text{ref}})$ and look-back window are reset to that larger event, so $r$ **grows** and the window re-centres to follow a migrating sequence. Only events with $M \ge M_c$ enter the analysis.
 
 ## How it works
 
@@ -40,9 +40,9 @@ flowchart TD
 
 | Key | Default | Description |
 |---|---|---|
-| `stepMinMag` | 2.0 | Completeness / seed magnitude \(M_c\) |
-| `stepT1` | 1 d | Look-back window \(T_1\) |
-| `stepT2` | 30 d | Look-forward window \(T_2\) |
+| `stepMinMag` | 2.0 | Completeness / seed magnitude $M_c$ |
+| `stepT1` | 1 d | Look-back window $T_1$ |
+| `stepT2` | 30 d | Look-forward window $T_2$ |
 
 ## References
 

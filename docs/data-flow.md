@@ -55,8 +55,8 @@ Each HTTP request passes through `fetchJsonWithRetry`:
 
 | Attempt | Delay before retry |
 |---|---|
-| 1 → 2 | \(600\ \text{ms} + \mathrm{Uniform}(0, 250)\ \text{ms}\) |
-| 2 → 3 | \(1{,}200\ \text{ms} + \mathrm{Uniform}(0, 250)\ \text{ms}\) |
+| 1 → 2 | $600\ \text{ms} + \mathrm{Uniform}(0, 250)\ \text{ms}$ |
+| 2 → 3 | $1{,}200\ \text{ms} + \mathrm{Uniform}(0, 250)\ \text{ms}$ |
 
 Retryable status codes: **429, 500, 502, 503, 504**.
 
@@ -66,10 +66,10 @@ An HTTP **400** on a chunk also triggers date-splitting before failing — this 
 
 ## Recursive date splitting
 
-When GeoNet returns \(\geq 20{,}000\) features for a chunk:
+When GeoNet returns $\geq 20{,}000$ features for a chunk:
 
-1. If the interval is \(> \mathrm{MIN\_SPLIT\_INTERVAL\_MS}\) (24 hours): bisect the interval into two equal halves, run both concurrently, merge results.
-2. If the interval is \(\leq 24\) hours: record a `truncated` issue and return empty — the data for that window is genuinely too dense to retrieve in full.
+1. If the interval is $> \mathrm{MIN\_SPLIT\_INTERVAL\_MS}$ (24 hours): bisect the interval into two equal halves, run both concurrently, merge results.
+2. If the interval is $\leq 24$ hours: record a `truncated` issue and return empty — the data for that window is genuinely too dense to retrieve in full.
 
 ---
 
@@ -212,7 +212,7 @@ The buffer is **transferred** (not copied) via `postMessage`, giving zero-copy h
 
 ### Reservoir sampling before clustering
 
-If \(n > 5{,}000\), events are subsampled using **Knuth's reservoir algorithm** before encoding. Each event has equal probability \(5000/n\) of inclusion, preserving the statistical distribution of the full catalog.
+If $n > 5{,}000$, events are subsampled using **Knuth's reservoir algorithm** before encoding. Each event has equal probability $5000/n$ of inclusion, preserving the statistical distribution of the full catalog.
 
 ---
 
@@ -226,8 +226,8 @@ $$\mathrm{RL}(M) = 10^{-2.44 + 0.59M} \quad [\text{km}]$$
 
 **Algorithm** (events processed largest-first):
 
-1. Skip candidate if within \(T_{\text{excl}} = 3\) years and \(5 \times \mathrm{RL}\) of a larger event
-2. Tag events within \(T_w = 10\) days and \(3 \times \mathrm{RL}\) km as aftershocks
+1. Skip candidate if within $T_{\text{excl}} = 3$ years and $5 \times \mathrm{RL}$ of a larger event
+2. Tag events within $T_w = 10$ days and $3 \times \mathrm{RL}$ km as aftershocks
 
 ### Gardner-Knopoff window method
 

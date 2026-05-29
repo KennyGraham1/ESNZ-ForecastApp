@@ -102,3 +102,37 @@
 | Spreadsheet import | xlsx | latest |
 | PDF export | jsPDF + html2canvas | latest |
 | Testing | Jest | 30 |
+
+```{toctree}
+:hidden:
+:caption: Guide
+:maxdepth: 2
+
+architecture
+data-flow
+clustering-algorithms
+statistical-models
+performance
+setup
+```
+
+```{toctree}
+:hidden:
+:caption: Declustering Methods
+:maxdepth: 2
+
+declustering-methods
+```
+
+```{toctree}
+:hidden:
+:caption: Reference
+:maxdepth: 1
+
+reference/CLUSTERING_ALGORITHMS
+reference/OMORI_LAW_ANALYSIS
+reference/CONFIDENCE_INTERVALS_IMPROVED
+reference/PERFORMANCE_OPTIMIZATIONS
+reference/ADDITIONAL_OPTIMIZATIONS
+reference/PARALLEL_FETCH_OPTIMIZATION
+```

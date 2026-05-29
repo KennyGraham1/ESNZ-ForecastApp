@@ -42,12 +42,12 @@ flowchart TD
 
 | Method | Family | Mainshock order | Spatial window | Temporal window | Symmetric? | Routing |
 |---|---|---|---|---|---|---|
-| [Gardner-Knopoff](declustering/gardner-knopoff.md) | Window | Magnitude desc | \(10^{0.1238M+0.983}\) km | piecewise (M≥6.5 split) | Yes (fore+after) | Worker |
-| [Uhrhammer](declustering/uhrhammer.md) | Window | Magnitude desc | \(e^{-1.024+0.804M}\) km | \(e^{-2.870+1.235M}\) d | Configurable | Worker |
-| [Hardebeck (2019)](declustering/hardebeck-2019.md) | Window | Magnitude desc | \(\max(10,\,r_{\text{mult}}\!\cdot\!\mathrm{RL})\) km | forward only \(T_w\) | No (aftershocks only) | Server |
-| [STEP-Mag](declustering/step-mag.md) / [STEP-Time](declustering/step-time.md) | Window | Mag-desc / chronological | Wells-Coppersmith RL | sliding \(T_1,T_2\) | Both directions | Worker |
-| [Reasenberg / TMC](declustering/reasenberg-tmc.md) | Link | Chronological | \(r_1+r_{\text{main}}\le 30\) km | adaptive \(\tau\) | Forward growth | Server |
-| [Nearest-Neighbor](declustering/nearest-neighbor.md) | Distance | Chronological | in \(\eta\) metric | in \(\eta\) metric | Causal (parent earlier) | Server |
+| [Gardner-Knopoff](declustering/gardner-knopoff.md) | Window | Magnitude desc | $10^{0.1238M+0.983}$ km | piecewise (M≥6.5 split) | Yes (fore+after) | Worker |
+| [Uhrhammer](declustering/uhrhammer.md) | Window | Magnitude desc | $e^{-1.024+0.804M}$ km | $e^{-2.870+1.235M}$ d | Configurable | Worker |
+| [Hardebeck (2019)](declustering/hardebeck-2019.md) | Window | Magnitude desc | $\max(10,\,r_{\text{mult}}\!\cdot\!\mathrm{RL})$ km | forward only $T_w$ | No (aftershocks only) | Server |
+| [STEP-Mag](declustering/step-mag.md) / [STEP-Time](declustering/step-time.md) | Window | Mag-desc / chronological | Wells-Coppersmith RL | sliding $T_1,T_2$ | Both directions | Worker |
+| [Reasenberg / TMC](declustering/reasenberg-tmc.md) | Link | Chronological | $r_1+r_{\text{main}}\le 30$ km | adaptive $\tau$ | Forward growth | Server |
+| [Nearest-Neighbor](declustering/nearest-neighbor.md) | Distance | Chronological | in $\eta$ metric | in $\eta$ metric | Causal (parent earlier) | Server |
 
 ---
 
@@ -73,6 +73,19 @@ flowchart TD
 - **Hardebeck (2019)** — best for explicit large-mainshock aftershock sequences; aftershocks only.
 - **STEP** — operational short-term forecasting style; sliding windows track migrating sequences.
 - **Reasenberg / TMC** — physically-motivated, adaptive, merges interacting sequences.
-- **Nearest-Neighbor** — fewest assumptions; lets the catalog's own \(\eta\) distribution define the threshold.
+- **Nearest-Neighbor** — fewest assumptions; lets the catalog's own $\eta$ distribution define the threshold.
 
 See [Clustering Algorithms](clustering-algorithms.md) for routing (Worker vs server), the coordinate system, and the complete `SpatialClusteringOptions` reference.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+declustering/gardner-knopoff
+declustering/uhrhammer
+declustering/hardebeck-2019
+declustering/step-mag
+declustering/step-time
+declustering/reasenberg-tmc
+declustering/nearest-neighbor
+```

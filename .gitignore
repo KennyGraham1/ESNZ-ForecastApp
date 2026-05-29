@@ -41,3 +41,4 @@ earthquake-cache.json
 .claude/
 # MkDocs build output
 site/
+docs/_build/
