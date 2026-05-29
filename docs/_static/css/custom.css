@@ -1,0 +1,49 @@
+/* ============================================================
+   ESNZ-ForecastApp documentation — custom Read the Docs tweaks
+   ============================================================ */
+
+/* Use the full width next to the sidebar. The default RTD theme caps the content
+   area at 800px, which leaves a large empty band on wide screens. */
+.wy-nav-content {
+    max-width: none;
+}
+
+/* ---- Mermaid diagrams: framed, centered, pan/zoom enabled ---------------- */
+/* (Pan/zoom controls are added by _static/js/mermaid-zoom.js via svg-pan-zoom.) */
+.mermaid {
+    margin: 1.5em auto;
+    padding: 0.25em;
+    border: 1px solid #e1e4e5;
+    border-radius: 6px;
+    background: #fafbfc;
+    overflow: auto;            /* graceful fallback: scroll if zoom JS is unavailable */
+    text-align: center;
+}
+.mermaid svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+}
+/* svg-pan-zoom +/- / reset control icons */
+.svg-pan-zoom-control {
+    cursor: pointer;
+    opacity: 0.65;
+    transition: opacity 0.15s ease-in-out;
+}
+.svg-pan-zoom-control:hover {
+    opacity: 1;
+}
+
+/* ---- Tables: wrap long parameter cells instead of forcing a horizontal
+        scrollbar (the RTD default is white-space: nowrap). ----------------- */
+.rst-content table.docutils td,
+.rst-content table.docutils th {
+    white-space: normal !important;
+    vertical-align: top;
+}
+
+/* ---- A little more breathing room around long content ------------------- */
+.rst-content .section > * ,
+.rst-content section > * {
+    max-width: 100%;
+}
