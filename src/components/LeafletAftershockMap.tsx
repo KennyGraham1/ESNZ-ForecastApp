@@ -127,6 +127,13 @@ function AftershockLayers({
     const map = useMap();
     const layerGroupRef = useRef<L.LayerGroup | null>(null);
     const lastFitTrigger = useRef<number | undefined>(undefined);
+    const rendererRef = useRef<L.Canvas | null>(null);
+
+    // One persistent canvas renderer; recreating it per effect run leaks renderers
+    // that keep listening to map move/zoom and crash on _ctx.save() after teardown.
+    if (!rendererRef.current) {
+        rendererRef.current = L.canvas({ padding: 0.5 });
+    }
 
     useEffect(() => {
         if (layerGroupRef.current) {
@@ -178,7 +185,7 @@ function AftershockLayers({
 
         // 2. Draw aftershock points
         if (points && points.length > 0) {
-            const renderer = L.canvas({ padding: 0.5 });
+            const renderer = rendererRef.current!;
 
             points.forEach(p => {
                 const wrappedLon = p.lon < 0 ? p.lon + 360 : p.lon;
@@ -240,6 +247,16 @@ function AftershockLayers({
             }
         };
     }, [map, points, mainEvent, radiusKm, colorPalette, minDays, maxDays, onPointClickRef, fitMapTrigger]);
+
+    // Tear down the persistent renderer on unmount so it stops listening to map events.
+    useEffect(() => {
+        return () => {
+            if (rendererRef.current) {
+                map.removeLayer(rendererRef.current);
+                rendererRef.current = null;
+            }
+        };
+    }, [map]);
 
     return null;
 }

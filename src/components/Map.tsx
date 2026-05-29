@@ -178,6 +178,14 @@ function EarthquakeLayer({
     // One LayerGroup per depth category — persisted across renders.
     const groupsRef = useRef<L.LayerGroup[]>([]);
 
+    // One persistent canvas renderer; recreating it on each data/palette change
+    // leaks renderers that keep listening to map move/zoom and crash on
+    // _ctx.save()/clearRect() once their canvas is torn down.
+    const rendererRef = useRef<L.Canvas | null>(null);
+    if (!rendererRef.current) {
+        rendererRef.current = L.canvas({ padding: 0.5 });
+    }
+
     // ── Effect 1: Rebuild markers when data or palette changes ────────────────
     useEffect(() => {
         // Remove and discard existing groups.
@@ -189,7 +197,7 @@ function EarthquakeLayer({
         // A single shared canvas renderer for the whole layer set.
         // This gives a massive performance boost for large datasets (>1 k points)
         // by bypassing per-element SVG DOM nodes entirely.
-        const renderer = L.canvas({ padding: 0.5 });
+        const renderer = rendererRef.current!;
 
         // Create one group per category — already added to the map so that
         // hiddenDepths effect can simply call addTo/removeFrom without caring
@@ -246,6 +254,16 @@ function EarthquakeLayer({
         // onPointClickRef is intentionally excluded — it is a stable ref.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [map, earthquakes, palette]);
+
+    // Tear down the persistent renderer on unmount so it stops listening to map events.
+    useEffect(() => {
+        return () => {
+            if (rendererRef.current) {
+                map.removeLayer(rendererRef.current);
+                rendererRef.current = null;
+            }
+        };
+    }, [map]);
 
     // ── Effect 2: Toggle group visibility — NO marker rebuild ─────────────────
     useEffect(() => {

@@ -63,6 +63,15 @@ function ClusterMarkersLayer({
 }) {
     const map = useMap();
     const layerGroupRef = useRef<L.LayerGroup | null>(null);
+    const rendererRef = useRef<L.Canvas | null>(null);
+
+    // One persistent canvas renderer for the lifetime of the map. Creating a new
+    // L.canvas() on every `points` change leaks renderers: each stays subscribed to
+    // the map's move/zoom events, and after its canvas is torn down the next pan/zoom
+    // calls _ctx.save()/clearRect() on an undefined context — the repeating crash.
+    if (!rendererRef.current) {
+        rendererRef.current = L.canvas({ padding: 0.5 });
+    }
 
     useEffect(() => {
         // Remove previous layer
@@ -75,7 +84,7 @@ function ClusterMarkersLayer({
         const group = L.layerGroup().addTo(map);
         layerGroupRef.current = group;
 
-        const renderer = L.canvas({ padding: 0.5 });
+        const renderer = rendererRef.current!;
         let bounds = L.latLngBounds([]);
         const isTouch = typeof window !== 'undefined' && 'ontouchstart' in window;
 
@@ -167,6 +176,17 @@ function ClusterMarkersLayer({
             }
         };
     }, [map, points, onPointClickRef]);
+
+    // Tear down the persistent renderer when the layer unmounts so it stops
+    // listening to the map's move/zoom events.
+    useEffect(() => {
+        return () => {
+            if (rendererRef.current) {
+                map.removeLayer(rendererRef.current);
+                rendererRef.current = null;
+            }
+        };
+    }, [map]);
 
     return null;
 }

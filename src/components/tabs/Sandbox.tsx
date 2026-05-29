@@ -196,10 +196,22 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     // ---- Group By options: presets + every numeric field (quantile-binned) + categoricals ----
     const histGroupOptions = useMemo(() => {
         const opts = [...HIST_GROUP_PRESETS];
+        // Dedupe by value so a data field that collides with a preset (e.g. a
+        // numeric `year` field vs the "Year" preset) isn't added twice — duplicate
+        // <option> values produce duplicate React keys and an ambiguous dropdown.
+        const seen = new Set(opts.map(o => o.value));
         numericFields
             .filter(f => f !== 'time') // raw time grouping is degenerate — use the Year preset
-            .forEach(f => opts.push({ value: f, label: `By ${f} (quantiles)` }));
-        categoricalFields.forEach(f => opts.push({ value: f, label: `By ${f}` }));
+            .forEach(f => {
+                if (seen.has(f)) return;
+                seen.add(f);
+                opts.push({ value: f, label: `By ${f} (quantiles)` });
+            });
+        categoricalFields.forEach(f => {
+            if (seen.has(f)) return;
+            seen.add(f);
+            opts.push({ value: f, label: `By ${f}` });
+        });
         return opts;
     }, [numericFields, categoricalFields]);
 
