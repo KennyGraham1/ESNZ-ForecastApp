@@ -420,3 +420,19 @@ After clustering, two selection modes are available:
 | `cluster` | Click any point to select all events with the same cluster label |
 
 A **"Show only this cluster"** toggle isolates one cluster across all three linked views (Leaflet map, temporal scatter, 3D plot).
+
+---
+
+## Per-algorithm deep dives
+
+The **density / partition** algorithms each have a dedicated page with a step-by-step Mermaid diagram below. The **declustering** algorithms (Gardner-Knopoff, Uhrhammer, Hardebeck, STEP, Reasenberg/TMC, Nearest-Neighbor) live under [Declustering Methods](declustering-methods.md).
+
+```{toctree}
+:maxdepth: 1
+
+clustering/dbscan
+clustering/optics
+clustering/kmeans
+clustering/st-dbscan
+clustering/hdbscan
+```

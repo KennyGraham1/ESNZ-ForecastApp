@@ -832,33 +832,21 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                 className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                 title="Select clustering algorithm"
                             >
-                                <optgroup label="Density-Based">
-                                    <option value="dbscan">DBSCAN - Density-Based</option>
-                                    <option value="optics">OPTICS - Hierarchical Density</option>
+                                <optgroup label="Clustering">
+                                    <option value="dbscan">DBSCAN — density-based</option>
+                                    <option value="optics">OPTICS — variable density</option>
+                                    <option value="st-dbscan">ST-DBSCAN — spatio-temporal density</option>
+                                    <option value="hdbscan">HDBSCAN — hierarchical density</option>
+                                    <option value="kmeans">K-Means — partition-based</option>
                                 </optgroup>
-                                {/* HIERARCHICAL CLUSTERING OPTIONS - COMMENTED OUT FOR FUTURE RESTORATION
-                                <optgroup label="Hierarchical">
-                                    <option value="hierarchical-single">Single Linkage - Min distance</option>
-                                    <option value="hierarchical-complete">Complete Linkage - Max distance</option>
-                                    <option value="hierarchical-average">Average Linkage - Avg distance</option>
-                                    <option value="hierarchical-ward">Ward Linkage - Min variance</option>
-                                </optgroup>
-                                */}
-                                <optgroup label="STEP Seismology">
-                                    <option value="step-mag">STEP Magnitude - Largest first</option>
-                                    <option value="step-time">STEP Time - Time-ordered</option>
-                                </optgroup>
-                                <optgroup label="Window Declustering">
-                                    <option value="gardner-knopoff">Gardner-Knopoff (1974)</option>
-                                    <option value="uhrhammer">Uhrhammer (1986)</option>
-                                </optgroup>
-                                <optgroup label="Other">
-                                    <option value="kmeans">K-Means - Partition-based</option>
-                                    <option value="nearest-neighbor">Nearest-Neighbor - Seismology</option>
-                                    <option value="st-dbscan">ST-DBSCAN - Spatio-Temporal Density</option>
-                                    <option value="tmc">TMC - Reasenberg Style</option>
-                                    <option value="hardebeck-2019">Hardebeck (2019)</option>
-                                    <option value="hdbscan">HDBSCAN - Hierarchical Density</option>
+                                <optgroup label="Declustering">
+                                    <option value="gardner-knopoff">Gardner-Knopoff (1974) — window</option>
+                                    <option value="uhrhammer">Uhrhammer (1986) — window</option>
+                                    <option value="hardebeck-2019">Hardebeck (2019) — rupture window</option>
+                                    <option value="step-mag">STEP Magnitude — largest first</option>
+                                    <option value="step-time">STEP Time — time-ordered</option>
+                                    <option value="tmc">TMC — Reasenberg (1985)</option>
+                                    <option value="nearest-neighbor">Nearest-Neighbor — Zaliapin–Ben-Zion</option>
                                 </optgroup>
                             </select>
                         </div>

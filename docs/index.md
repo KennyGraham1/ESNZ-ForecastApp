@@ -105,7 +105,7 @@
 
 ```{toctree}
 :hidden:
-:caption: Guide
+:caption: GUIDE
 :maxdepth: 2
 
 architecture
@@ -118,7 +118,7 @@ setup
 
 ```{toctree}
 :hidden:
-:caption: Declustering Methods
+:caption: DECLUSTERING METHODS
 :maxdepth: 2
 
 declustering-methods
@@ -126,7 +126,7 @@ declustering-methods
 
 ```{toctree}
 :hidden:
-:caption: Reference
+:caption: REFERENCE
 :maxdepth: 1
 
 reference/CLUSTERING_ALGORITHMS

@@ -52,6 +52,18 @@ html_theme_options = {
     "navigation_depth": 3,
     "titles_only": False,
     "style_external_links": True,
+    "prev_next_buttons_location": "bottom",
+}
+
+# Show the "Edit on GitHub" link (top-right) like the Read the Docs docs site.
+# On Read the Docs hosting this is added automatically; this also enables it for
+# local builds.
+html_context = {
+    "display_github": True,
+    "github_user": "KennyGraham1",
+    "github_repo": "ESNZ-ForecastApp",
+    "github_version": "main",
+    "conf_py_path": "/docs/",
 }
 
 # Render Mermaid on the client with the raw (script) method — works on
