@@ -46,6 +46,16 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         hardebeckMainshockTimeYears,
         hdbscanMinClusterSize,
         hdbscanMinSamples,
+        gkSpatialA,
+        gkSpatialB,
+        gkTemporalC,
+        gkTemporalD,
+        gkPiecewiseTemporal,
+        uhrSpatialA,
+        uhrSpatialB,
+        uhrTemporalA,
+        uhrTemporalB,
+        uhrFsTimeProp,
         includeNoise,
         selectedIndices,
         setAlgorithm: setClusteringAlgorithm,
@@ -68,6 +78,16 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHardebeckMainshockTimeYears,
         setHdbscanMinClusterSize,
         setHdbscanMinSamples,
+        setGkSpatialA,
+        setGkSpatialB,
+        setGkTemporalC,
+        setGkTemporalD,
+        setGkPiecewiseTemporal,
+        setUhrSpatialA,
+        setUhrSpatialB,
+        setUhrTemporalA,
+        setUhrTemporalB,
+        setUhrFsTimeProp,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -95,6 +115,16 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
     const [localHardebeckMainshockTimeYears, setLocalHardebeckMainshockTimeYears] = useState(hardebeckMainshockTimeYears);
     const [localHdbscanMinClusterSize, setLocalHdbscanMinClusterSize] = useState(hdbscanMinClusterSize);
     const [localHdbscanMinSamples, setLocalHdbscanMinSamples] = useState(hdbscanMinSamples);
+    const [localGkSpatialA, setLocalGkSpatialA] = useState(gkSpatialA);
+    const [localGkSpatialB, setLocalGkSpatialB] = useState(gkSpatialB);
+    const [localGkTemporalC, setLocalGkTemporalC] = useState(gkTemporalC);
+    const [localGkTemporalD, setLocalGkTemporalD] = useState(gkTemporalD);
+    const [localGkPiecewiseTemporal, setLocalGkPiecewiseTemporal] = useState(gkPiecewiseTemporal);
+    const [localUhrSpatialA, setLocalUhrSpatialA] = useState(uhrSpatialA);
+    const [localUhrSpatialB, setLocalUhrSpatialB] = useState(uhrSpatialB);
+    const [localUhrTemporalA, setLocalUhrTemporalA] = useState(uhrTemporalA);
+    const [localUhrTemporalB, setLocalUhrTemporalB] = useState(uhrTemporalB);
+    const [localUhrFsTimeProp, setLocalUhrFsTimeProp] = useState(uhrFsTimeProp);
 
     // Selection mode: 'individual' selects one point; 'cluster' selects all events in the same cluster
     const [selectionMode, setSelectionMode] = useState<'individual' | 'cluster'>('individual');
@@ -122,7 +152,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setLocalHardebeckMainshockTimeYears(hardebeckMainshockTimeYears);
         setLocalHdbscanMinClusterSize(hdbscanMinClusterSize);
         setLocalHdbscanMinSamples(hdbscanMinSamples);
-    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples]);
+        setLocalGkSpatialA(gkSpatialA);
+        setLocalGkSpatialB(gkSpatialB);
+        setLocalGkTemporalC(gkTemporalC);
+        setLocalGkTemporalD(gkTemporalD);
+        setLocalGkPiecewiseTemporal(gkPiecewiseTemporal);
+        setLocalUhrSpatialA(uhrSpatialA);
+        setLocalUhrSpatialB(uhrSpatialB);
+        setLocalUhrTemporalA(uhrTemporalA);
+        setLocalUhrTemporalB(uhrTemporalB);
+        setLocalUhrFsTimeProp(uhrFsTimeProp);
+    }, [epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples, gkSpatialA, gkSpatialB, gkTemporalC, gkTemporalD, gkPiecewiseTemporal, uhrSpatialA, uhrSpatialB, uhrTemporalA, uhrTemporalB, uhrFsTimeProp]);
 
     // Snapshot of all local slider values — changes reference only when a value actually changes
     const localParamsSnapshot = useMemo(() => ({
@@ -145,7 +185,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         hardebeckMainshockTimeYears: localHardebeckMainshockTimeYears,
         hdbscanMinClusterSize: localHdbscanMinClusterSize,
         hdbscanMinSamples: localHdbscanMinSamples,
-    }), [localEpsilon, localMinSamples, localK, localNnThreshold, localStepMinMag, localStepT1, localStepT2, localEpsilonTemporal, localTmcRfact, localTmcTau0, localTmcTauMax, localTmcP1, localTmcXk, localHardebeckMinMag, localHardebeckTimeWindow, localHardebeckRuptureMult, localHardebeckMainshockTimeYears, localHdbscanMinClusterSize, localHdbscanMinSamples]);
+        gkSpatialA: localGkSpatialA,
+        gkSpatialB: localGkSpatialB,
+        gkTemporalC: localGkTemporalC,
+        gkTemporalD: localGkTemporalD,
+        gkPiecewiseTemporal: localGkPiecewiseTemporal,
+        uhrSpatialA: localUhrSpatialA,
+        uhrSpatialB: localUhrSpatialB,
+        uhrTemporalA: localUhrTemporalA,
+        uhrTemporalB: localUhrTemporalB,
+        uhrFsTimeProp: localUhrFsTimeProp,
+    }), [localEpsilon, localMinSamples, localK, localNnThreshold, localStepMinMag, localStepT1, localStepT2, localEpsilonTemporal, localTmcRfact, localTmcTau0, localTmcTauMax, localTmcP1, localTmcXk, localHardebeckMinMag, localHardebeckTimeWindow, localHardebeckRuptureMult, localHardebeckMainshockTimeYears, localHdbscanMinClusterSize, localHdbscanMinSamples, localGkSpatialA, localGkSpatialB, localGkTemporalC, localGkTemporalD, localGkPiecewiseTemporal, localUhrSpatialA, localUhrSpatialB, localUhrTemporalA, localUhrTemporalB, localUhrFsTimeProp]);
 
     // Debounce: auto-apply to context 600ms after the user stops moving any slider,
     // so clustering re-runs without requiring an explicit "Apply" click.
@@ -171,7 +221,17 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
         setHardebeckMainshockTimeYears(debouncedLocalParams.hardebeckMainshockTimeYears);
         setHdbscanMinClusterSize(debouncedLocalParams.hdbscanMinClusterSize);
         setHdbscanMinSamples(debouncedLocalParams.hdbscanMinSamples);
-    }, [debouncedLocalParams, setEpsilon, setMinSamples, setK, setNnThreshold, setStepMinMag, setStepT1, setStepT2, setEpsilonTemporal, setTmcRfact, setTmcTau0, setTmcTauMax, setTmcP1, setTmcXk, setHardebeckMinMag, setHardebeckTimeWindow, setHardebeckRuptureMult, setHardebeckMainshockTimeYears, setHdbscanMinClusterSize, setHdbscanMinSamples]);
+        setGkSpatialA(debouncedLocalParams.gkSpatialA);
+        setGkSpatialB(debouncedLocalParams.gkSpatialB);
+        setGkTemporalC(debouncedLocalParams.gkTemporalC);
+        setGkTemporalD(debouncedLocalParams.gkTemporalD);
+        setGkPiecewiseTemporal(debouncedLocalParams.gkPiecewiseTemporal);
+        setUhrSpatialA(debouncedLocalParams.uhrSpatialA);
+        setUhrSpatialB(debouncedLocalParams.uhrSpatialB);
+        setUhrTemporalA(debouncedLocalParams.uhrTemporalA);
+        setUhrTemporalB(debouncedLocalParams.uhrTemporalB);
+        setUhrFsTimeProp(debouncedLocalParams.uhrFsTimeProp);
+    }, [debouncedLocalParams, setEpsilon, setMinSamples, setK, setNnThreshold, setStepMinMag, setStepT1, setStepT2, setEpsilonTemporal, setTmcRfact, setTmcTau0, setTmcTauMax, setTmcP1, setTmcXk, setHardebeckMinMag, setHardebeckTimeWindow, setHardebeckRuptureMult, setHardebeckMainshockTimeYears, setHdbscanMinClusterSize, setHdbscanMinSamples, setGkSpatialA, setGkSpatialB, setGkTemporalC, setGkTemporalD, setGkPiecewiseTemporal, setUhrSpatialA, setUhrSpatialB, setUhrTemporalA, setUhrTemporalB, setUhrFsTimeProp]);
 
     // Apply handler — immediate application without waiting for the debounce delay
     const handleApplyParameters = () => {
@@ -334,8 +394,18 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
             hardebeckMainshockTimeYears,
             hdbscanMinClusterSize,
             hdbscanMinSamples,
+            gkSpatialA,
+            gkSpatialB,
+            gkTemporalC,
+            gkTemporalD,
+            gkPiecewiseTemporal,
+            uhrSpatialA,
+            uhrSpatialB,
+            uhrTemporalA,
+            uhrTemporalB,
+            uhrFsTimeProp,
         });
-    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples, runClustering]);
+    }, [processedEarthquakes, clusteringAlgorithm, epsilon, minSamples, k, nnThreshold, stepMinMag, stepT1, stepT2, epsilonTemporal, tmcRfact, tmcTau0, tmcTauMax, tmcP1, tmcXk, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears, hdbscanMinClusterSize, hdbscanMinSamples, gkSpatialA, gkSpatialB, gkTemporalC, gkTemporalD, gkPiecewiseTemporal, uhrSpatialA, uhrSpatialB, uhrTemporalA, uhrTemporalB, uhrFsTimeProp, runClustering]);
 
     // Helper to get consistent cluster colors
     const getClusterColor = (clusterLabel: number) => {
@@ -778,6 +848,10 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                                     <option value="step-mag">STEP Magnitude - Largest first</option>
                                     <option value="step-time">STEP Time - Time-ordered</option>
                                 </optgroup>
+                                <optgroup label="Window Declustering">
+                                    <option value="gardner-knopoff">Gardner-Knopoff (1974)</option>
+                                    <option value="uhrhammer">Uhrhammer (1986)</option>
+                                </optgroup>
                                 <optgroup label="Other">
                                     <option value="kmeans">K-Means - Partition-based</option>
                                     <option value="nearest-neighbor">Nearest-Neighbor - Seismology</option>
@@ -789,6 +863,138 @@ const TemporalSpatial = memo(function TemporalSpatial({ earthquakes }: TemporalS
                             </select>
                         </div>
                         <div className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3 text-xs text-gray-600 [&>div]:min-w-0 [&>div]:rounded-md [&>div]:border [&>div]:border-gray-200 [&>div]:bg-gray-50 [&>div]:px-3 [&>div]:py-2 [&>div]:space-y-1 [&_input[type=range]]:w-full">
+                            {clusteringAlgorithm === 'gardner-knopoff' && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Spatial a: <span className="font-semibold">{localGkSpatialA.toFixed(4)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.05}
+                                            max={0.25}
+                                            step={0.0001}
+                                            value={localGkSpatialA}
+                                            onChange={(e) => setLocalGkSpatialA(parseFloat(e.target.value))}
+                                            title="Spatial window 10^(a·M + b) km — coefficient a (GK 1974 default 0.1238)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Spatial b: <span className="font-semibold">{localGkSpatialB.toFixed(3)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.5}
+                                            max={1.5}
+                                            step={0.001}
+                                            value={localGkSpatialB}
+                                            onChange={(e) => setLocalGkSpatialB(parseFloat(e.target.value))}
+                                            title="Spatial window 10^(a·M + b) km — coefficient b (GK 1974 default 0.983)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={localGkPiecewiseTemporal}
+                                                onChange={(e) => setLocalGkPiecewiseTemporal(e.target.checked)}
+                                                title="Use the published GK 1974 piecewise temporal window (M≥6.5 vs M<6.5)"
+                                            />
+                                            <span>Piecewise temporal (GK 1974)</span>
+                                        </label>
+                                        <span className="text-gray-400">{localGkPiecewiseTemporal ? 'M≥6.5: 10^(0.032M+2.7389) d, else 10^(0.5409M−0.547) d' : 'single form 10^(c·M+d) d'}</span>
+                                    </div>
+                                    {!localGkPiecewiseTemporal && (
+                                        <>
+                                            <div className="flex flex-col">
+                                                <span>Temporal c: <span className="font-semibold">{localGkTemporalC.toFixed(4)}</span></span>
+                                                <input
+                                                    type="range"
+                                                    min={0.01}
+                                                    max={0.1}
+                                                    step={0.0001}
+                                                    value={localGkTemporalC}
+                                                    onChange={(e) => setLocalGkTemporalC(parseFloat(e.target.value))}
+                                                    title="Temporal window 10^(c·M + d) days — coefficient c (default 0.032)"
+                                                />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span>Temporal d: <span className="font-semibold">{localGkTemporalD.toFixed(3)}</span></span>
+                                                <input
+                                                    type="range"
+                                                    min={2.0}
+                                                    max={3.5}
+                                                    step={0.001}
+                                                    value={localGkTemporalD}
+                                                    onChange={(e) => setLocalGkTemporalD(parseFloat(e.target.value))}
+                                                    title="Temporal window 10^(c·M + d) days — coefficient d (default 2.7389)"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                            {clusteringAlgorithm === 'uhrhammer' && (
+                                <>
+                                    <div className="flex flex-col">
+                                        <span>Spatial a: <span className="font-semibold">{localUhrSpatialA.toFixed(3)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={-2.0}
+                                            max={0}
+                                            step={0.001}
+                                            value={localUhrSpatialA}
+                                            onChange={(e) => setLocalUhrSpatialA(parseFloat(e.target.value))}
+                                            title="Spatial window exp(a + b·M) km — coefficient a (Uhrhammer 1986 default −1.024)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Spatial b: <span className="font-semibold">{localUhrSpatialB.toFixed(3)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.5}
+                                            max={1.2}
+                                            step={0.001}
+                                            value={localUhrSpatialB}
+                                            onChange={(e) => setLocalUhrSpatialB(parseFloat(e.target.value))}
+                                            title="Spatial window exp(a + b·M) km — coefficient b (default 0.804)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Temporal a: <span className="font-semibold">{localUhrTemporalA.toFixed(3)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={-4.0}
+                                            max={-1.0}
+                                            step={0.001}
+                                            value={localUhrTemporalA}
+                                            onChange={(e) => setLocalUhrTemporalA(parseFloat(e.target.value))}
+                                            title="Temporal window exp(a + b·M) days — coefficient a (default −2.870)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Temporal b: <span className="font-semibold">{localUhrTemporalB.toFixed(3)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0.8}
+                                            max={1.6}
+                                            step={0.001}
+                                            value={localUhrTemporalB}
+                                            onChange={(e) => setLocalUhrTemporalB(parseFloat(e.target.value))}
+                                            title="Temporal window exp(a + b·M) days — coefficient b (default 1.235)"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span>Foreshock fraction: <span className="font-semibold">{localUhrFsTimeProp.toFixed(2)}</span></span>
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={1}
+                                            step={0.05}
+                                            value={localUhrFsTimeProp}
+                                            onChange={(e) => setLocalUhrFsTimeProp(parseFloat(e.target.value))}
+                                            title="Fraction of the temporal window applied before the mainshock (1 = symmetric, 0 = aftershocks only)"
+                                        />
+                                    </div>
+                                </>
+                            )}
                             {(clusteringAlgorithm === 'dbscan' || clusteringAlgorithm === 'optics') && (
                                 <>
                                     <div className="flex flex-col">

@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { EarthquakeData } from '@/types/earthquake';
 import GenericScatterPlot from '@/components/sandbox/GenericScatterPlot';
-import GenericHistogram from '@/components/sandbox/GenericHistogram';
+import GenericHistogram, { HistogramGroupBy } from '@/components/sandbox/GenericHistogram';
 import StatsPanel from '@/components/sandbox/StatsPanel';
 import FieldSelect from '@/components/sandbox/FieldSelect';
 import { safeMinMax } from '@/utils/arrayMath';
@@ -53,6 +53,14 @@ const PALETTES = {
 
 const PALETTE_NAMES = Object.keys(PALETTES);
 
+// Named seismological grouping presets; field-based options are appended at runtime.
+const HIST_GROUP_PRESETS = [
+    { value: '', label: 'None (overlay selected fields)' },
+    { value: 'depthClass', label: 'Depth class (shallow/intermediate/deep)' },
+    { value: 'magClass', label: 'Magnitude class' },
+    { value: 'year', label: 'Year' },
+];
+
 export default function Sandbox({ earthquakes }: SandboxProps) {
     // ---- State ----
 
@@ -75,6 +83,10 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
     // Histogram Config
     const [histFields, setHistFields] = useState<string[]>(['magnitude']); // Multi-select support
     const [histBins, setHistBins] = useState<number>(20);
+    const [histGroupBy, setHistGroupBy] = useState<HistogramGroupBy>('');
+    const [histLogY, setHistLogY] = useState<boolean>(false);
+    const [histCumulative, setHistCumulative] = useState<boolean>(false);
+    const [histDensity, setHistDensity] = useState<boolean>(false);
 
     // 3D Config
     const [threeDX, setThreeDX] = useState<keyof EarthquakeData>('longitude');
@@ -165,6 +177,31 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
 
         return ['time', 'magnitude', 'depth', 'latitude', 'longitude', ...Array.from(dynamicFields).sort()];
     }, [earthquakes]);
+
+    // ---- Categorical (string-valued) fields, for grouping ----
+    const categoricalFields = useMemo(() => {
+        if (!earthquakes || earthquakes.length === 0) return [] as string[];
+        const found = new Set<string>();
+        const sampleSize = Math.min(earthquakes.length, 100);
+        for (let i = 0; i < sampleSize; i++) {
+            const eq = earthquakes[i] as Record<string, unknown>;
+            Object.keys(eq).forEach(key => {
+                if (key === 'eventID' || key === 'time') return; // unique id / Date, not groupable
+                if (typeof eq[key] === 'string') found.add(key);
+            });
+        }
+        return Array.from(found).sort();
+    }, [earthquakes]);
+
+    // ---- Group By options: presets + every numeric field (quantile-binned) + categoricals ----
+    const histGroupOptions = useMemo(() => {
+        const opts = [...HIST_GROUP_PRESETS];
+        numericFields
+            .filter(f => f !== 'time') // raw time grouping is degenerate — use the Year preset
+            .forEach(f => opts.push({ value: f, label: `By ${f} (quantiles)` }));
+        categoricalFields.forEach(f => opts.push({ value: f, label: `By ${f}` }));
+        return opts;
+    }, [numericFields, categoricalFields]);
 
     // ---- Global Data Range Calculation ----
     const globalDateRange = useMemo(() => {
@@ -354,6 +391,31 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                         className="w-full accent-indigo-600"
                                     />
                                 </div>
+
+                                <FieldSelect
+                                    label="Group / Color By"
+                                    value={histGroupBy}
+                                    onChange={(v) => setHistGroupBy(v as HistogramGroupBy)}
+                                    options={histGroupOptions}
+                                    hint={histGroupBy ? `Splitting "${histFields[0] ?? '—'}" (the first selected field) by group.` : undefined}
+                                />
+
+                                {/* Scientific options */}
+                                <fieldset className="border-t pt-3 space-y-2">
+                                    <legend className="text-xs font-medium text-gray-500 mb-1">Scientific options</legend>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                        <input type="checkbox" checked={histLogY} onChange={(e) => setHistLogY(e.target.checked)} className="accent-indigo-600" />
+                                        Log-scale Y axis <span className="text-[10px] text-gray-400">(Gutenberg–Richter)</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                        <input type="checkbox" checked={histCumulative} onChange={(e) => setHistCumulative(e.target.checked)} className="accent-indigo-600" />
+                                        Cumulative overlay <span className="text-[10px] text-gray-400">(N ≥ value)</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                        <input type="checkbox" checked={histDensity} onChange={(e) => setHistDensity(e.target.checked)} className="accent-indigo-600" />
+                                        Normalize to density <span className="text-[10px] text-gray-400">(per-series)</span>
+                                    </label>
+                                </fieldset>
                             </div>
                         )}
 
@@ -437,9 +499,13 @@ export default function Sandbox({ earthquakes }: SandboxProps) {
                                             // filtered set rather than the sampled displayData. Sampling would
                                             // distort counts and badly inflate the 'gap' (inter-event time) field.
                                             earthquakes={exportData}
-                                            fields={histFields as any}
+                                            fields={histFields}
                                             bins={histBins}
                                             title="Comparative Distribution"
+                                            groupBy={histGroupBy}
+                                            logY={histLogY}
+                                            cumulative={histCumulative}
+                                            density={histDensity}
                                         />
                                     </div>
                                 ) : (

@@ -8,6 +8,8 @@ export type ClusteringAlgorithm =
     | 'st-dbscan'         // Spatio-Temporal DBSCAN
     | 'tmc'               // Time Magnitude Clustering (Reasenberg-style)
     | 'hardebeck-2019'    // Hardebeck (2019) updated window method
+    | 'gardner-knopoff'   // Gardner & Knopoff (1974) magnitude windows
+    | 'uhrhammer'         // Uhrhammer (1986) magnitude windows
     | 'hdbscan';          // Hierarchical DBSCAN (Campello et al. 2013)
 
 export interface ClusterResult {
@@ -59,4 +61,16 @@ export interface SpatialClusteringOptions {
     // HDBSCAN parameters (Campello et al. 2013)
     hdbscanMinClusterSize?: number; // Smallest grouping considered a true cluster (default: 5)
     hdbscanMinSamples?: number;     // k-NN neighbourhood size for core-distance (default: 5)
+    // Gardner & Knopoff (1974) window parameters
+    gkSpatialA?: number;            // Spatial window 10^(a*M+b): a (default: 0.1238)
+    gkSpatialB?: number;            // Spatial window 10^(a*M+b): b (default: 0.983)
+    gkTemporalC?: number;           // Temporal 10^(c*M+d) when not piecewise: c (default: 0.032)
+    gkTemporalD?: number;           // Temporal 10^(c*M+d) when not piecewise: d (default: 2.7389)
+    gkPiecewiseTemporal?: boolean;  // Use the published M>=6.5 piecewise temporal window (default: true)
+    // Uhrhammer (1986) window parameters
+    uhrSpatialA?: number;           // Spatial window exp(a+b*M): a (default: -1.024)
+    uhrSpatialB?: number;           // Spatial window exp(a+b*M): b (default: 0.804)
+    uhrTemporalA?: number;          // Temporal window exp(a+b*M): a (default: -2.870)
+    uhrTemporalB?: number;          // Temporal window exp(a+b*M): b (default: 1.235)
+    uhrFsTimeProp?: number;         // Foreshock window fraction of T(M), in [0,1] (default: 1.0)
 }

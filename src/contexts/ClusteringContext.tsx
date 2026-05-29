@@ -30,6 +30,18 @@ export interface ClusteringState {
     // HDBSCAN parameters
     hdbscanMinClusterSize: number;
     hdbscanMinSamples: number;
+    // Gardner-Knopoff (1974) window parameters
+    gkSpatialA: number;
+    gkSpatialB: number;
+    gkTemporalC: number;
+    gkTemporalD: number;
+    gkPiecewiseTemporal: boolean;
+    // Uhrhammer (1986) window parameters
+    uhrSpatialA: number;
+    uhrSpatialB: number;
+    uhrTemporalA: number;
+    uhrTemporalB: number;
+    uhrFsTimeProp: number;
 
     // Visualization Options
     includeNoise: boolean; // Whether to include noise points (cluster -1) in visualization
@@ -58,6 +70,16 @@ export interface ClusteringState {
     setHardebeckMainshockTimeYears: (val: number) => void;
     setHdbscanMinClusterSize: (val: number) => void;
     setHdbscanMinSamples: (val: number) => void;
+    setGkSpatialA: (val: number) => void;
+    setGkSpatialB: (val: number) => void;
+    setGkTemporalC: (val: number) => void;
+    setGkTemporalD: (val: number) => void;
+    setGkPiecewiseTemporal: (val: boolean) => void;
+    setUhrSpatialA: (val: number) => void;
+    setUhrSpatialB: (val: number) => void;
+    setUhrTemporalA: (val: number) => void;
+    setUhrTemporalB: (val: number) => void;
+    setUhrFsTimeProp: (val: number) => void;
     setIncludeNoise: (include: boolean) => void;
     setSelectedIndices: (indices: Set<number>) => void;
     toggleSelection: (index: number) => void;
@@ -79,7 +101,7 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     const [stepT1, setStepT1] = useState(1);            // Time window before (days)
     const [stepT2, setStepT2] = useState(30);           // Time window after (days)
     // ST-DBSCAN parameters
-    const [epsilonTemporal, setEpsilonTemporal] = useState(7); // days
+    const [epsilonTemporal, setEpsilonTemporal] = useState(14); // days (esnz decluster_st_dbscan default)
     // TMC parameters
     const [tmcRfact, setTmcRfact] = useState(10);
     const [tmcTau0, setTmcTau0] = useState(2);
@@ -94,6 +116,18 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
     // HDBSCAN parameters
     const [hdbscanMinClusterSize, setHdbscanMinClusterSize] = useState(5);
     const [hdbscanMinSamples, setHdbscanMinSamples] = useState(5);
+    // Gardner-Knopoff (1974) window parameters
+    const [gkSpatialA, setGkSpatialA] = useState(0.1238);
+    const [gkSpatialB, setGkSpatialB] = useState(0.983);
+    const [gkTemporalC, setGkTemporalC] = useState(0.032);
+    const [gkTemporalD, setGkTemporalD] = useState(2.7389);
+    const [gkPiecewiseTemporal, setGkPiecewiseTemporal] = useState(true);
+    // Uhrhammer (1986) window parameters
+    const [uhrSpatialA, setUhrSpatialA] = useState(-1.024);
+    const [uhrSpatialB, setUhrSpatialB] = useState(0.804);
+    const [uhrTemporalA, setUhrTemporalA] = useState(-2.870);
+    const [uhrTemporalB, setUhrTemporalB] = useState(1.235);
+    const [uhrFsTimeProp, setUhrFsTimeProp] = useState(1.0);
 
     // Visualization Options
     const [includeNoise, setIncludeNoise] = useState(true);
@@ -159,6 +193,16 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         hardebeckMainshockTimeYears,
         hdbscanMinClusterSize,
         hdbscanMinSamples,
+        gkSpatialA,
+        gkSpatialB,
+        gkTemporalC,
+        gkTemporalD,
+        gkPiecewiseTemporal,
+        uhrSpatialA,
+        uhrSpatialB,
+        uhrTemporalA,
+        uhrTemporalB,
+        uhrFsTimeProp,
         includeNoise,
         selectedIndices,
         setAlgorithm,
@@ -181,6 +225,16 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         setHardebeckMainshockTimeYears,
         setHdbscanMinClusterSize,
         setHdbscanMinSamples,
+        setGkSpatialA,
+        setGkSpatialB,
+        setGkTemporalC,
+        setGkTemporalD,
+        setGkPiecewiseTemporal,
+        setUhrSpatialA,
+        setUhrSpatialB,
+        setUhrTemporalA,
+        setUhrTemporalB,
+        setUhrFsTimeProp,
         setIncludeNoise,
         setSelectedIndices,
         toggleSelection,
@@ -207,6 +261,16 @@ export function ClusteringProvider({ children }: { children: ReactNode }) {
         hardebeckMainshockTimeYears,
         hdbscanMinClusterSize,
         hdbscanMinSamples,
+        gkSpatialA,
+        gkSpatialB,
+        gkTemporalC,
+        gkTemporalD,
+        gkPiecewiseTemporal,
+        uhrSpatialA,
+        uhrSpatialB,
+        uhrTemporalA,
+        uhrTemporalB,
+        uhrFsTimeProp,
         includeNoise,
         selectedIndicesKey,
         toggleSelection,

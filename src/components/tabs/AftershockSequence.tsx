@@ -235,40 +235,52 @@ export default function AftershockSequence({ earthquakes }: AftershockSequencePr
         return sorted.filter((_, idx) => !isDependentEvent.has(idx));
     };
 
-    // SRL Paper Method Declustering (Configurable)
+    // SRL Paper Method Declustering — faithful two-stage Hardebeck et al. (2019),
+    // matching the esnz decluster_srl_hardebeck reference:
+    //   Stage 1 — a candidate mainshock is suppressed if it falls within
+    //     (srlMainshockTimeWindow years, srlMainshockSpatialFactor × RL) of a
+    //     LARGER, EARLIER event.
+    //   Stage 2 — events within (srlAftershockTimeWindow days, max(10 km,
+    //     srlAftershockSpatialFactor × RL)) AFTER a valid mainshock are dependent.
+    // RL = Wells & Coppersmith (1994) rupture length 10^(0.59M − 2.44).
     const declusterSRL = (events: EarthquakeData[]): EarthquakeData[] => {
-        // Configurable implementation of Hardebeck et al. method
+        const sorted = [...events].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()); // chronological
+        const n = sorted.length;
+        const tDays = sorted.map(e => new Date(e.time).getTime() / 86400000);
+        const RL = sorted.map(e => getWellsCoppersmithRuptureLength(e.magnitude));
+        const isDependent = new Array(n).fill(false);
 
-        const sorted = [...events].sort((a, b) => b.magnitude - a.magnitude); // Largest first
-        const isDependentEvent = new Set<number>();
+        const exclusionDays = srlMainshockTimeWindow * 365.25;
 
-        for (let i = 0; i < sorted.length; i++) {
-            const mainEvent = sorted[i];
-            const mainTime = new Date(mainEvent.time).getTime();
-            const rl = getWellsCoppersmithRuptureLength(mainEvent.magnitude);
-
-            // Influence zone defined by user parameters
-            const timeWindow = srlMainshockTimeWindow * 365.25 * 24 * 60 * 60 * 1000; // Years to ms
-            const distLimit = srlMainshockSpatialFactor * rl; // Factor * Rupture Length
-
-            for (let j = 0; j < sorted.length; j++) {
-                if (i === j) continue;
-                const other = sorted[j];
-                if (isDependentEvent.has(j)) continue;
-
-                const otherTime = new Date(other.time).getTime();
-
-                // Logic: "excluding events that occur ... following a larger event"
-                if (otherTime > mainTime && otherTime <= mainTime + timeWindow) {
-                    const dist = haversineDistance(mainEvent.latitude, mainEvent.longitude, other.latitude, other.longitude);
-                    if (dist <= distLimit) {
-                        isDependentEvent.add(j);
+        // Stage 1: valid (non-suppressed) mainshocks
+        const validMainshocks: number[] = [];
+        for (let i = 0; i < n; i++) {
+            let suppressed = false;
+            for (let j = 0; j < i; j++) {
+                if (sorted[j].magnitude > sorted[i].magnitude) {
+                    const tDiff = tDays[i] - tDays[j];
+                    if (tDiff <= exclusionDays) {
+                        const dist = haversineDistance(sorted[i].latitude, sorted[i].longitude, sorted[j].latitude, sorted[j].longitude);
+                        if (dist <= srlMainshockSpatialFactor * RL[j]) { suppressed = true; break; }
                     }
                 }
             }
+            if (!suppressed) validMainshocks.push(i);
         }
 
-        return sorted.filter((_, idx) => !isDependentEvent.has(idx));
+        // Stage 2: mark aftershocks (forward window) of valid mainshocks
+        for (const m of validMainshocks) {
+            const radius = Math.max(10, srlAftershockSpatialFactor * RL[m]); // 10 km minimum
+            for (let j = m + 1; j < n; j++) {
+                if (isDependent[j]) continue;
+                const tDiff = tDays[j] - tDays[m];
+                if (tDiff > srlAftershockTimeWindow) break; // chronological — no later event qualifies
+                const dist = haversineDistance(sorted[m].latitude, sorted[m].longitude, sorted[j].latitude, sorted[j].longitude);
+                if (dist <= radius) isDependent[j] = true;
+            }
+        }
+
+        return sorted.filter((_, idx) => !isDependent[idx]);
     }
 
 

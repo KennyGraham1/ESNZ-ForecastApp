@@ -12,8 +12,8 @@ interface FieldSelectProps {
     value: string | number;
     /** Fired with the raw string value; callers cast to their field type. */
     onChange: (value: string) => void;
-    /** Field names to list as options. */
-    options: readonly string[];
+    /** Options: plain field names, or {value,label} pairs for friendly labels. */
+    options: readonly (string | { value: string; label: string })[];
     /** When true, prepends a sentinel "" option (e.g. "None"). */
     includeNone?: boolean;
     /** Label for the sentinel option when includeNone is set. */
@@ -52,9 +52,11 @@ export default function FieldSelect({
                 className={SELECT_CLASS}
             >
                 {includeNone && <option value="">{noneLabel}</option>}
-                {options.map((field) => (
-                    <option key={field} value={field}>{field}</option>
-                ))}
+                {options.map((opt) => {
+                    const value = typeof opt === 'string' ? opt : opt.value;
+                    const label = typeof opt === 'string' ? opt : opt.label;
+                    return <option key={value} value={value}>{label}</option>;
+                })}
             </select>
             {hint && <p className="text-[10px] text-gray-500 mt-1">{hint}</p>}
         </div>

@@ -664,23 +664,26 @@ function stDbscan(
     const getSTNeighbors = (pointIdx: number): number[] => {
         const point = dataset[pointIdx];
         const pointTime = timestamps[pointIdx];
+        const eqMain = earthquakes[pointIdx];
 
-        // Spatial candidates from R-tree
+        // Spatial candidate prefilter from the R-tree on projected km. The bbox is
+        // widened by 15% so equirectangular-vs-great-circle distortion can't drop a
+        // true neighbour; the exact test below uses great-circle (haversine) km to
+        // match the esnz BallTree(metric='haversine') reference.
+        const margin = epsilonSpatial * 1.15;
         const candidates = tree.search({
-            minX: point[0] - epsilonSpatial,
-            minY: point[1] - epsilonSpatial,
-            maxX: point[0] + epsilonSpatial,
-            maxY: point[1] + epsilonSpatial
+            minX: point[0] - margin,
+            minY: point[1] - margin,
+            maxX: point[0] + margin,
+            maxY: point[1] + margin
         });
 
-        // Filter by actual distance (spatial) AND temporal proximity
+        // Filter by actual distance (spatial, haversine) AND temporal proximity
         return candidates
             .map(c => c.index)
             .filter(idx => {
-                // Spatial distance check
-                const dx = dataset[idx][0] - point[0];
-                const dy = dataset[idx][1] - point[1];
-                const spatialDist = Math.sqrt(dx * dx + dy * dy);
+                const eq = earthquakes[idx];
+                const spatialDist = haversineDistance(eqMain.latitude, eqMain.longitude, eq.latitude, eq.longitude);
                 if (spatialDist > epsilonSpatial) return false;
 
                 // Temporal distance check
@@ -756,6 +759,7 @@ function stDbscan(
  * @param p1 - Probability threshold (default: 0.99)
  * @param xk - Magnitude scaling factor (default: 0.5)
  * @param minMag - Effective minimum magnitude threshold (default: 1.5)
+ * @param tauMin - Minimum look-ahead time in days for a clustered event (default: 1, per Reasenberg 1985 / cluster2000x.f)
  */
 function timeMagnitudeClustering(
     earthquakes: EarthquakeData[],
@@ -764,7 +768,8 @@ function timeMagnitudeClustering(
     tauMax: number = 10,
     p1: number = 0.99,
     xk: number = 0.5,
-    minMag: number = 1.5
+    minMag: number = 1.5,
+    tauMin: number = 1
 ): { clusters: number[][], noiseIndices: number[] } {
     const n = earthquakes.length;
     if (n === 0) return { clusters: [], noiseIndices: [] };
@@ -826,12 +831,17 @@ function timeMagnitudeClustering(
         if (t <= 0) return tau0 * 1440;
 
         // Reasenberg formula: tau = -ln(1-p1) * t / 10^((deltaM-1)*2/3)
-        const deltaM = (1 - xk) * info.largestMag - minMag;
+        // deltaM is floored at 0 (per bruces/ZMAP and the esnz decluster_reasenberg
+        // reference): a negative deltaM shrinks the denominator below 1 and inflates
+        // tau unboundedly when the cluster's largest event is near minMag.
+        const deltaM = Math.max((1 - xk) * info.largestMag - minMag, 0);
         const denom = Math.pow(10, (deltaM - 1) * 2 / 3);
         let tau = (-Math.log(1 - p1) * t) / denom;
 
-        // Clamp to [tau0, tauMax] in days, then convert to minutes
-        tau = Math.max(tau0, Math.min(tau, tauMax));
+        // Clamp to [tauMin, tauMax] in days, then convert to minutes.
+        // The lower bound is tauMin (default 1 day), NOT tau0 — matching
+        // cluster2000x.f / esnz, where tau0 is only the UNCLUSTERED look-ahead.
+        tau = Math.max(tauMin, Math.min(tau, tauMax));
         return tau * 1440;
     };
 
@@ -1170,8 +1180,11 @@ function hardebeckClustering(
 //   7. Assign labels, soft membership probabilities, and
 //      GLOSH-style outlier scores
 //
-// Complexity: O(n²) time and O(n) space — suitable for
-// n ≤ 3 000 (the display sample cap used by this application).
+// Complexity: O(n²) time and O(n) space. The app caps input via an upstream
+// reservoir sample (CLUSTERING_CONFIG.TEMPORAL_SPATIAL_SAMPLE_SIZE, currently
+// 5000) in TemporalSpatial.tsx, so this runs on at most that many points.
+// Distances use great-circle (haversine) km when raw coords are passed
+// (matching the esnz sklearn HDBSCAN metric='haversine').
 // ============================================================
 
 /**
@@ -1256,7 +1269,8 @@ function hdbscanGetLeaves(
 function hdbscanClustering(
     dataset: number[][],
     minClusterSize: number = 5,
-    minSamples: number = 5
+    minSamples: number = 5,
+    coords?: number[][] // optional raw [lat, lon]; when provided, distances use great-circle (haversine) km to match esnz
 ): {
     clusters: number[][];
     noiseIndices: number[];
@@ -1286,7 +1300,13 @@ function hdbscanClustering(
     // O(n²) which is fine for n ≤ 3 000.
     // ----------------------------------------------------------------
     const coreDistances = new Float64Array(n);
+    // Distance metric: great-circle (haversine) km when raw coords are supplied
+    // (matching esnz HDBSCAN with metric='haversine'); otherwise Euclidean on the
+    // projected-km dataset. Named `euclidean` for historical reasons.
     const euclidean = (i: number, j: number): number => {
+        if (coords) {
+            return haversineDistance(coords[i][0], coords[i][1], coords[j][0], coords[j][1]);
+        }
         const dx = dataset[i][0] - dataset[j][0];
         const dy = dataset[i][1] - dataset[j][1];
         return Math.sqrt(dx * dx + dy * dy);
@@ -1695,6 +1715,104 @@ function hdbscanClustering(
 }
 
 
+// ----------------------------------------------------------------------
+// WINDOW-BASED DECLUSTERING (Gardner-Knopoff 1974, Uhrhammer 1986)
+// Magnitude-descending mainshock processing: the largest event in any
+// space-time neighbourhood is the mainshock; events within its spatial AND
+// temporal window are marked dependent (foreshocks within fsTimeProp*T before,
+// aftershocks within T after). A dependent event cannot become a mainshock.
+// A mainshock plus its dependents forms a cluster; an isolated event is noise.
+// Faithful to the esnz_aftershocks decluster_gardner_knopoff / decluster_uhrhammer.
+// ----------------------------------------------------------------------
+function windowDeclustering(
+    earthquakes: EarthquakeData[],
+    spatialWindowKm: (mag: number) => number,
+    temporalWindowDays: (mag: number) => number,
+    fsTimeProp: number = 1.0
+): { clusters: number[][], noiseIndices: number[] } {
+    const n = earthquakes.length;
+    if (n === 0) return { clusters: [], noiseIndices: [] };
+
+    const times = earthquakes.map(eq => {
+        const t = eq.time;
+        return t instanceof Date ? t.getTime() : new Date(t).getTime();
+    });
+
+    // Magnitude descending; tie-break by time ascending (earlier event wins the
+    // tie, matching esnz sort_values(['magnitude','time'], ascending=[False,True])).
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
+        if (earthquakes[b].magnitude !== earthquakes[a].magnitude) {
+            return earthquakes[b].magnitude - earthquakes[a].magnitude;
+        }
+        return times[a] - times[b];
+    });
+
+    const fs = Math.min(Math.max(fsTimeProp, 0), 1);
+    const dependent = new Array(n).fill(false); // flagged as a dependent of some mainshock
+    const clusters: number[][] = [];
+    const noiseIndices: number[] = [];
+
+    for (const i of order) {
+        if (dependent[i]) continue; // already absorbed by a larger event
+        const main = earthquakes[i];
+        const sWin = spatialWindowKm(main.magnitude);
+        const tWinFwdMs = temporalWindowDays(main.magnitude) * 86400000;
+        const tWinBwdMs = tWinFwdMs * fs;
+
+        const members: number[] = [];
+        for (let j = 0; j < n; j++) {
+            if (j === i || dependent[j]) continue;
+            const dt = times[j] - times[i]; // >0 after mainshock, <0 before
+            if (dt > tWinFwdMs || -dt > tWinBwdMs) continue;
+            const dist = haversineDistance(main.latitude, main.longitude, earthquakes[j].latitude, earthquakes[j].longitude);
+            if (dist <= sWin) {
+                dependent[j] = true;
+                members.push(j);
+            }
+        }
+
+        if (members.length > 0) {
+            clusters.push([i, ...members]);
+        } else {
+            noiseIndices.push(i);
+        }
+    }
+
+    return { clusters, noiseIndices };
+}
+
+// Gardner & Knopoff (1974) windows: spatial 10^(a*M+b) km; temporal either the
+// published piecewise form (M>=6.5: 10^(0.032M+2.7389) d; else 10^(0.5409M-0.547) d)
+// or a single 10^(c*M+d) form when piecewiseTemporal=false.
+function gardnerKnopoffClustering(
+    earthquakes: EarthquakeData[],
+    a: number = 0.1238,
+    b: number = 0.983,
+    c: number = 0.032,
+    d: number = 2.7389,
+    piecewiseTemporal: boolean = true
+): { clusters: number[][], noiseIndices: number[] } {
+    const spatial = (m: number) => Math.pow(10, a * m + b);
+    const temporal = piecewiseTemporal
+        ? (m: number) => (m >= 6.5 ? Math.pow(10, 0.032 * m + 2.7389) : Math.pow(10, 0.5409 * m - 0.547))
+        : (m: number) => Math.pow(10, c * m + d);
+    return windowDeclustering(earthquakes, spatial, temporal, 1.0);
+}
+
+// Uhrhammer (1986) windows: spatial exp(sa+sb*M) km; temporal exp(ta+tb*M) d.
+function uhrhammerClustering(
+    earthquakes: EarthquakeData[],
+    spatialA: number = -1.024,
+    spatialB: number = 0.804,
+    temporalA: number = -2.870,
+    temporalB: number = 1.235,
+    fsTimeProp: number = 1.0
+): { clusters: number[][], noiseIndices: number[] } {
+    const spatial = (m: number) => Math.exp(spatialA + spatialB * m);
+    const temporal = (m: number) => Math.exp(temporalA + temporalB * m);
+    return windowDeclustering(earthquakes, spatial, temporal, fsTimeProp);
+}
+
 // Get algorithm description for metadata
 
 function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
@@ -1708,6 +1826,8 @@ function getAlgorithmDescription(algorithm: ClusteringAlgorithm): string {
         'st-dbscan': 'ST-DBSCAN - Density-based clustering with both spatial and temporal thresholds',
         'tmc': 'Time-Magnitude Clustering (Reasenberg)',
         'hardebeck-2019': 'Hardebeck (2019) Rupture-Window Clustering',
+        'gardner-knopoff': 'Gardner-Knopoff (1974) magnitude-window declustering — spatial 10^(0.1238M+0.983) km and piecewise temporal windows (M≥6.5: 10^(0.032M+2.7389) d; else 10^(0.5409M−0.547) d), applied symmetrically',
+        'uhrhammer': 'Uhrhammer (1986) magnitude-window declustering — spatial exp(−1.024+0.804M) km and temporal exp(−2.87+1.235M) d; more conservative (shorter) windows than Gardner-Knopoff',
         'hdbscan': 'HDBSCAN (Hierarchical DBSCAN, Campello et al. 2013) — builds a cluster hierarchy over all density levels and extracts the most stable flat clustering; handles variable-density clusters without requiring an epsilon parameter'
     };
     return descriptions[algorithm] || 'Unknown algorithm';
@@ -1782,7 +1902,7 @@ export function calculateSpatialClustering(
     }
 
     // Default values if using legacy signature (needed for block scope access later)
-    let epsilonTemporal = 7;
+    let epsilonTemporal = 14; // days (esnz decluster_st_dbscan default)
     let tmcRfact = 10;
     let tmcTau0 = 2;
     let tmcTauMax = 10;
@@ -1797,10 +1917,22 @@ export function calculateSpatialClustering(
     // HDBSCAN variables
     let hdbscanMinClusterSize = 5;
     let hdbscanMinSamples = 5;
+    // Gardner-Knopoff (1974) window variables
+    let gkSpatialA = 0.1238;
+    let gkSpatialB = 0.983;
+    let gkTemporalC = 0.032;
+    let gkTemporalD = 2.7389;
+    let gkPiecewiseTemporal = true;
+    // Uhrhammer (1986) window variables
+    let uhrSpatialA = -1.024;
+    let uhrSpatialB = 0.804;
+    let uhrTemporalA = -2.870;
+    let uhrTemporalB = 1.235;
+    let uhrFsTimeProp = 1.0;
 
     if (typeof optionsOrEpsilon !== 'number') {
         const opts = optionsOrEpsilon || {};
-        epsilonTemporal = opts.epsilonTemporal ?? 7;
+        epsilonTemporal = opts.epsilonTemporal ?? 14;
         tmcRfact = opts.tmcRfact ?? 10;
         tmcTau0 = opts.tmcTau0 ?? 2;
         tmcTauMax = opts.tmcTauMax ?? 10;
@@ -1813,6 +1945,16 @@ export function calculateSpatialClustering(
         hardebeckMainshockTimeYears = opts.hardebeckMainshockTimeYears ?? 3;
         hdbscanMinClusterSize = opts.hdbscanMinClusterSize ?? 5;
         hdbscanMinSamples = opts.hdbscanMinSamples ?? 5;
+        gkSpatialA = opts.gkSpatialA ?? 0.1238;
+        gkSpatialB = opts.gkSpatialB ?? 0.983;
+        gkTemporalC = opts.gkTemporalC ?? 0.032;
+        gkTemporalD = opts.gkTemporalD ?? 2.7389;
+        gkPiecewiseTemporal = opts.gkPiecewiseTemporal ?? true;
+        uhrSpatialA = opts.uhrSpatialA ?? -1.024;
+        uhrSpatialB = opts.uhrSpatialB ?? 0.804;
+        uhrTemporalA = opts.uhrTemporalA ?? -2.870;
+        uhrTemporalB = opts.uhrTemporalB ?? 1.235;
+        uhrFsTimeProp = opts.uhrFsTimeProp ?? 1.0;
     }
 
     // Prepare data for clustering (longitude, latitude)
@@ -1896,8 +2038,21 @@ export function calculateSpatialClustering(
         const result = hardebeckClustering(earthquakes, hardebeckMinMag, hardebeckTimeWindow, hardebeckRuptureMult, hardebeckMainshockTimeYears);
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
+    } else if (algorithm === 'gardner-knopoff') {
+        const result = gardnerKnopoffClustering(earthquakes, gkSpatialA, gkSpatialB, gkTemporalC, gkTemporalD, gkPiecewiseTemporal);
+        clusters = result.clusters;
+        noiseIndices = result.noiseIndices;
+    } else if (algorithm === 'uhrhammer') {
+        const result = uhrhammerClustering(earthquakes, uhrSpatialA, uhrSpatialB, uhrTemporalA, uhrTemporalB, uhrFsTimeProp);
+        clusters = result.clusters;
+        noiseIndices = result.noiseIndices;
     } else if (algorithm === 'hdbscan') {
-        const result = hdbscanClustering(dataset, hdbscanMinClusterSize, hdbscanMinSamples);
+        const result = hdbscanClustering(
+            dataset,
+            hdbscanMinClusterSize,
+            hdbscanMinSamples,
+            earthquakes.map(eq => [eq.latitude, eq.longitude]) // great-circle metric, matching esnz
+        );
         clusters = result.clusters;
         noiseIndices = result.noiseIndices;
         hdbscanProbabilities = result.probabilities;
@@ -1974,6 +2129,20 @@ export function calculateSpatialClustering(
     } else if (algorithm === 'hdbscan') {
         parameters.hdbscanMinClusterSize = hdbscanMinClusterSize;
         parameters.hdbscanMinSamples = hdbscanMinSamples;
+    } else if (algorithm === 'gardner-knopoff') {
+        parameters.gkSpatialA = gkSpatialA;
+        parameters.gkSpatialB = gkSpatialB;
+        parameters.gkPiecewiseTemporal = gkPiecewiseTemporal;
+        if (!gkPiecewiseTemporal) {
+            parameters.gkTemporalC = gkTemporalC;
+            parameters.gkTemporalD = gkTemporalD;
+        }
+    } else if (algorithm === 'uhrhammer') {
+        parameters.uhrSpatialA = uhrSpatialA;
+        parameters.uhrSpatialB = uhrSpatialB;
+        parameters.uhrTemporalA = uhrTemporalA;
+        parameters.uhrTemporalB = uhrTemporalB;
+        parameters.uhrFsTimeProp = uhrFsTimeProp;
     }
 
 
